@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vibefoil</title>
+  <style>
+    :root {
+      --bg-1: #0c0f14;
+      --bg-2: #050608;
+      --ink: #e8edf2;
+      --ink-soft: #9aa4af;
+      --accent: #7fb3ff;
+      --panel: #0f1115;
+      --panel-border: #1f242c;
+      --shadow: rgba(0, 0, 0, 0.65);
+      --input: #0b0d10;
+      --input-border: #2b3038;
+      --canvas: #000000;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Consolas, "Courier New", monospace;
+      color: var(--ink);
+      background: radial-gradient(1200px 800px at 10% 10%, var(--bg-1), transparent),
+        radial-gradient(900px 600px at 90% 0%, var(--bg-2), transparent),
+        #000;
+      min-height: 100vh;
+    }
+
+    header {
+      padding: 24px 28px 8px 28px;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(6px);
+    }
+
+    h1 {
+      margin: 0 0 6px 0;
+      font-size: 28px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      color: var(--ink-soft);
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(280px, 360px) 1.2fr 0.8fr;
+      gap: 20px;
+      padding: 16px 24px 28px 24px;
+      min-height: calc(100vh - 96px);
+    }
+
+    .panel {
+      background: var(--panel);
+      border-radius: 16px;
+      box-shadow: 0 12px 30px var(--shadow);
+      padding: 18px;
+      border: 1px solid var(--panel-border);
+    }
+
+    .settings-panel {
+      position: sticky;
+      top: 96px;
+      align-self: start;
+    }
+
+    .control-group {
+      margin-bottom: 16px;
+    }
+
+    .control-group label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .control-group input[type="range"] {
+      width: 100%;
+    }
+
+    .viscous-box {
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 12px;
+      background: rgba(12, 14, 18, 0.85);
+    }
+
+    .viscous-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+
+    .viscous-row input[type="number"] {
+      width: 140px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--input-border);
+      background: var(--input);
+      color: var(--ink);
+      font-family: inherit;
+    }
+
+    .mode-toggle {
+      display: flex;
+      gap: 16px;
+      font-size: 14px;
+    }
+
+    .sweep-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 12px;
+    }
+
+    .sweep-row label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .sweep-row input[type="number"] {
+      width: 100%;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--input-border);
+      background: var(--input);
+      color: var(--ink);
+      font-family: inherit;
+    }
+
+    .sweep-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .run-cases {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .run-case-item {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--panel-border);
+      background: rgba(8, 10, 12, 0.35);
+      cursor: pointer;
+    }
+
+    .run-case-item.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(127, 179, 255, 0.6);
+    }
+
+    .run-case-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--ink-soft);
+    }
+
+    .run-case-title {
+      color: var(--ink);
+      font-size: 13px;
+    }
+
+    .run-case-title[type="text"] {
+      background: transparent;
+      border: none;
+      color: var(--ink);
+      font-family: inherit;
+      font-size: 13px;
+      padding: 0;
+    }
+
+    .run-case-title[type="text"]:focus {
+      outline: none;
+    }
+
+    .run-case-item input[type="color"] {
+      width: 32px;
+      height: 28px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .run-case-item button {
+      min-width: 36px;
+      padding: 6px 8px;
+    }
+
+    select {
+      width: 100%;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--input-border);
+      background: var(--input);
+      color: var(--ink);
+      font-family: inherit;
+    }
+
+    button {
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--input-border);
+      background: var(--input);
+      color: var(--ink);
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .digits {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 2px;
+    }
+
+    .plot-wrap {
+      position: relative;
+      display: flex;
+      overflow: hidden;
+      height: calc(100vh - 140px);
+      min-height: 520px;
+    }
+
+    .plot-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border-radius: 16px;
+      background: var(--canvas);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+      flex: 0 0 auto;
+    }
+
+    #plot {
+      flex: 1 1 0;
+      min-height: 280px;
+    }
+
+    .cp-plot {
+      flex: 0 0 34%;
+      min-height: 200px;
+    }
+
+    .side-plots {
+      height: calc(100vh - 140px);
+      min-height: 520px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .side-plots canvas {
+      flex: 1 1 0;
+      min-height: 200px;
+    }
+
+    .plot-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .plot-actions button {
+      min-width: 56px;
+    }
+
+    .legend {
+      position: absolute;
+      right: 16px;
+      top: 140px;
+      background: rgba(8, 10, 12, 0.9);
+      padding: 8px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      color: var(--ink-soft);
+    }
+
+    .data-box {
+      position: absolute;
+      right: 16px;
+      top: 16px;
+      background: rgba(8, 10, 12, 0.6);
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-size: 24px;
+      color: var(--ink);
+      line-height: 1.35;
+      min-width: 220px;
+      box-shadow: 0 8px 18px var(--shadow);
+    }
+
+    .data-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .data-row[hidden] {
+      display: none;
+    }
+
+    .data-row.name {
+      justify-content: flex-start;
+    }
+
+    .data-row.notice {
+      justify-content: flex-start;
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #ff4a3d;
+      margin-top: 6px;
+    }
+
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .plot-wrap {
+        height: auto;
+        min-height: 420px;
+      }
+
+      .side-plots {
+        height: auto;
+        min-height: 420px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Vibefoil</h1>
+    <p class="subtitle">An interactive airfoil explorer based on <a href="https://web.mit.edu/drela/Public/web/xfoil/" target="_blank" rel="noopener">XFOIL</a>.</p>
+  </header>
+
+  <div class="layout">
+    <div class="panel settings-panel">
+      <div class="control-group viscous-box">
+        <label>
+          <span>Airfoil Source</span>
+        </label>
+        <div class="mode-toggle">
+          <label><input type="radio" name="source" value="naca" checked /> NACA</label>
+          <label><input type="radio" name="source" value="custom" /> Custom</label>
+        </div>
+
+        <div id="nacaOptions">
+          <div class="control-group">
+            <label>
+              <span>Series</span>
+            </label>
+            <div class="mode-toggle">
+              <label><input type="radio" name="series" value="4" checked /> 4-digit</label>
+              <label><input type="radio" name="series" value="5" /> 5-digit</label>
+              <label><input type="radio" name="series" value="6" /> 6-series</label>
+            </div>
+          </div>
+          <div id="controls4">
+          <div class="control-group">
+            <label for="m">
+              <span>Max camber (M)</span>
+              <span id="mValue">2%</span>
+            </label>
+            <input id="m" type="range" min="0" max="9" step="1" value="2" />
+          </div>
+
+          <div class="control-group">
+            <label for="p">
+              <span>Camber position (P)</span>
+              <span id="pValue">40%</span>
+            </label>
+            <input id="p" type="range" min="0" max="9" step="1" value="4" />
+          </div>
+
+          <div class="control-group">
+            <label for="t">
+              <span>Thickness (T)</span>
+              <span id="tValue">12%</span>
+            </label>
+            <input id="t" type="range" min="1" max="30" step="1" value="12" />
+          </div>
+          </div>
+
+          <div id="controls5" hidden>
+            <div class="control-group">
+              <label for="series5">
+                <span>Camber line</span>
+              </label>
+              <select id="series5">
+                <option value="210">210</option>
+                <option value="220">220</option>
+                <option value="230">230</option>
+                <option value="240">240</option>
+                <option value="250">250</option>
+              </select>
+            </div>
+
+            <div class="control-group">
+              <label for="t5">
+                <span>Thickness (T)</span>
+                <span id="t5Value">12%</span>
+              </label>
+              <input id="t5" type="range" min="1" max="30" step="1" value="12" />
+            </div>
+          </div>
+
+          <div id="controls6" hidden>
+            <div class="control-group">
+              <label for="series6Profile">
+                <span>Profile</span>
+              </label>
+              <select id="series6Profile">
+                <option value="63">63</option>
+                <option value="64">64</option>
+                <option value="65">65</option>
+                <option value="66">66</option>
+                <option value="67">67</option>
+                <option value="63A">63A</option>
+                <option value="64A">64A</option>
+                <option value="65A">65A</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="t6">
+                <span>Thickness (T)</span>
+                <span id="t6Value">12%</span>
+              </label>
+              <input id="t6" type="range" min="1" max="30" step="1" value="12" />
+            </div>
+            <div class="viscous-row" id="cl6Row">
+              <label for="cl6">C<sub>L</sub></label>
+              <input id="cl6" type="number" step="0.05" value="0.0" />
+            </div>
+          </div>
+        </div>
+
+        <div id="customOptions" hidden>
+          <div class="control-group">
+            <label>
+              <span>Airfoil File</span>
+            </label>
+            <div class="mode-toggle">
+              <button id="loadDat" type="button">Open .dat</button>
+              <input id="datFile" type="file" accept=".dat" hidden />
+            </div>
+            <p class="subtitle">Loads XFOIL .dat airfoil coordinates.</p>
+          </div>
+        </div>
+      </div>
+
+
+      <div class="control-group viscous-box">
+        <label for="viscous">
+          <span>Boundary Layer</span>
+        </label>
+        <label><input id="viscous" type="checkbox" /> Viscous mode</label>
+        <div class="viscous-row">
+          <label for="mach">Mach</label>
+          <input id="mach" type="number" min="0" max="0.99" step="0.01" value="0.00" />
+        </div>
+        <div class="viscous-row">
+          <label for="reynolds">Re</label>
+          <input id="reynolds" type="number" min="10000" step="10000" value="1000000" />
+        </div>
+        <div class="viscous-row">
+          <label for="ncr">N<sub>cr</sub></label>
+          <input id="ncr" type="number" min="1" max="15" step="0.1" value="9.0" />
+        </div>
+      </div>
+
+      <div class="control-group viscous-box">
+        <label for="alpha">
+          <span>Angle-of-attack</span>
+          <span id="alphaValue">0°</span>
+        </label>
+        <input id="alpha" type="range" min="-10" max="10" step="0.5" value="0" />
+        <div class="sweep-actions">
+          <button id="alphaMinus" type="button">−</button>
+          <button id="alphaPlus" type="button">+</button>
+        </div>
+        <div class="sweep-row">
+          <label>
+            <span>Start</span>
+            <input id="sweepStart" type="number" value="-10" step="0.5" />
+          </label>
+          <label>
+            <span>End</span>
+            <input id="sweepEnd" type="number" value="10" step="0.5" />
+          </label>
+          <label>
+            <span>Inc</span>
+            <input id="sweepInc" type="number" value="1" step="0.5" min="0.1" />
+          </label>
+        </div>
+        <div class="sweep-actions">
+          <button id="alphaSweep" type="button">Sweep</button>
+        </div>
+      </div>
+
+      <div class="control-group viscous-box">
+        <label>
+          <span>Run case</span>
+        </label>
+        <div id="runCaseList" class="run-cases"></div>
+        <div class="sweep-actions">
+          <button id="addRunCase" type="button">Add run case</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel plot-wrap">
+      <div class="plot-stack">
+        <canvas id="plot" width="900" height="500"></canvas>
+        <canvas id="cpPlot" class="cp-plot" width="900" height="280"></canvas>
+      </div>
+      <div class="data-box" id="dataBox">
+        <div class="data-row name"><span id="dataName">—</span></div>
+        <div class="data-row"><span>Re</span><span id="dataRe">—</span></div>
+        <div class="data-row"><span>α</span><span id="dataAlpha">—</span></div>
+        <div class="data-row"><span>C<sub>L</sub></span><span id="dataCl">—</span></div>
+        <div class="data-row"><span>C<sub>M</sub></span><span id="dataCm">—</span></div>
+        <div class="data-row"><span>C<sub>D</sub></span><span id="dataCd">—</span></div>
+        <div class="data-row"><span>L/D</span><span id="dataLd">—</span></div>
+        <div class="data-row"><span>N<sub>cr</sub></span><span id="dataNcr">—</span></div>
+        <div class="data-row notice" id="dataConverged" hidden>NOT CONVERGED</div>
+      </div>
+    </div>
+
+    <div class="panel side-plots">
+      <canvas id="alphaPlot" width="520" height="320"></canvas>
+      <canvas id="polarPlot" width="520" height="320"></canvas>
+    </div>
+  </div>
+
+  <script src="./js/naca.js"></script>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

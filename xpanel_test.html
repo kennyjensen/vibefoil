@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>XFOIL XPanel Demo</title>
+  <style>
+    body {
+      font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
+      margin: 0;
+      padding: 24px;
+      background: #f7f3ea;
+      color: #1b1b1b;
+    }
+
+    button {
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: 1px solid #333;
+      background: #fff;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    pre {
+      background: #fffaf2;
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+      margin-top: 16px;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <h1>XPanel Sanity Check</h1>
+  <p>Runs a minimal driver on a NACA 2412 geometry and prints core outputs.</p>
+  <button id="run">Run demo</button>
+  <pre id="output">(results will appear here)</pre>
+
+  <script type="module">
+    import { runXpanelDemo } from './js/xpanel_driver.js';
+
+    const output = document.getElementById('output');
+    document.getElementById('run').addEventListener('click', () => {
+      const results = runXpanelDemo();
+      output.textContent = JSON.stringify(results, null, 2);
+    });
+  </script>
+</body>
+</html>

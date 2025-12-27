@@ -60,6 +60,7 @@ const machInput = document.getElementById('mach');
 const reynoldsInput = document.getElementById('reynolds');
 const ncrInput = document.getElementById('ncr');
 const nIterInput = document.getElementById('nIter');
+const reuseBlInput = document.getElementById('reuseBl');
 const loadDatButton = document.getElementById('loadDat');
 const datFileInput = document.getElementById('datFile');
 const alphaSlider = document.getElementById('alpha');
@@ -86,6 +87,7 @@ const xbCustom = new Float64Array(2 * nside);
 const ybCustom = new Float64Array(2 * nside);
 let customAirfoil = null;
 let currentAirfoilName = 'NACA 2412';
+let customAirfoilVersion = 0;
 
 // Panel-method working state and run history.
 let panelCtx = null;
@@ -97,6 +99,8 @@ const runCases = [];
 let activeCaseId = null;
 let nextCaseId = 1;
 let sweeping = false;
+const panelCache = { ctx: null, key: null };
+const blCache = { ctx: null, key: null };
 
 // NACA 4-digit designation formatting for UI/overlay.
 function updateLabels(m, p, t) {
@@ -779,10 +783,24 @@ function pointInPolygon(x, y, px, py, n) {
 }
 
 // Panel-method geometry setup: arc length, normals, influence matrices.
-function buildPanelContext(nb, alphaRad) {
+function buildPanelContext(nb, alphaRad, opts = {}) {
+  const { reusePanel = false, geometryKey = '' } = opts;
   const waklen = 1.0;
   const nw = Math.floor(nb / 12) + 10 * Math.floor(waklen);
   const total = nb + nw;
+  if (reusePanel && panelCache.ctx && panelCache.key === geometryKey
+    && panelCache.ctx.N === nb && panelCache.ctx.NW === nw) {
+    panelCtx = panelCache.ctx;
+    panelCtx.ALFA = alphaRad;
+    const cosa = Math.cos(alphaRad);
+    const sina = Math.sin(alphaRad);
+    for (let i = 0; i < nb; i += 1) {
+      panelCtx.GAM[i] = cosa * panelCtx.GAMU[i][0] + sina * panelCtx.GAMU[i][1];
+    }
+    return panelCtx;
+  }
+
+  const resetViscous = !reusePanel || panelCache.key !== geometryKey;
   if (!panelCtx || panelCtx.N !== nb || panelCtx.NW !== nw) {
     panelX = new Float64Array(total);
     panelY = new Float64Array(total);
@@ -857,6 +875,15 @@ function buildPanelContext(nb, alphaRad) {
   panelCtx.ALFA = alphaRad;
   ggcalc(panelCtx);
 
+  if (resetViscous && panelCtx.QVIS) {
+    panelCtx.QVIS.fill(0.0);
+    panelCtx.LWAKE = false;
+    panelCtx.LWDIJ = false;
+    panelCtx.LADIJ = false;
+  }
+
+  panelCache.ctx = panelCtx;
+  panelCache.key = geometryKey;
   return panelCtx;
 }
 
@@ -918,6 +945,7 @@ function loadCustomAirfoil(data) {
     ybCustom[i] = data.coords[i].y;
   }
   customAirfoil = { name: data.name, nb: count };
+  customAirfoilVersion += 1;
   currentAirfoilName = data.name;
 }
 
@@ -1520,17 +1548,39 @@ function update() {
     }
   }
 
+  let geometryKey = '';
+  if (source === 'custom') {
+    geometryKey = `custom:${customAirfoil?.name || 'none'}:${customAirfoilVersion}:${nb}`;
+  } else if (mode === '4') {
+    geometryKey = `naca4:${mSlider.value}:${pSlider.value}:${tSlider.value}:${nb}`;
+  } else if (mode === '5') {
+    geometryKey = `naca5:${series5Select.value}:${t5Slider.value}:${nb}`;
+  } else {
+    geometryKey = `naca6:${series6Profile.value}:${t6Slider.value}:${cl6Input.value}:${nb}`;
+  }
+
   const bounds = computeBounds(nb, displayAngle);
 
   ctx.clearRect(0, 0, bounds.width, bounds.height);
 
-  const ctxPanel = buildPanelContext(nb, alphaRad);
+  const reusePanel = reuseBlInput?.checked === true;
+  const ctxPanel = buildPanelContext(nb, alphaRad, { reusePanel, geometryKey });
   let blCtx = null;
   let qinv = null;
   let qinvA = null;
   if (viscousToggle.checked && ctxPanel) {
     const ncr = parseFloat(ncrInput.value);
-    blCtx = buildBlContext(nb, ctxPanel, ncr);
+    const reuseBl = reuseBlInput?.checked && blCache.ctx && blCache.key === geometryKey;
+    if (reuseBl) {
+      blCtx = blCache.ctx;
+      const acrit = Number.isFinite(ncr) ? ncr : 9.0;
+      blCtx.ACRIT[1] = acrit;
+      blCtx.ACRIT[2] = acrit;
+    } else {
+      blCtx = buildBlContext(nb, ctxPanel, ncr);
+      blCache.ctx = blCtx;
+      blCache.key = geometryKey;
+    }
     const mach = parseFloat(machInput.value);
     const reinf = parseFloat(reynoldsInput.value);
     const nIter = parseInt(nIterInput.value, 10);
@@ -1653,6 +1703,10 @@ alphaSlider.addEventListener('input', update);
 machInput.addEventListener('input', update);
 reynoldsInput.addEventListener('input', update);
 ncrInput.addEventListener('input', update);
+nIterInput.addEventListener('input', update);
+if (reuseBlInput) {
+  reuseBlInput.addEventListener('change', update);
+}
 if (alphaMinus) {
   alphaMinus.addEventListener('click', () => {
     const current = parseFloat(alphaSlider.value);

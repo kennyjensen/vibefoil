@@ -10,83 +10,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 import python.xbl as xbl_mod
-from python.xbl import XFoilState, XBlState, blpini
-from python.xfoil import comset, naca
-from python.xpanel import ggcalc
+from python.xbl import XBlState, blpini
+from python.tests.test_compare_viscal import build_payload, build_viscal_context
 from python.xoper import viscal
 from python.xsolve import gauss as gauss_base
 
 
-def build_viscal_context(ides, minf, reinf, alfa, waklen):
-    ctx = XFoilState()
-    ctx.NPAN = 160
-    ctx.CVPAR = 1.0
-    ctx.CTERAT = 0.15
-    ctx.CTRRAT = 0.2
-    ctx.XSREF1 = 1.0
-    ctx.XSREF2 = 1.0
-    ctx.XPREF1 = 1.0
-    ctx.XPREF2 = 1.0
-
-    ctx.WAKLEN = waklen
-    ctx.ALFA = alfa
-    ctx.ADEG = alfa / ctx.DTOR
-    ctx.QINF = 1.0
-    ctx.MINF = minf
-    ctx.MINF1 = minf
-    ctx.REINF = reinf
-    ctx.REINF1 = reinf
-    ctx.LALFA = True
-    ctx.VACCEL = 0.01
-
-    ctx.ACRIT[1] = 9.0
-    ctx.ACRIT[2] = 9.0
-    ctx.XSTRIP[1] = 1.0
-    ctx.XSTRIP[2] = 1.0
-
-    naca(ctx, ides)
-    comset(ctx)
-    ggcalc(ctx)
-    for i in range(1, ctx.N + 1):
-        ctx.GAM[i] = 1.0 if i <= ctx.N // 2 else -1.0
-
-    return ctx
-
-
-def build_payload(ctx, minf, reinf, alfa, waklen):
-    xb = [ctx.XB[i] for i in range(1, ctx.NB + 1)]
-    yb = [ctx.YB[i] for i in range(1, ctx.NB + 1)]
-    params = {
-        "npan": ctx.NPAN,
-        "cvpar": ctx.CVPAR,
-        "cterat": ctx.CTERAT,
-        "ctrrat": ctx.CTRRAT,
-        "xsref1": ctx.XSREF1,
-        "xsref2": ctx.XSREF2,
-        "xpref1": ctx.XPREF1,
-        "xpref2": ctx.XPREF2,
-    }
-    return {
-        "xb": xb,
-        "yb": yb,
-        "nb": ctx.NB,
-        "params": params,
-        "alphaRad": alfa,
-        "reinf": reinf,
-        "minf": minf,
-        "waklen": waklen,
-        "ncrit": 9.0,
-    }
-
-
-def max_abs_list_diff(a, b):
-    if len(a) != len(b):
-        return float("inf")
-    return max(abs(ai - bi) for ai, bi in zip(a, b))
-
-
-class TestViscalParity(unittest.TestCase):
-    def test_viscal_one_iter(self):
+class TestViscalReuseParity(unittest.TestCase):
+    def test_viscal_reuse_two_calls(self):
         if not shutil.which("node"):
             self.skipTest("node is required for JS/Python parity checks")
 
@@ -106,7 +37,7 @@ class TestViscalParity(unittest.TestCase):
             {"ides": 23012, "minf": 0.2, "reinf": 5.0e6, "alfa": 0.0, "waklen": 2.0},
         ]
 
-        script = pathlib.Path(__file__).with_name("compare_viscal.mjs")
+        script = pathlib.Path(__file__).with_name("compare_viscal_reuse.mjs")
         tol_coeff = 5.0e-1
         tol_arr = 5.0e-2
 
@@ -136,7 +67,8 @@ class TestViscalParity(unittest.TestCase):
                 )
                 js_results = json.loads(proc.stdout)["results"]
 
-                viscal(ctx, bl, 1)
+                viscal(ctx, bl, 5)
+                viscal(ctx, bl, 5)
 
                 self.assertLessEqual(abs(ctx.CL - js_results["CL"]), tol_coeff)
                 self.assertLessEqual(abs(ctx.CM - js_results["CM"]), tol_coeff)

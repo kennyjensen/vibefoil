@@ -1,9 +1,9 @@
 import fs from 'fs';
 
-import { pangen, tecalc, clcalc, cdcalc } from '../../js/xfoil.js';
+import { pangen, tecalc } from '../../js/xfoil.js';
 import { scalc, segspl } from '../../js/spline.js';
 import { apcalc, ggcalc, ncalc } from '../../js/xpanel.js';
-import { createMatrix, createMatrix1 } from '../../js/arrays.js';
+import { createMatrix } from '../../js/arrays.js';
 import { buildBlContext, viscal } from '../../js/xoper.js';
 
 const noop = () => {};
@@ -22,6 +22,7 @@ const {
   waklen,
   ncrit,
 } = payload;
+const niter = 5;
 
 const xbArr = Float64Array.from(xb);
 const ybArr = Float64Array.from(yb);
@@ -105,7 +106,8 @@ const blCtx = buildBlContext(n, ctxPanel, ncrit);
 blCtx.MINF = minf;
 ctxPanel.QINF = 1.0;
 
-viscal(blCtx, ctxPanel, alphaRad, reinf, { maxIter: 1, maxRetry: 0 });
+viscal(blCtx, ctxPanel, alphaRad, reinf, { maxIter: niter, reuseSolution: true });
+viscal(blCtx, ctxPanel, alphaRad, reinf, { maxIter: niter, reuseSolution: true });
 
 const maxNbl = Math.max(blCtx.NBL[1], blCtx.NBL[2]);
 function extractSide(mat, is) {

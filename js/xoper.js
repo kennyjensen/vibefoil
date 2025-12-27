@@ -12,7 +12,7 @@ import {
 import { blsolv } from './xsolve.js';
 import { seval } from './spline.js';
 import { lefind } from './xgeom.js';
-import { clcalc, cdcalc } from './xfoil.js';
+import { clcalc, cdcalc, cpcalc } from './xfoil.js';
 import {
   xywake,
   qwcalc,
@@ -44,15 +44,17 @@ import { createMatrix1, createTensor3 } from './arrays.js';
 
 // Initialize BL operating point (alpha, Mach, Re) to match XFOIL's OPER init.
 // Mirrors OPER/SPECAL setup in xoper.f.
-function applyXfoilOperInit(blCtx, alphaRad, reinf1) {
+function applyXfoilOperInit(blCtx, alphaRad, reinf1, opts = {}) {
+  const { resetConvergence = true } = opts;
   blCtx.LVISC = true;
-  blCtx.LVCONV = false;
+  if (resetConvergence) {
+    blCtx.LVCONV = false;
+  }
   blCtx.LWAKE = blCtx.NW > 0;
   blCtx.LALFA = true;
   blCtx.ALFA = alphaRad;
   blCtx.ADEG = alphaRad / blCtx.DTOR;
   blCtx.AWAKE = alphaRad;
-  blCtx.AVISC = alphaRad;
   blCtx.MINF1 = blCtx.MINF;
   blCtx.REINF1 = reinf1;
   blCtx.REINF = reinf1;
@@ -296,10 +298,6 @@ function initViscousBl(blCtx, ctxPanel, qinv, qinvA) {
     }
   }
 
-  if (!ctxPanel.LWDIJ || !ctxPanel.LADIJ) {
-    qdcalc(ctxPanel);
-  }
-  blCtx.DIJ = ctxPanel.DIJ;
 }
 
 // Iterative viscous solve with optional re-init (VISCAL).
@@ -418,11 +416,46 @@ function viscal(
   const {
     maxIter = 20,
     logSurface = false,
+    reuseSolution = false,
   } = opts;
 
   const { qinv, qinvA } = initViscousPanel(ctxPanel);
-  applyXfoilOperInit(blCtx, alphaRad, Number.isFinite(reinf) ? reinf : 1.0e6);
+  applyXfoilOperInit(blCtx, alphaRad, Number.isFinite(reinf) ? reinf : 1.0e6, {
+    resetConvergence: !reuseSolution,
+  });
   initViscousBl(blCtx, ctxPanel, qinv, qinvA);
+
+  if (blCtx.LVCONV) {
+    const total = ctxPanel.N + (ctxPanel.NW ?? 0);
+    const qvis = ctxPanel.QVIS && ctxPanel.QVIS.length === total + 1
+      ? ctxPanel.QVIS
+      : new Float64Array(total + 1);
+    qvfue(blCtx, qvis);
+    cpcalc(qvis, ctxPanel.QINF ?? 1.0, blCtx.MINF);
+    cpcalc(qinv, ctxPanel.QINF ?? 1.0, blCtx.MINF);
+    gamqv(ctxPanel, qvis, qinvA);
+    const coeffs = clcalc(
+      ctxPanel.N,
+      ctxPanel.X,
+      ctxPanel.Y,
+      ctxPanel.GAM,
+      ctxPanel.GAM_A,
+      blCtx.ALFA,
+      blCtx.MINF,
+      ctxPanel.QINF ?? 1.0,
+    );
+    const drag = cdcalc(ctxPanel, blCtx, blCtx.ALFA, ctxPanel.QINF ?? 1.0);
+    blCtx.CL = coeffs.cl;
+    blCtx.CM = coeffs.cm;
+    blCtx.CDP = coeffs.cdp;
+    blCtx.CD = drag.cd;
+    blCtx.CDF = drag.cdf;
+  }
+
+  if (!ctxPanel.LWDIJ || !ctxPanel.LADIJ) {
+    qdcalc(ctxPanel);
+  }
+  blCtx.DIJ = ctxPanel.DIJ;
 
   const turbTop = 100.0 * Math.exp(-(blCtx.ACRIT[1] + 8.43) / 2.4);
   const turbBot = 100.0 * Math.exp(-(blCtx.ACRIT[2] + 8.43) / 2.4);
@@ -449,7 +482,9 @@ function viscal(
     }
   }
 
-  blCtx.LVCONV = converged;
+  if (converged) {
+    blCtx.LVCONV = true;
+  }
 
   const stats = null;
   return {

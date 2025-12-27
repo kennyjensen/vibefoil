@@ -792,11 +792,6 @@ function buildPanelContext(nb, alphaRad, opts = {}) {
     && panelCache.ctx.N === nb && panelCache.ctx.NW === nw) {
     panelCtx = panelCache.ctx;
     panelCtx.ALFA = alphaRad;
-    const cosa = Math.cos(alphaRad);
-    const sina = Math.sin(alphaRad);
-    for (let i = 0; i < nb; i += 1) {
-      panelCtx.GAM[i] = cosa * panelCtx.GAMU[i][0] + sina * panelCtx.GAMU[i][1];
-    }
     return panelCtx;
   }
 
@@ -1563,15 +1558,15 @@ function update() {
 
   ctx.clearRect(0, 0, bounds.width, bounds.height);
 
-  const reusePanel = reuseBlInput?.checked === true;
+  const reusePanel = reuseBlInput?.checked === true && viscousToggle.checked;
   const ctxPanel = buildPanelContext(nb, alphaRad, { reusePanel, geometryKey });
   let blCtx = null;
   let qinv = null;
   let qinvA = null;
   if (viscousToggle.checked && ctxPanel) {
     const ncr = parseFloat(ncrInput.value);
-    const reuseBl = reuseBlInput?.checked && blCache.ctx && blCache.key === geometryKey;
-    if (reuseBl) {
+    const reuseSolution = reuseBlInput?.checked && blCache.ctx && blCache.key === geometryKey;
+    if (reuseSolution) {
       blCtx = blCache.ctx;
       const acrit = Number.isFinite(ncr) ? ncr : 9.0;
       blCtx.ACRIT[1] = acrit;
@@ -1596,6 +1591,7 @@ function update() {
       {
         maxIter,
         logSurface: true,
+        reuseSolution,
       },
     ));
   } else if (ctxPanel) {

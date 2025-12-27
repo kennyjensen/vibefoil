@@ -309,7 +309,6 @@ function solveViscous(
   qinv,
   qinvA,
   maxIter = 20,
-  maxRetry = 2,
 ) {
   // Fortran comments (VISCAL) highlight:
   // - Iterate BL/panel coupling to convergence.
@@ -321,86 +320,78 @@ function solveViscous(
   console.log('');
   console.log('Solving BL system ...');
   console.log(' iter        rms        max    rlx        a        CL        Cm        CD       CDf       CDp     tr1     tr2');
-  // Newton iteration loop with optional re-initialization.
-  for (let attempt = 0; attempt <= maxRetry; attempt += 1) {
-    if (!blCtx.LBLINI) {
-      for (let ibl = 1; ibl <= blCtx.NBL[1]; ibl += 1) {
-        blCtx.UEDG[ibl][1] = blCtx.UINV[ibl][1];
-      }
-      for (let ibl = 1; ibl <= blCtx.NBL[2]; ibl += 1) {
-        blCtx.UEDG[ibl][2] = blCtx.UINV[ibl][2];
-      }
+  if (!blCtx.LBLINI) {
+    for (let ibl = 1; ibl <= blCtx.NBL[1]; ibl += 1) {
+      blCtx.UEDG[ibl][1] = blCtx.UINV[ibl][1];
+    }
+    for (let ibl = 1; ibl <= blCtx.NBL[2]; ibl += 1) {
+      blCtx.UEDG[ibl][2] = blCtx.UINV[ibl][2];
+    }
+  }
+
+  for (let iter = 0; iter < maxIter; iter += 1) {
+    // Assemble BL system and solve for Newton deltas.
+    setbl(blCtx);
+    const ok = blsolv(blCtx);
+    if (!ok) break;
+    // Update BL state with Newton step.
+    blUpdate(blCtx);
+
+    if (blCtx.LALFA) {
+      mrcl(blCtx, blCtx.CL);
+      comset(blCtx);
+    } else {
+      const qisetRes = qiset(ctxPanel);
+      qinv = qisetRes.qinv;
+      qinvA = qisetRes.qinvA;
+      uicalc(blCtx, qinv, qinvA);
     }
 
-    for (let iter = 0; iter < maxIter; iter += 1) {
-      // Assemble BL system and solve for Newton deltas.
-      setbl(blCtx);
-      const ok = blsolv(blCtx);
-      if (!ok) break;
-      // Update BL state with Newton step.
-      blUpdate(blCtx);
+    qvfue(blCtx, qvis);
+    gamqv(ctxPanel, qvis, qinvA);
+    stmove(ctxPanel, blCtx, qinv, qinvA);
 
-      if (blCtx.LALFA) {
-        mrcl(blCtx, blCtx.CL);
-        comset(blCtx);
-      } else {
-        const qisetRes = qiset(ctxPanel);
-        qinv = qisetRes.qinv;
-        qinvA = qisetRes.qinvA;
-        uicalc(blCtx, qinv, qinvA);
-      }
+    const coeffs = clcalc(
+      ctxPanel.N,
+      ctxPanel.X,
+      ctxPanel.Y,
+      ctxPanel.GAM,
+      ctxPanel.GAM_A,
+      blCtx.ALFA,
+      blCtx.MINF,
+      ctxPanel.QINF ?? 1.0,
+    );
+    const drag = cdcalc(ctxPanel, blCtx, blCtx.ALFA, ctxPanel.QINF ?? 1.0);
+    blCtx.CL = coeffs.cl;
+    blCtx.CM = coeffs.cm;
+    blCtx.CDP = coeffs.cdp;
+    blCtx.CD = drag.cd;
+    blCtx.CDF = drag.cdf;
 
-      qvfue(blCtx, qvis);
-      gamqv(ctxPanel, qvis, qinvA);
-      stmove(ctxPanel, blCtx, qinv, qinvA);
+    const tr1 = transitionXc(blCtx, ctxPanel, 1);
+    const tr2 = transitionXc(blCtx, ctxPanel, 2);
+    const rlx = Number.isFinite(blCtx.RLX) ? blCtx.RLX : 1.0;
+    const iterLine = `${String(iter + 1).padStart(5)}`
+      + `${Number.isFinite(blCtx.RMSBL) ? blCtx.RMSBL.toExponential(3).padStart(12) : '     NaN'.padStart(12)}`
+      + `${Number.isFinite(blCtx.RMXBL) ? blCtx.RMXBL.toExponential(3).padStart(12) : '     NaN'.padStart(12)}`
+      + `${rlx.toFixed(2).padStart(7)}`
+      + `${(blCtx.ALFA / blCtx.DTOR).toFixed(3).padStart(9)}`
+      + `${coeffs.cl.toFixed(5).padStart(10)}`
+      + `${coeffs.cm.toFixed(5).padStart(10)}`
+      + `${drag.cd.toFixed(6).padStart(10)}`
+      + `${drag.cdf.toFixed(6).padStart(10)}`
+      + `${coeffs.cdp.toFixed(6).padStart(10)}`
+      + `${Number.isFinite(tr1) ? tr1.toFixed(4).padStart(8) : '   NaN'.padStart(8)}`
+      + `${Number.isFinite(tr2) ? tr2.toFixed(4).padStart(8) : '   NaN'.padStart(8)}`;
+    console.log(iterLine);
 
-      const coeffs = clcalc(
-        ctxPanel.N,
-        ctxPanel.X,
-        ctxPanel.Y,
-        ctxPanel.GAM,
-        ctxPanel.GAM_A,
-        blCtx.ALFA,
-        blCtx.MINF,
-        ctxPanel.QINF ?? 1.0,
-      );
-      const drag = cdcalc(ctxPanel, blCtx, blCtx.ALFA, ctxPanel.QINF ?? 1.0);
-      blCtx.CL = coeffs.cl;
-      blCtx.CM = coeffs.cm;
-      blCtx.CDP = coeffs.cdp;
-      blCtx.CD = drag.cd;
-      blCtx.CDF = drag.cdf;
-
-      const tr1 = transitionXc(blCtx, ctxPanel, 1);
-      const tr2 = transitionXc(blCtx, ctxPanel, 2);
-      const rlx = Number.isFinite(blCtx.RLX) ? blCtx.RLX : 1.0;
-      const iterLine = `${String(iter + 1).padStart(5)}`
-        + `${Number.isFinite(blCtx.RMSBL) ? blCtx.RMSBL.toExponential(3).padStart(12) : '     NaN'.padStart(12)}`
-        + `${Number.isFinite(blCtx.RMXBL) ? blCtx.RMXBL.toExponential(3).padStart(12) : '     NaN'.padStart(12)}`
-        + `${rlx.toFixed(2).padStart(7)}`
-        + `${(blCtx.ALFA / blCtx.DTOR).toFixed(3).padStart(9)}`
-        + `${coeffs.cl.toFixed(5).padStart(10)}`
-        + `${coeffs.cm.toFixed(5).padStart(10)}`
-        + `${drag.cd.toFixed(6).padStart(10)}`
-        + `${drag.cdf.toFixed(6).padStart(10)}`
-        + `${coeffs.cdp.toFixed(6).padStart(10)}`
-        + `${Number.isFinite(tr1) ? tr1.toFixed(4).padStart(8) : '   NaN'.padStart(8)}`
-        + `${Number.isFinite(tr2) ? tr2.toFixed(4).padStart(8) : '   NaN'.padStart(8)}`;
-      console.log(iterLine);
-
-      // Convergence check (RMS residual).
-      if (Number.isFinite(blCtx.RMSBL) && blCtx.RMSBL < eps1) {
-        blCtx.LVCONV = true;
-        blCtx.AVISC = blCtx.ALFA;
-        blCtx.MVISC = blCtx.MINF;
-        converged = true;
-        break;
-      }
-    }
-
-    if (converged) break;
-    if (attempt < maxRetry) {
-      resetBlState(blCtx);
+    // Convergence check (RMS residual).
+    if (Number.isFinite(blCtx.RMSBL) && blCtx.RMSBL < eps1) {
+      blCtx.LVCONV = true;
+      blCtx.AVISC = blCtx.ALFA;
+      blCtx.MVISC = blCtx.MINF;
+      converged = true;
+      break;
     }
   }
 
@@ -426,7 +417,6 @@ function viscal(
 ) {
   const {
     maxIter = 20,
-    maxRetry = 2,
     logSurface = false,
   } = opts;
 
@@ -451,7 +441,7 @@ function viscal(
   console.log(` A     =${blCtx.GACON.toFixed(4).padStart(8)}     B     =${blCtx.GBCON.toFixed(4).padStart(8)}       KCt =${blCtx.CTCON.toFixed(5).padStart(8)}`);
   console.log(` CtiniK=${blCtx.CTRCON.toFixed(4).padStart(8)}     CtiniX=${blCtx.CTRCEX.toFixed(4).padStart(8)}`);
 
-  const { qvis, converged } = solveViscous(blCtx, ctxPanel, qinv, qinvA, maxIter, maxRetry);
+  const { qvis, converged } = solveViscous(blCtx, ctxPanel, qinv, qinvA, maxIter);
 
   for (let i = 0; i < ctxPanel.N; i += 1) {
     if (!Number.isFinite(ctxPanel.GAM[i])) {

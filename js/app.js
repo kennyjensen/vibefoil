@@ -38,6 +38,7 @@ const dataCd = document.getElementById('dataCd');
 const dataLd = document.getElementById('dataLd');
 const dataNcr = document.getElementById('dataNcr');
 const dataConverged = document.getElementById('dataConverged');
+const DEFAULT_BL_ITER = 20;
 
 const mSlider = document.getElementById('m');
 const pSlider = document.getElementById('p');
@@ -58,6 +59,7 @@ const viscousToggle = document.getElementById('viscous');
 const machInput = document.getElementById('mach');
 const reynoldsInput = document.getElementById('reynolds');
 const ncrInput = document.getElementById('ncr');
+const nIterInput = document.getElementById('nIter');
 const loadDatButton = document.getElementById('loadDat');
 const datFileInput = document.getElementById('datFile');
 const alphaSlider = document.getElementById('alpha');
@@ -1531,6 +1533,8 @@ function update() {
     blCtx = buildBlContext(nb, ctxPanel, ncr);
     const mach = parseFloat(machInput.value);
     const reinf = parseFloat(reynoldsInput.value);
+    const nIter = parseInt(nIterInput.value, 10);
+    const maxIter = Number.isFinite(nIter) && nIter > 0 ? nIter : DEFAULT_BL_ITER;
     blCtx.MINF = Number.isFinite(mach) ? mach : 0.0;
     blCtx.MINF1 = blCtx.MINF;
 
@@ -1540,6 +1544,7 @@ function update() {
       alphaRad,
       reinf,
       {
+        maxIter,
         logSurface: true,
       },
     ));

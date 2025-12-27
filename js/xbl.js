@@ -1211,6 +1211,8 @@ function setbl(ctx) {
         const ytr = seval(str, y, yp, s, ctx.N);
         ctx.XOCTR[is] = ((xtr - ctx.XLE) * chx + (ytr - ctx.YLE) * chy) / chsq;
         ctx.YOCTR[is] = ((ytr - ctx.YLE) * chx - (xtr - ctx.XLE) * chy) / chsq;
+
+        // no-op
       }
 
       ctx.TRAN = false;

@@ -163,6 +163,13 @@ class XFoilState:
         self.YIMAGE = 0.0
         self.SHARP = False
 
+        self.XSTRIP[1] = 1.0
+        self.XSTRIP[2] = 1.0
+        self.XOCTR[1] = 1.0
+        self.XOCTR[2] = 1.0
+        self.YOCTR[1] = 0.0
+        self.YOCTR[2] = 0.0
+
         self.DIJ = make_2d(IZX, IZX)
         self.AIJ = make_2d(IQX, IQX)
         self.BIJ = make_2d(IQX, IZX)

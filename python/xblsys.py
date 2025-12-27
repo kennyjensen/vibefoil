@@ -98,8 +98,13 @@ def trchek2(bl):
             sfa_a1 = (sfa - 1.0) / (bl.AMPL2 - bl.AMPL1)
             sfa_a2 = (-sfa) / (bl.AMPL2 - bl.AMPL1)
 
-        if bl.XIFORC < bl.X2:
-            sfx = (bl.XIFORC - bl.X1) / (bl.X2 - bl.X1)
+        xif_eps = 1.0e-12 * max(1.0, abs(bl.X2))
+        if bl.XIFORC >= bl.X2 - xif_eps and bl.XIFORC <= bl.X2 + xif_eps:
+            xif = bl.X2
+        else:
+            xif = bl.XIFORC
+        if xif < bl.X2:
+            sfx = (xif - bl.X1) / (bl.X2 - bl.X1)
             sfx_x1 = (sfx - 1.0) / (bl.X2 - bl.X1)
             sfx_x2 = (-sfx) / (bl.X2 - bl.X1)
             sfx_xf = 1.0 / (bl.X2 - bl.X1)
@@ -225,17 +230,22 @@ def trchek2(bl):
     bl.XT_A2 = xt_a2
 
     bl.TRFREE = bl.AMPL2 >= bl.AMCRIT
-    bl.TRFORC = bl.XIFORC > bl.X1 and bl.XIFORC <= bl.X2
+    xif_eps_final = 1.0e-12 * max(1.0, abs(bl.X2))
+    if bl.XIFORC >= bl.X2 - xif_eps_final and bl.XIFORC <= bl.X2 + xif_eps_final:
+        xif_final = bl.X2
+    else:
+        xif_final = bl.XIFORC
+    bl.TRFORC = xif_final > bl.X1 and xif_final <= bl.X2
     bl.TRAN = bl.TRFORC or bl.TRFREE
     if not bl.TRAN:
         return
 
     if bl.TRFREE and bl.TRFORC:
-        bl.TRFORC = bl.XIFORC < xt
-        bl.TRFREE = bl.XIFORC >= xt
+        bl.TRFORC = xif_final < xt
+        bl.TRFREE = xif_final >= xt
 
     if bl.TRFORC:
-        bl.XT = bl.XIFORC
+        bl.XT = xif_final
         bl.XT_A1 = 0.0
         bl.XT_X1 = 0.0
         bl.XT_T1 = 0.0

@@ -228,6 +228,10 @@ function buildBlContext(nb, ctxPanel, ncr) {
   ctxBl.XOCTR = new Float64Array(3);
   ctxBl.YOCTR = new Float64Array(3);
   ctxBl.TINDEX = new Float64Array(3);
+  ctxBl.XOCTR[1] = 1.0;
+  ctxBl.XOCTR[2] = 1.0;
+  ctxBl.YOCTR[1] = 0.0;
+  ctxBl.YOCTR[2] = 0.0;
   ctxBl.CL = 0.0;
   ctxBl.CLSPEC = 0.0;
   ctxBl.LALFA = true;
@@ -245,6 +249,10 @@ function buildBlContext(nb, ctxPanel, ncr) {
 }
 
 function transitionXc(blCtx, ctxPanel, is) {
+  const xoc = blCtx.XOCTR?.[is];
+  if (Number.isFinite(xoc) && xoc > 0.0) {
+    return xoc;
+  }
   const xt = blCtx.XSSITR?.[is] ?? 0.0;
   if (!Number.isFinite(xt) || xt <= 0.0) return NaN;
   const str = is === 1 ? blCtx.SST - xt : blCtx.SST + xt;
@@ -317,7 +325,7 @@ function solveViscous(
   let converged = false;
   console.log('');
   console.log('Solving BL system ...');
-  console.log(' iter        rms        max    rlx        a        CL        Cm        CD       CDf       CDp     tr1     tr2');
+  console.log(' iter        rms        max  var at   rlx        a        CL        Cm        CD       CDf       CDp     tr1     tr2');
   if (!blCtx.LBLINI) {
     for (let ibl = 1; ibl <= blCtx.NBL[1]; ibl += 1) {
       blCtx.UEDG[ibl][1] = blCtx.UINV[ibl][1];
@@ -369,16 +377,22 @@ function solveViscous(
     const tr1 = transitionXc(blCtx, ctxPanel, 1);
     const tr2 = transitionXc(blCtx, ctxPanel, 2);
     const rlx = Number.isFinite(blCtx.RLX) ? blCtx.RLX : 1.0;
+    const cdp = drag.cd - drag.cdf;
+    const rawVmx = blCtx.VMXBL ?? ' ';
+    const vmx = rawVmx.toString().trim().length ? rawVmx : '?';
+    const imx = blCtx.IMXBL ?? 0;
+    const ismx = blCtx.ISMXBL ?? 0;
     const iterLine = `${String(iter + 1).padStart(5)}`
       + `${Number.isFinite(blCtx.RMSBL) ? blCtx.RMSBL.toExponential(3).padStart(12) : '     NaN'.padStart(12)}`
       + `${Number.isFinite(blCtx.RMXBL) ? blCtx.RMXBL.toExponential(3).padStart(12) : '     NaN'.padStart(12)}`
+      + `${vmx.toString().padStart(4)} at ${String(imx).padStart(4)}${String(ismx).padStart(3)}`
       + `${rlx.toFixed(2).padStart(7)}`
       + `${(blCtx.ALFA / blCtx.DTOR).toFixed(3).padStart(9)}`
       + `${coeffs.cl.toFixed(5).padStart(10)}`
       + `${coeffs.cm.toFixed(5).padStart(10)}`
       + `${drag.cd.toFixed(6).padStart(10)}`
       + `${drag.cdf.toFixed(6).padStart(10)}`
-      + `${coeffs.cdp.toFixed(6).padStart(10)}`
+      + `${cdp.toFixed(6).padStart(10)}`
       + `${Number.isFinite(tr1) ? tr1.toFixed(4).padStart(8) : '   NaN'.padStart(8)}`
       + `${Number.isFinite(tr2) ? tr2.toFixed(4).padStart(8) : '   NaN'.padStart(8)}`;
     console.log(iterLine);
@@ -424,6 +438,23 @@ function viscal(
     resetConvergence: !reuseSolution,
   });
   initViscousBl(blCtx, ctxPanel, qinv, qinvA);
+  if (blCtx.LALFA) {
+    const coeffs = clcalc(
+      ctxPanel.N,
+      ctxPanel.X,
+      ctxPanel.Y,
+      ctxPanel.GAM,
+      ctxPanel.GAM_A,
+      blCtx.ALFA,
+      blCtx.MINF,
+      ctxPanel.QINF ?? 1.0,
+    );
+    blCtx.CL = coeffs.cl;
+    blCtx.CM = coeffs.cm;
+    blCtx.CDP = coeffs.cdp;
+    blCtx.CL_ALF = coeffs.clAlf;
+    blCtx.CL_MSQ = coeffs.clMsq;
+  }
 
   if (blCtx.LVCONV) {
     const total = ctxPanel.N + (ctxPanel.NW ?? 0);

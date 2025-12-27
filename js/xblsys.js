@@ -253,8 +253,12 @@ function trchek2(ctx) {
     let sfxX1;
     let sfxX2;
     let sfxXf;
-    if (ctx.XIFORC < ctx.X2) {
-      sfx = (ctx.XIFORC - ctx.X1) / (ctx.X2 - ctx.X1);
+    const xifEps = 1.0e-12 * Math.max(1.0, Math.abs(ctx.X2));
+    const xif = (ctx.XIFORC >= ctx.X2 - xifEps && ctx.XIFORC <= ctx.X2 + xifEps)
+      ? ctx.X2
+      : ctx.XIFORC;
+    if (xif < ctx.X2) {
+      sfx = (xif - ctx.X1) / (ctx.X2 - ctx.X1);
       sfxX1 = (sfx - 1.0) / (ctx.X2 - ctx.X1);
       sfxX2 = (-sfx) / (ctx.X2 - ctx.X1);
       sfxXf = 1.0 / (ctx.X2 - ctx.X1);
@@ -363,17 +367,21 @@ function trchek2(ctx) {
   ctx.XT_A2 = xtA2;
 
   ctx.TRFREE = ctx.AMPL2 >= ctx.AMCRIT;
-  ctx.TRFORC = ctx.XIFORC > ctx.X1 && ctx.XIFORC <= ctx.X2;
+  const xifEpsFinal = 1.0e-12 * Math.max(1.0, Math.abs(ctx.X2));
+  const xifFinal = (ctx.XIFORC >= ctx.X2 - xifEpsFinal && ctx.XIFORC <= ctx.X2 + xifEpsFinal)
+    ? ctx.X2
+    : ctx.XIFORC;
+  ctx.TRFORC = xifFinal > ctx.X1 && xifFinal <= ctx.X2;
   ctx.TRAN = ctx.TRFORC || ctx.TRFREE;
   if (!ctx.TRAN) return;
 
   if (ctx.TRFREE && ctx.TRFORC) {
-    ctx.TRFORC = ctx.XIFORC < xt;
-    ctx.TRFREE = ctx.XIFORC >= xt;
+    ctx.TRFORC = xifFinal < xt;
+    ctx.TRFREE = xifFinal >= xt;
   }
 
   if (ctx.TRFORC) {
-    ctx.XT = ctx.XIFORC;
+    ctx.XT = xifFinal;
     ctx.XT_A1 = 0.0;
     ctx.XT_X1 = 0.0;
     ctx.XT_T1 = 0.0;

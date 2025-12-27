@@ -1216,8 +1216,10 @@ def stmove(ctx):
                 i = ctx.IPAN[ibl][is_]
                 if ctx.UEDG[ibl][is_] <= ueps:
                     ctx.UEDG[ibl][is_] = ueps
-                    ctx.QVIS[i] = ctx.VTI[ibl][is_] * ueps
-                    ctx.GAM[i] = ctx.VTI[ibl][is_] * ueps
+                    if 1 <= i <= ctx.N + ctx.NW:
+                        ctx.QVIS[i] = ctx.VTI[ibl][is_] * ueps
+                    if 1 <= i <= ctx.N:
+                        ctx.GAM[i] = ctx.VTI[ibl][is_] * ueps
 
     for is_ in range(1, 3):
         for ibl in range(2, ctx.NBL[is_] + 1):

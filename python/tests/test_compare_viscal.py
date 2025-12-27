@@ -37,7 +37,10 @@ def build_viscal_context(ides, minf, reinf, alfa, waklen):
     ctx.REINF = reinf
     ctx.REINF1 = reinf
     ctx.LALFA = True
+    ctx.LVISC = True
     ctx.VACCEL = 0.01
+    ctx.XCMREF = 0.25
+    ctx.YCMREF = 0.0
 
     ctx.ACRIT[1] = 9.0
     ctx.ACRIT[2] = 9.0

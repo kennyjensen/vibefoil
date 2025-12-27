@@ -1,5 +1,4 @@
 import math
-
 from .spline import sinvrt, seval
 from .xfoil import cpcalc, clcalc, cdcalc, comset, mrcl
 from .xgdes import getxyf
@@ -115,6 +114,11 @@ def viscal(ctx, bl, niter1):
     qwcalc(ctx)
     qiset(ctx)
 
+    if ctx.LALFA:
+        ctx.CL, ctx.CM, ctx.CDP, ctx.CL_ALF, ctx.CL_MSQ = clcalc(
+            ctx.N, ctx.X, ctx.Y, ctx.GAM, ctx.GAM_A, ctx.ALFA, ctx.MINF, ctx.QINF, ctx.XCMREF, ctx.YCMREF
+        )
+
     if not ctx.LIPAN:
         if ctx.LBLINI:
             gamqv(ctx)
@@ -174,10 +178,16 @@ def viscal(ctx, bl, niter1):
         )
         cdcalc(ctx)
 
+        flags = ""
+
         if ctx.RLX < 1.0:
-            print(f"\n{iter_:3d}   rms: {ctx.RMSBL:10.4E}   max: {ctx.RMXBL:10.4E}   {ctx.VMXBL} at {ctx.IMXBL:4d}{ctx.ISMXBL:3d}   RLX:{ctx.RLX:6.3f}")
+            print(
+                f"\n{iter_:3d}   rms: {ctx.RMSBL:10.4E}   max: {ctx.RMXBL:10.4E}   {ctx.VMXBL} at {ctx.IMXBL:4d}{ctx.ISMXBL:3d}   RLX:{ctx.RLX:6.3f}{flags}"
+            )
         if ctx.RLX == 1.0:
-            print(f"\n{iter_:3d}   rms: {ctx.RMSBL:10.4E}   max: {ctx.RMXBL:10.4E}   {ctx.VMXBL} at {ctx.IMXBL:4d}{ctx.ISMXBL:3d}")
+            print(
+                f"\n{iter_:3d}   rms: {ctx.RMSBL:10.4E}   max: {ctx.RMXBL:10.4E}   {ctx.VMXBL} at {ctx.IMXBL:4d}{ctx.ISMXBL:3d}{flags}"
+            )
         cdpdif = ctx.CD - ctx.CDF
         print(
             f"    a ={ctx.ALFA/ctx.DTOR:7.3f}      CL ={ctx.CL:8.4f}\n"

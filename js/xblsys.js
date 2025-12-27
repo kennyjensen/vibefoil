@@ -493,6 +493,17 @@ function blsys(ctxIn) {
   const ctx = ctxIn || this;
   ensureCtx(ctx);
 
+  const COM1 = ctx.COM1;
+  const COM2 = ctx.COM2;
+  const VS1 = ctx.VS1;
+  const VS2 = ctx.VS2;
+  const VSREZ = ctx.VSREZ;
+  const VSM = ctx.VSM;
+  const u1Uei = ctx.U1_UEI;
+  const u2Uei = ctx.U2_UEI;
+  const u1Ms = ctx.U1_MS;
+  const u2Ms = ctx.U2_MS;
+
   // Select appropriate BL branch: wake / turbulent / laminar.
   if (ctx.WAKE) {
     blvar(3, ctx);
@@ -510,7 +521,7 @@ function blsys(ctxIn) {
   // Similarity station: copy COM2 into COM1.
   if (ctx.SIMI) {
     for (let icom = 1; icom <= NCOM; icom += 1) {
-      ctx.COM1[icom] = ctx.COM2[icom];
+      COM1[icom] = COM2[icom];
     }
     syncComToVars(ctx, 1);
   }
@@ -532,22 +543,26 @@ function blsys(ctxIn) {
 
   if (ctx.SIMI) {
     for (let k = 1; k <= 4; k += 1) {
+      const vs1k = VS1[k];
+      const vs2k = VS2[k];
       for (let l = 1; l <= 5; l += 1) {
-        ctx.VS2[k][l] = ctx.VS1[k][l] + ctx.VS2[k][l];
-        ctx.VS1[k][l] = 0.0;
+        vs2k[l] = vs1k[l] + vs2k[l];
+        vs1k[l] = 0.0;
       }
     }
   }
 
   // Clear local system arrays for TE closure.
   for (let k = 1; k <= 4; k += 1) {
-    const resU1 = ctx.VS1[k][4];
-    const resU2 = ctx.VS2[k][4];
-    const resMs = ctx.VSM[k];
+    const vs1k = VS1[k];
+    const vs2k = VS2[k];
+    const resU1 = vs1k[4];
+    const resU2 = vs2k[4];
+    const resMs = VSM[k];
 
-    ctx.VS1[k][4] = resU1 * ctx.U1_UEI;
-    ctx.VS2[k][4] = resU2 * ctx.U2_UEI;
-    ctx.VSM[k] = resU1 * ctx.U1_MS + resU2 * ctx.U2_MS + resMs;
+    vs1k[4] = resU1 * u1Uei;
+    vs2k[4] = resU2 * u2Uei;
+    VSM[k] = resU1 * u1Ms + resU2 * u2Ms + resMs;
   }
 }
 

@@ -418,59 +418,100 @@ function mrchdu(ctx) {
   // - Update CTAU/THET/DSTR/UEDG based on branch (lam/turb/wake).
   const deps = 5.0e-6;
   const senswt = 1000.0;
+  const NBL = ctx.NBL;
+  const IBLTE = ctx.IBLTE;
+  const ITRAN = ctx.ITRAN;
+  const XSSI = ctx.XSSI;
+  const UEDG = ctx.UEDG;
+  const THET = ctx.THET;
+  const DSTR = ctx.DSTR;
+  const CTAU = ctx.CTAU;
+  const MASS = ctx.MASS;
+  const TAU = ctx.TAU;
+  const DIS = ctx.DIS;
+  const CTQ = ctx.CTQ;
+  const DELT = ctx.DELT;
+  const TSTR = ctx.TSTR;
+  const WGAP = ctx.WGAP;
+  const XSSITR = ctx.XSSITR;
+  const TFORCE = ctx.TFORCE;
+  const ACRIT = ctx.ACRIT;
+  const VS2 = ctx.VS2;
+  const VSREZ = ctx.VSREZ;
+  const blprv = ctx.blprv;
+  const blkin = ctx.blkin;
+  const trchek = ctx.trchek;
+  const blsys = ctx.blsys;
+  const tesys = ctx.tesys;
+  const hkin = ctx.hkin;
+  const blvar = ctx.blvar;
+  const blmid = ctx.blmid;
+  const syncComToVars = ctx.syncComToVars;
+
+  let vtmp = ctx._MRCHDU_VTMP;
+  let vztmp = ctx._MRCHDU_VZTMP;
+  if (!vtmp || vtmp.length < 5) {
+    vtmp = Array.from({ length: 5 }, () => new Float64Array(5));
+    vztmp = new Float64Array(5);
+    ctx._MRCHDU_VTMP = vtmp;
+    ctx._MRCHDU_VZTMP = vztmp;
+  } else if (!vztmp || vztmp.length < 5) {
+    vztmp = new Float64Array(5);
+    ctx._MRCHDU_VZTMP = vztmp;
+  }
 
   for (let is = 1; is <= 2; is += 1) {
-    ctx.AMCRIT = ctx.ACRIT[is];
+    ctx.AMCRIT = ACRIT[is];
     xifset(ctx, is);
 
     let ibl = 2;
-    let xsi = ctx.XSSI[ibl][is];
-    let uei = ctx.UEDG[ibl][is];
+    let xsi = XSSI[ibl][is];
+    let uei = UEDG[ibl][is];
     ctx.BULE = 1.0;
 
     // Save previous transition index.
-    const itrold = ctx.ITRAN[is];
+    const itrold = ITRAN[is];
 
     ctx.TRAN = false;
     ctx.TURB = false;
-    ctx.ITRAN[is] = ctx.IBLTE[is];
+    ITRAN[is] = IBLTE[is];
 
     let sens = 0.0;
     let ami = 0.0;
 
-    for (ibl = 2; ibl <= ctx.NBL[is]; ibl += 1) {
+    for (ibl = 2; ibl <= NBL[is]; ibl += 1) {
       const ibm = ibl - 1;
 
       const simi = ibl === 2;
-      const wake = ibl > ctx.IBLTE[is];
+      const wake = ibl > IBLTE[is];
       ctx.SIMI = simi;
       ctx.WAKE = wake;
-      ctx.TRAN = ibl === ctx.ITRAN[is];
-      ctx.TURB = ibl > ctx.ITRAN[is];
+      ctx.TRAN = ibl === ITRAN[is];
+      ctx.TURB = ibl > ITRAN[is];
 
-      xsi = ctx.XSSI[ibl][is];
-      uei = ctx.UEDG[ibl][is];
-      let thi = ctx.THET[ibl][is];
-      let dsi = ctx.DSTR[ibl][is];
+      xsi = XSSI[ibl][is];
+      uei = UEDG[ibl][is];
+      let thi = THET[ibl][is];
+      let dsi = DSTR[ibl][is];
 
       let cti = 0.03;
       if (ibl < itrold) {
-        ami = ctx.CTAU[ibl][is];
+        ami = CTAU[ibl][is];
       } else {
-        cti = ctx.CTAU[ibl][is];
+        cti = CTAU[ibl][is];
         if (cti <= 0.0) cti = 0.03;
       }
 
       let dswaki = 0.0;
       if (wake) {
-        const iw = ibl - ctx.IBLTE[is];
-        dswaki = ctx.WGAP[iw];
+        const iw = ibl - IBLTE[is];
+        dswaki = WGAP[iw];
       }
 
-      if (ibl <= ctx.IBLTE[is]) {
+      if (ibl <= IBLTE[is]) {
         dsi = Math.max(dsi - dswaki, 1.02000 * thi) + dswaki;
       }
-      if (ibl > ctx.IBLTE[is]) {
+      if (ibl > IBLTE[is]) {
         dsi = Math.max(dsi - dswaki, 1.00005 * thi) + dswaki;
       }
 
@@ -480,66 +521,63 @@ function mrchdu(ctx) {
       let dmax = 0.0;
 
       for (let itbl = 1; itbl <= 25; itbl += 1) {
-        ctx.blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
-        ctx.blkin(ctx);
+        blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
+        blkin(ctx);
 
         if (!simi && !ctx.TURB) {
-          ctx.trchek(ctx);
+          trchek(ctx);
           ami = ctx.AMPL2;
-          if (ctx.TRAN) ctx.ITRAN[is] = ibl;
-          if (!ctx.TRAN) ctx.ITRAN[is] = ibl + 2;
+          if (ctx.TRAN) ITRAN[is] = ibl;
+          if (!ctx.TRAN) ITRAN[is] = ibl + 2;
         }
 
-        if (ibl === ctx.IBLTE[is] + 1) {
-          const tte = ctx.THET[ctx.IBLTE[1]][1] + ctx.THET[ctx.IBLTE[2]][2];
-          const dte = ctx.DSTR[ctx.IBLTE[1]][1] + ctx.DSTR[ctx.IBLTE[2]][2] + ctx.ANTE;
-          const cte = (ctx.CTAU[ctx.IBLTE[1]][1] * ctx.THET[ctx.IBLTE[1]][1]
-            + ctx.CTAU[ctx.IBLTE[2]][2] * ctx.THET[ctx.IBLTE[2]][2]) / tte;
+        if (ibl === IBLTE[is] + 1) {
+          const tte = THET[IBLTE[1]][1] + THET[IBLTE[2]][2];
+          const dte = DSTR[IBLTE[1]][1] + DSTR[IBLTE[2]][2] + ctx.ANTE;
+          const cte = (CTAU[IBLTE[1]][1] * THET[IBLTE[1]][1]
+            + CTAU[IBLTE[2]][2] * THET[IBLTE[2]][2]) / tte;
           ctx.CTE = cte;
           ctx.TTE = tte;
           ctx.DTE = dte;
-          ctx.tesys(cte, tte, dte, ctx);
+          tesys(cte, tte, dte, ctx);
         } else {
-          ctx.blsys(ctx);
+          blsys(ctx);
         }
 
         if (itbl === 1) {
           ueref = ctx.U2;
           hkref = ctx.HK2;
 
-          if (ibl < ctx.ITRAN[is] && ibl >= itrold) {
-            const uem = ctx.UEDG[ibl - 1][is];
-            const dsm = ctx.DSTR[ibl - 1][is];
-            const thm = ctx.THET[ibl - 1][is];
+          if (ibl < ITRAN[is] && ibl >= itrold) {
+            const uem = UEDG[ibl - 1][is];
+            const dsm = DSTR[ibl - 1][is];
+            const thm = THET[ibl - 1][is];
             const msq = uem * uem * ctx.HSTINV / (ctx.GM1BL * (1.0 - 0.5 * uem * uem * ctx.HSTINV));
-            hkref = ctx.hkin(dsm / thm, msq).hk;
+            hkref = hkin(dsm / thm, msq).hk;
           }
 
           if (ibl < itrold) {
-            if (ctx.TRAN) ctx.CTAU[ibl][is] = 0.03;
-            if (ctx.TURB) ctx.CTAU[ibl][is] = ctx.CTAU[ibl - 1][is];
+            if (ctx.TRAN) CTAU[ibl][is] = 0.03;
+            if (ctx.TURB) CTAU[ibl][is] = CTAU[ibl - 1][is];
         // Turbulent or transition branch.
         if (ctx.TRAN || ctx.TURB) {
-              cti = ctx.CTAU[ibl][is];
+              cti = CTAU[ibl][is];
               ctx.S2 = cti;
             }
           }
         }
 
-        if (simi || ibl === ctx.IBLTE[is] + 1) {
-          ctx.VS2[4][1] = 0.0;
-          ctx.VS2[4][2] = 0.0;
-          ctx.VS2[4][3] = 0.0;
-          ctx.VS2[4][4] = ctx.U2_UEI;
-          ctx.VSREZ[4] = ueref - ctx.U2;
+        if (simi || ibl === IBLTE[is] + 1) {
+          VS2[4][1] = 0.0;
+          VS2[4][2] = 0.0;
+          VS2[4][3] = 0.0;
+          VS2[4][4] = ctx.U2_UEI;
+          VSREZ[4] = ueref - ctx.U2;
         } else {
-          const vtmp = Array.from({ length: 5 }, () => new Float64Array(5));
-          const vztmp = new Float64Array(5);
-
           for (let k = 1; k <= 4; k += 1) {
-            vztmp[k] = ctx.VSREZ[k];
+            vztmp[k] = VSREZ[k];
             for (let l = 1; l <= 4; l += 1) {
-              vtmp[k][l] = ctx.VS2[k][l];
+              vtmp[k][l] = VS2[k][l];
             }
           }
 
@@ -558,37 +596,37 @@ function mrchdu(ctx) {
             sens = 0.5 * (sens + sennew);
           }
 
-          ctx.VS2[4][1] = 0.0;
-          ctx.VS2[4][2] = ctx.HK2_T2 * hkref;
-          ctx.VS2[4][3] = ctx.HK2_D2 * hkref;
-          ctx.VS2[4][4] = (ctx.HK2_U2 * hkref + sens / ueref) * ctx.U2_UEI;
-          ctx.VSREZ[4] = -(hkref ** 2) * (ctx.HK2 / hkref - 1.0)
+          VS2[4][1] = 0.0;
+          VS2[4][2] = ctx.HK2_T2 * hkref;
+          VS2[4][3] = ctx.HK2_D2 * hkref;
+          VS2[4][4] = (ctx.HK2_U2 * hkref + sens / ueref) * ctx.U2_UEI;
+          VSREZ[4] = -(hkref ** 2) * (ctx.HK2 / hkref - 1.0)
             - sens * (ctx.U2 / ueref - 1.0);
         }
 
-        gauss1(4, ctx.VS2, ctx.VSREZ);
+        gauss1(4, VS2, VSREZ);
 
-        dmax = Math.max(Math.abs(ctx.VSREZ[2] / thi),
-          Math.abs(ctx.VSREZ[3] / dsi),
-          Math.abs(ctx.VSREZ[4] / uei));
-        if (ibl >= ctx.ITRAN[is]) dmax = Math.max(dmax, Math.abs(ctx.VSREZ[1] / (10.0 * cti)));
+        dmax = Math.max(Math.abs(VSREZ[2] / thi),
+          Math.abs(VSREZ[3] / dsi),
+          Math.abs(VSREZ[4] / uei));
+        if (ibl >= ITRAN[is]) dmax = Math.max(dmax, Math.abs(VSREZ[1] / (10.0 * cti)));
 
         let rlx = 1.0;
         if (dmax > 0.3) rlx = 0.3 / dmax;
 
-        if (ibl < ctx.ITRAN[is]) ami = ami + rlx * ctx.VSREZ[1];
-        if (ibl >= ctx.ITRAN[is]) cti = cti + rlx * ctx.VSREZ[1];
-        thi = thi + rlx * ctx.VSREZ[2];
-        dsi = dsi + rlx * ctx.VSREZ[3];
-        uei = uei + rlx * ctx.VSREZ[4];
+        if (ibl < ITRAN[is]) ami = ami + rlx * VSREZ[1];
+        if (ibl >= ITRAN[is]) cti = cti + rlx * VSREZ[1];
+        thi = thi + rlx * VSREZ[2];
+        dsi = dsi + rlx * VSREZ[3];
+        uei = uei + rlx * VSREZ[4];
 
-        if (ibl >= ctx.ITRAN[is]) {
+        if (ibl >= ITRAN[is]) {
           cti = Math.min(cti, 0.30);
           cti = Math.max(cti, 0.0000001);
         }
 
         let hklim = 0.0;
-        if (ibl <= ctx.IBLTE[is]) {
+        if (ibl <= IBLTE[is]) {
           hklim = 1.02;
         } else {
           hklim = 1.00005;
@@ -604,71 +642,71 @@ function mrchdu(ctx) {
       }
 
       if (dmax > deps && dmax > 0.1 && ibl > 3) {
-        if (ibl <= ctx.IBLTE[is]) {
-          thi = ctx.THET[ibm][is] * (ctx.XSSI[ibl][is] / ctx.XSSI[ibm][is]) ** 0.5;
-          dsi = ctx.DSTR[ibm][is] * (ctx.XSSI[ibl][is] / ctx.XSSI[ibm][is]) ** 0.5;
-          uei = ctx.UEDG[ibm][is];
-        } else if (ibl === ctx.IBLTE[is] + 1) {
+        if (ibl <= IBLTE[is]) {
+          thi = THET[ibm][is] * (XSSI[ibl][is] / XSSI[ibm][is]) ** 0.5;
+          dsi = DSTR[ibm][is] * (XSSI[ibl][is] / XSSI[ibm][is]) ** 0.5;
+          uei = UEDG[ibm][is];
+        } else if (ibl === IBLTE[is] + 1) {
           cti = ctx.CTE;
           thi = ctx.TTE;
           dsi = ctx.DTE;
-          uei = ctx.UEDG[ibm][is];
+          uei = UEDG[ibm][is];
         } else {
-          thi = ctx.THET[ibm][is];
-          const ratlen = (ctx.XSSI[ibl][is] - ctx.XSSI[ibm][is]) / (10.0 * ctx.DSTR[ibm][is]);
-          dsi = (ctx.DSTR[ibm][is] + thi * ratlen) / (1.0 + ratlen);
-          uei = ctx.UEDG[ibm][is];
+          thi = THET[ibm][is];
+          const ratlen = (XSSI[ibl][is] - XSSI[ibm][is]) / (10.0 * DSTR[ibm][is]);
+          dsi = (DSTR[ibm][is] + thi * ratlen) / (1.0 + ratlen);
+          uei = UEDG[ibm][is];
         }
-        if (ibl === ctx.ITRAN[is]) cti = 0.05;
-        if (ibl > ctx.ITRAN[is]) cti = ctx.CTAU[ibm][is];
+        if (ibl === ITRAN[is]) cti = 0.05;
+        if (ibl > ITRAN[is]) cti = CTAU[ibm][is];
       }
 
       if (dmax > deps) {
-        ctx.blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
-        ctx.blkin(ctx);
+        blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
+        blkin(ctx);
 
         if (!simi && !ctx.TURB) {
-          ctx.trchek(ctx);
+          trchek(ctx);
           ami = ctx.AMPL2;
-          if (ctx.TRAN) ctx.ITRAN[is] = ibl;
-          if (!ctx.TRAN) ctx.ITRAN[is] = ibl + 2;
+          if (ctx.TRAN) ITRAN[is] = ibl;
+          if (!ctx.TRAN) ITRAN[is] = ibl + 2;
         }
 
-        if (ibl < ctx.ITRAN[is]) ctx.blvar(1, ctx);
-        if (ibl >= ctx.ITRAN[is]) ctx.blvar(2, ctx);
-        if (wake) ctx.blvar(3, ctx);
+        if (ibl < ITRAN[is]) blvar(1, ctx);
+        if (ibl >= ITRAN[is]) blvar(2, ctx);
+        if (wake) blvar(3, ctx);
 
-        if (ibl < ctx.ITRAN[is]) ctx.blmid(1, ctx);
-        if (ibl >= ctx.ITRAN[is]) ctx.blmid(2, ctx);
-        if (wake) ctx.blmid(3, ctx);
+        if (ibl < ITRAN[is]) blmid(1, ctx);
+        if (ibl >= ITRAN[is]) blmid(2, ctx);
+        if (wake) blmid(3, ctx);
       }
 
-      if (ibl < ctx.ITRAN[is]) ctx.CTAU[ibl][is] = ami;
-      if (ibl >= ctx.ITRAN[is]) ctx.CTAU[ibl][is] = cti;
-      ctx.THET[ibl][is] = thi;
-      ctx.DSTR[ibl][is] = dsi;
-      ctx.UEDG[ibl][is] = uei;
-      ctx.MASS[ibl][is] = dsi * uei;
-      ctx.TAU[ibl][is] = 0.5 * ctx.R2 * ctx.U2 * ctx.U2 * ctx.CF2;
-      ctx.DIS[ibl][is] = ctx.R2 * ctx.U2 * ctx.U2 * ctx.U2 * ctx.DI2 * ctx.HS2 * 0.5;
-      ctx.CTQ[ibl][is] = ctx.CQ2;
-      ctx.DELT[ibl][is] = ctx.DE2;
-      ctx.TSTR[ibl][is] = ctx.HS2 * ctx.T2;
+      if (ibl < ITRAN[is]) CTAU[ibl][is] = ami;
+      if (ibl >= ITRAN[is]) CTAU[ibl][is] = cti;
+      THET[ibl][is] = thi;
+      DSTR[ibl][is] = dsi;
+      UEDG[ibl][is] = uei;
+      MASS[ibl][is] = dsi * uei;
+      TAU[ibl][is] = 0.5 * ctx.R2 * ctx.U2 * ctx.U2 * ctx.CF2;
+      DIS[ibl][is] = ctx.R2 * ctx.U2 * ctx.U2 * ctx.U2 * ctx.DI2 * ctx.HS2 * 0.5;
+      CTQ[ibl][is] = ctx.CQ2;
+      DELT[ibl][is] = ctx.DE2;
+      TSTR[ibl][is] = ctx.HS2 * ctx.T2;
 
-      ctx.blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
-      ctx.blkin(ctx);
+      blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
+      blkin(ctx);
       for (let icom = 1; icom <= ctx.NCOM; icom += 1) {
         ctx.COM1[icom] = ctx.COM2[icom];
       }
-      if (typeof ctx.syncComToVars === 'function') {
-        ctx.syncComToVars(ctx, 1);
+      if (typeof syncComToVars === 'function') {
+        syncComToVars(ctx, 1);
       }
 
       // Force transition at TE or if transition detected.
-      if (ctx.TRAN || ibl === ctx.IBLTE[is]) {
+      if (ctx.TRAN || ibl === IBLTE[is]) {
         ctx.TURB = true;
-        ctx.TFORCE[is] = ctx.TRFORC;
-        ctx.XSSITR[is] = ctx.XT;
+        TFORCE[is] = ctx.TRFORC;
+        XSSITR[is] = ctx.XT;
       }
 
       ctx.TRAN = false;
@@ -688,6 +726,29 @@ function setbl(ctx) {
   const VB = ctx.VB;
   const VDEL = ctx.VDEL;
   const VM = ctx.VM;
+  const VS1 = ctx.VS1;
+  const VS2 = ctx.VS2;
+  const VSX = ctx.VSX;
+  const VSREZ = ctx.VSREZ;
+  const VSR = ctx.VSR;
+  const VSM = ctx.VSM;
+  const VZ = ctx.VZ;
+  const NBL = ctx.NBL;
+  const ISYS = ctx.ISYS;
+  const IPAN = ctx.IPAN;
+  const VTI = ctx.VTI;
+  const DIJ = ctx.DIJ;
+  const UEDG = ctx.UEDG;
+  const UINV = ctx.UINV;
+  const UINV_A = ctx.UINV_A;
+  const CTAU = ctx.CTAU;
+  const THET = ctx.THET;
+  const DSTR = ctx.DSTR;
+  const MASS = ctx.MASS;
+  const WGAP = ctx.WGAP;
+  const XSSI = ctx.XSSI;
+  const ITRAN = ctx.ITRAN;
+  const IBLTE = ctx.IBLTE;
   // No tracing; setbl assembles VA/VB/VDEL/VM directly.
   // Clear COM arrays before assembling system.
   COM1.fill(0.0, 1);
@@ -702,8 +763,6 @@ function setbl(ctx) {
   }
   const ivToIs = ctx.IV_TO_IS;
   const ivToIbl = ctx.IV_TO_IBL;
-  const NBL = ctx.NBL;
-  const ISYS = ctx.ISYS;
   for (let is = 1; is <= 2; is += 1) {
     for (let ibl = 2; ibl <= NBL[is]; ibl += 1) {
       const iv = ISYS[ibl][is];
@@ -758,15 +817,25 @@ function setbl(ctx) {
 
   mrchdu(ctx);
 
-  const maxNbl = Math.max(ctx.NBL[1], ctx.NBL[2]);
-  const usav = new Array(maxNbl + 1);
-  for (let i = 0; i <= maxNbl; i += 1) {
-    usav[i] = new Float64Array(3);
+  const maxNbl = Math.max(NBL[1], NBL[2]);
+  let usav = ctx._USAV;
+  if (!usav || usav.length < maxNbl + 1) {
+    usav = new Array(maxNbl + 1);
+    for (let i = 0; i <= maxNbl; i += 1) {
+      usav[i] = new Float64Array(3);
+    }
+    ctx._USAV = usav;
+  } else {
+    for (let i = 0; i <= maxNbl; i += 1) {
+      if (!usav[i] || usav[i].length < 3) {
+        usav[i] = new Float64Array(3);
+      }
+    }
   }
 
   for (let is = 1; is <= 2; is += 1) {
-    for (let ibl = 2; ibl <= ctx.NBL[is]; ibl += 1) {
-      usav[ibl][is] = ctx.UEDG[ibl][is];
+    for (let ibl = 2; ibl <= NBL[is]; ibl += 1) {
+      usav[ibl][is] = UEDG[ibl][is];
     }
   }
 
@@ -783,7 +852,7 @@ function setbl(ctx) {
 
   if (badUeSet === 0) {
     for (let is = 1; is <= 2; is += 1) {
-      for (let ibl = 2; ibl <= ctx.NBL[is]; ibl += 1) {
+      for (let ibl = 2; ibl <= NBL[is]; ibl += 1) {
         const temp = usav[ibl][is];
         usav[ibl][is] = ctx.UEDG[ibl][is];
         ctx.UEDG[ibl][is] = temp;
@@ -791,51 +860,78 @@ function setbl(ctx) {
     }
   } else {
     for (let is = 1; is <= 2; is += 1) {
-      for (let ibl = 2; ibl <= ctx.NBL[is]; ibl += 1) {
+      for (let ibl = 2; ibl <= NBL[is]; ibl += 1) {
         ctx.UEDG[ibl][is] = usav[ibl][is];
       }
     }
   }
 
-  const ile1 = ctx.IPAN[2][1];
-  const ile2 = ctx.IPAN[2][2];
-  const ite1 = ctx.IPAN[ctx.IBLTE[1]][1];
-  const ite2 = ctx.IPAN[ctx.IBLTE[2]][2];
-  const jvte1 = ctx.ISYS[ctx.IBLTE[1]][1];
-  const jvte2 = ctx.ISYS[ctx.IBLTE[2]][2];
-  let dule1 = ctx.UEDG[2][1] - usav[2][1];
-  let dule2 = ctx.UEDG[2][2] - usav[2][2];
+  const ile1 = IPAN[2][1];
+  const ile2 = IPAN[2][2];
+  const ite1 = IPAN[IBLTE[1]][1];
+  const ite2 = IPAN[IBLTE[2]][2];
+  const jvte1 = ISYS[IBLTE[1]][1];
+  const jvte2 = ISYS[IBLTE[2]][2];
+  let dule1 = UEDG[2][1] - usav[2][1];
+  let dule2 = UEDG[2][2] - usav[2][2];
 
-  const u1M = new Float64Array(nsys + 1);
-  const u2M = new Float64Array(nsys + 1);
-  const d1M = new Float64Array(nsys + 1);
-  const d2M = new Float64Array(nsys + 1);
-  const ule1M = new Float64Array(nsys + 1);
-  const ule2M = new Float64Array(nsys + 1);
-  const ute1M = new Float64Array(nsys + 1);
-  const ute2M = new Float64Array(nsys + 1);
+  let u1M = ctx._U1M;
+  let u2M = ctx._U2M;
+  let d1M = ctx._D1M;
+  let d2M = ctx._D2M;
+  let ule1M = ctx._ULE1M;
+  let ule2M = ctx._ULE2M;
+  let ute1M = ctx._UTE1M;
+  let ute2M = ctx._UTE2M;
+  if (!u1M || u1M.length < nsys + 1) {
+    u1M = new Float64Array(nsys + 1);
+    u2M = new Float64Array(nsys + 1);
+    d1M = new Float64Array(nsys + 1);
+    d2M = new Float64Array(nsys + 1);
+    ule1M = new Float64Array(nsys + 1);
+    ule2M = new Float64Array(nsys + 1);
+    ute1M = new Float64Array(nsys + 1);
+    ute2M = new Float64Array(nsys + 1);
+    ctx._U1M = u1M;
+    ctx._U2M = u2M;
+    ctx._D1M = d1M;
+    ctx._D2M = d2M;
+    ctx._ULE1M = ule1M;
+    ctx._ULE2M = ule2M;
+    ctx._UTE1M = ute1M;
+    ctx._UTE2M = ute2M;
+  } else {
+    u1M.fill(0.0);
+    u2M.fill(0.0);
+    d1M.fill(0.0);
+    d2M.fill(0.0);
+    ule1M.fill(0.0);
+    ule2M.fill(0.0);
+    ute1M.fill(0.0);
+    ute2M.fill(0.0);
+  }
 
   for (let js = 1; js <= 2; js += 1) {
-    for (let jbl = 2; jbl <= ctx.NBL[js]; jbl += 1) {
-      const j = ctx.IPAN[jbl][js];
-      const jv = ctx.ISYS[jbl][js];
-      ule1M[jv] = -ctx.VTI[2][1] * ctx.VTI[jbl][js] * ctx.DIJ[ile1][j];
-      ule2M[jv] = -ctx.VTI[2][2] * ctx.VTI[jbl][js] * ctx.DIJ[ile2][j];
-      ute1M[jv] = -ctx.VTI[ctx.IBLTE[1]][1] * ctx.VTI[jbl][js] * ctx.DIJ[ite1][j];
-      ute2M[jv] = -ctx.VTI[ctx.IBLTE[2]][2] * ctx.VTI[jbl][js] * ctx.DIJ[ite2][j];
+    for (let jbl = 2; jbl <= NBL[js]; jbl += 1) {
+      const j = IPAN[jbl][js];
+      const jv = ISYS[jbl][js];
+      ule1M[jv] = -VTI[2][1] * VTI[jbl][js] * DIJ[ile1][j];
+      ule2M[jv] = -VTI[2][2] * VTI[jbl][js] * DIJ[ile2][j];
+      ute1M[jv] = -VTI[IBLTE[1]][1] * VTI[jbl][js] * DIJ[ite1][j];
+      ute2M[jv] = -VTI[IBLTE[2]][2] * VTI[jbl][js] * DIJ[ite2][j];
     }
   }
 
-  const ule1A = ctx.UINV_A[2][1];
-  const ule2A = ctx.UINV_A[2][2];
+  const ule1A = UINV_A[2][1];
+  const ule2A = UINV_A[2][2];
 
   ctx.TINDEX[1] = 0.0;
   ctx.TINDEX[2] = 0.0;
 
   for (let is = 1; is <= 2; is += 1) {
     for (let js = 1; js <= 2; js += 1) {
-      for (let jbl = 2; jbl <= ctx.NBL[js]; jbl += 1) {
-        const jv = ctx.ISYS[jbl][js];
+      for (let jbl = 2; jbl <= NBL[js]; jbl += 1) {
+        const jv = ISYS[jbl][js];
         u1M[jv] = 0.0;
         d1M[jv] = 0.0;
       }
@@ -854,47 +950,47 @@ function setbl(ctx) {
 
     let ami = 0.0;
     let cti = 0.0;
-    for (let ibl = 2; ibl <= ctx.NBL[is]; ibl += 1) {
-      const iv = ctx.ISYS[ibl][is];
+    for (let ibl = 2; ibl <= NBL[is]; ibl += 1) {
+      const iv = ISYS[ibl][is];
 
       ctx.SIMI = ibl === 2;
-      ctx.WAKE = ibl > ctx.IBLTE[is];
-      ctx.TRAN = ibl === ctx.ITRAN[is];
-      ctx.TURB = ibl > ctx.ITRAN[is];
+      ctx.WAKE = ibl > IBLTE[is];
+      ctx.TRAN = ibl === ITRAN[is];
+      ctx.TURB = ibl > ITRAN[is];
 
-      const i = ctx.IPAN[ibl][is];
+      const i = IPAN[ibl][is];
 
-      const xsi = ctx.XSSI[ibl][is];
-      if (ibl < ctx.ITRAN[is]) ami = ctx.CTAU[ibl][is];
-      if (ibl >= ctx.ITRAN[is]) cti = ctx.CTAU[ibl][is];
-      const uei = ctx.UEDG[ibl][is];
-      const thi = ctx.THET[ibl][is];
-      const mdi = ctx.MASS[ibl][is];
+      const xsi = XSSI[ibl][is];
+      if (ibl < ITRAN[is]) ami = CTAU[ibl][is];
+      if (ibl >= ITRAN[is]) cti = CTAU[ibl][is];
+      const uei = UEDG[ibl][is];
+      const thi = THET[ibl][is];
+      const mdi = MASS[ibl][is];
       const dsi = mdi / uei;
 
       let dswaki = 0.0;
       if (ctx.WAKE) {
-        const iw = ibl - ctx.IBLTE[is];
-        dswaki = ctx.WGAP[iw];
+        const iw = ibl - IBLTE[is];
+        dswaki = WGAP[iw];
       }
 
       const d2M2 = 1.0 / uei;
       const d2U2 = -dsi / uei;
 
       for (let js = 1; js <= 2; js += 1) {
-        for (let jbl = 2; jbl <= ctx.NBL[js]; jbl += 1) {
-          const j = ctx.IPAN[jbl][js];
-          const jv = ctx.ISYS[jbl][js];
-          u2M[jv] = -ctx.VTI[ibl][is] * ctx.VTI[jbl][js] * ctx.DIJ[i][j];
+        for (let jbl = 2; jbl <= NBL[js]; jbl += 1) {
+          const j = IPAN[jbl][js];
+          const jv = ISYS[jbl][js];
+          u2M[jv] = -VTI[ibl][is] * VTI[jbl][js] * DIJ[i][j];
           d2M[jv] = d2U2 * u2M[jv];
         }
       }
       d2M[iv] += d2M2;
 
-      const u2A = ctx.UINV_A[ibl][is];
+      const u2A = UINV_A[ibl][is];
       const d2A = d2U2 * u2A;
 
-      const due2 = ctx.UEDG[ibl][is] - usav[ibl][is];
+      const due2 = UEDG[ibl][is] - usav[ibl][is];
       const dds2 = d2U2 * due2;
 
       ctx.blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
@@ -904,35 +1000,35 @@ function setbl(ctx) {
         ctx.trchek(ctx);
         ami = ctx.AMPL2;
       }
-      if (ibl === ctx.ITRAN[is] && !ctx.TRAN) {
+      if (ibl === ITRAN[is] && !ctx.TRAN) {
         // no-op: log suppressed
       }
 
       const xiUle1 = is === 1 ? ctx.SST_GO : -ctx.SST_GO;
       const xiUle2 = is === 1 ? -ctx.SST_GP : ctx.SST_GP;
 
-      if (ibl === ctx.IBLTE[is] + 1) {
-        const tte = ctx.THET[ctx.IBLTE[1]][1] + ctx.THET[ctx.IBLTE[2]][2];
-        const dte = ctx.DSTR[ctx.IBLTE[1]][1] + ctx.DSTR[ctx.IBLTE[2]][2] + ctx.ANTE;
-        const cte = (ctx.CTAU[ctx.IBLTE[1]][1] * ctx.THET[ctx.IBLTE[1]][1]
-          + ctx.CTAU[ctx.IBLTE[2]][2] * ctx.THET[ctx.IBLTE[2]][2]) / tte;
+      if (ibl === IBLTE[is] + 1) {
+        const tte = THET[IBLTE[1]][1] + THET[IBLTE[2]][2];
+        const dte = DSTR[IBLTE[1]][1] + DSTR[IBLTE[2]][2] + ctx.ANTE;
+        const cte = (CTAU[IBLTE[1]][1] * THET[IBLTE[1]][1]
+          + CTAU[IBLTE[2]][2] * THET[IBLTE[2]][2]) / tte;
         ctx.tesys(cte, tte, dte, ctx);
 
         const tteTte1 = 1.0;
         const tteTte2 = 1.0;
-        const dteMte1 = 1.0 / ctx.UEDG[ctx.IBLTE[1]][1];
-        const dteUte1 = -ctx.DSTR[ctx.IBLTE[1]][1] / ctx.UEDG[ctx.IBLTE[1]][1];
-        const dteMte2 = 1.0 / ctx.UEDG[ctx.IBLTE[2]][2];
-        const dteUte2 = -ctx.DSTR[ctx.IBLTE[2]][2] / ctx.UEDG[ctx.IBLTE[2]][2];
-        const cteCte1 = ctx.THET[ctx.IBLTE[1]][1] / tte;
-        const cteCte2 = ctx.THET[ctx.IBLTE[2]][2] / tte;
-        const cteTte1 = (ctx.CTAU[ctx.IBLTE[1]][1] - cte) / tte;
-        const cteTte2 = (ctx.CTAU[ctx.IBLTE[2]][2] - cte) / tte;
+        const dteMte1 = 1.0 / UEDG[IBLTE[1]][1];
+        const dteUte1 = -DSTR[IBLTE[1]][1] / UEDG[IBLTE[1]][1];
+        const dteMte2 = 1.0 / UEDG[IBLTE[2]][2];
+        const dteUte2 = -DSTR[IBLTE[2]][2] / UEDG[IBLTE[2]][2];
+        const cteCte1 = THET[IBLTE[1]][1] / tte;
+        const cteCte2 = THET[IBLTE[2]][2] / tte;
+        const cteTte1 = (CTAU[IBLTE[1]][1] - cte) / tte;
+        const cteTte2 = (CTAU[IBLTE[2]][2] - cte) / tte;
 
         for (let js = 1; js <= 2; js += 1) {
-          for (let jbl = 2; jbl <= ctx.NBL[js]; jbl += 1) {
-            const j = ctx.IPAN[jbl][js];
-            const jv = ctx.ISYS[jbl][js];
+          for (let jbl = 2; jbl <= NBL[js]; jbl += 1) {
+            const j = IPAN[jbl][js];
+            const jv = ISYS[jbl][js];
             d1M[jv] = dteUte1 * ute1M[jv] + dteUte2 * ute2M[jv];
           }
         }
@@ -940,158 +1036,158 @@ function setbl(ctx) {
         d1M[jvte2] += dteMte2;
 
         due1 = 0.0;
-        dds1 = dteUte1 * (ctx.UEDG[ctx.IBLTE[1]][1] - usav[ctx.IBLTE[1]][1])
-          + dteUte2 * (ctx.UEDG[ctx.IBLTE[2]][2] - usav[ctx.IBLTE[2]][2]);
+        dds1 = dteUte1 * (UEDG[IBLTE[1]][1] - usav[IBLTE[1]][1])
+          + dteUte2 * (UEDG[IBLTE[2]][2] - usav[IBLTE[2]][2]);
 
         for (let jv = 1; jv <= nsys; jv += 1) {
-          ctx.VM[1][jv][iv] = ctx.VS1[1][3] * d1M[jv] + ctx.VS1[1][4] * u1M[jv]
-            + ctx.VS2[1][3] * d2M[jv] + ctx.VS2[1][4] * u2M[jv]
-            + (ctx.VS1[1][5] + ctx.VS2[1][5] + ctx.VSX[1])
+          VM[1][jv][iv] = VS1[1][3] * d1M[jv] + VS1[1][4] * u1M[jv]
+            + VS2[1][3] * d2M[jv] + VS2[1][4] * u2M[jv]
+            + (VS1[1][5] + VS2[1][5] + VSX[1])
             * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
         }
 
-        ctx.VB[1][1][iv] = ctx.VS1[1][1];
-        ctx.VB[1][2][iv] = ctx.VS1[1][2];
-        ctx.VA[1][1][iv] = ctx.VS2[1][1];
-        ctx.VA[1][2][iv] = ctx.VS2[1][2];
+        VB[1][1][iv] = VS1[1][1];
+        VB[1][2][iv] = VS1[1][2];
+        VA[1][1][iv] = VS2[1][1];
+        VA[1][2][iv] = VS2[1][2];
 
-        ctx.VDEL[1][2][iv] = ctx.LALFA
-          ? ctx.VSR[1] * reClmr + ctx.VSM[1] * msqClmr
-          : (ctx.VS1[1][4] * u1A + ctx.VS1[1][3] * d1A)
-            + (ctx.VS2[1][4] * u2A + ctx.VS2[1][3] * d2A);
-        ctx.VDEL[1][2][iv] += (ctx.VS1[1][5] + ctx.VS2[1][5] + ctx.VSX[1])
+        VDEL[1][2][iv] = ctx.LALFA
+          ? VSR[1] * reClmr + VSM[1] * msqClmr
+          : (VS1[1][4] * u1A + VS1[1][3] * d1A)
+            + (VS2[1][4] * u2A + VS2[1][3] * d2A);
+        VDEL[1][2][iv] += (VS1[1][5] + VS2[1][5] + VSX[1])
           * (xiUle1 * ule1A + xiUle2 * ule2A);
-        ctx.VDEL[1][1][iv] = ctx.VSREZ[1]
-          + (ctx.VS1[1][4] * due1 + ctx.VS1[1][3] * dds1)
-          + (ctx.VS2[1][4] * due2 + ctx.VS2[1][3] * dds2)
-          + (ctx.VS1[1][5] + ctx.VS2[1][5] + ctx.VSX[1])
+        VDEL[1][1][iv] = VSREZ[1]
+          + (VS1[1][4] * due1 + VS1[1][3] * dds1)
+          + (VS2[1][4] * due2 + VS2[1][3] * dds2)
+          + (VS1[1][5] + VS2[1][5] + VSX[1])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
         for (let jv = 1; jv <= nsys; jv += 1) {
-          ctx.VM[2][jv][iv] = ctx.VS1[2][3] * d1M[jv] + ctx.VS1[2][4] * u1M[jv]
-            + ctx.VS2[2][3] * d2M[jv] + ctx.VS2[2][4] * u2M[jv]
-            + (ctx.VS1[2][5] + ctx.VS2[2][5] + ctx.VSX[2])
+          VM[2][jv][iv] = VS1[2][3] * d1M[jv] + VS1[2][4] * u1M[jv]
+            + VS2[2][3] * d2M[jv] + VS2[2][4] * u2M[jv]
+            + (VS1[2][5] + VS2[2][5] + VSX[2])
             * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
         }
-        ctx.VB[2][1][iv] = ctx.VS1[2][1];
-        ctx.VB[2][2][iv] = ctx.VS1[2][2];
-        ctx.VA[2][1][iv] = ctx.VS2[2][1];
-        ctx.VA[2][2][iv] = ctx.VS2[2][2];
-        ctx.VDEL[2][2][iv] = ctx.LALFA
-          ? ctx.VSR[2] * reClmr + ctx.VSM[2] * msqClmr
-          : (ctx.VS1[2][4] * u1A + ctx.VS1[2][3] * d1A)
-            + (ctx.VS2[2][4] * u2A + ctx.VS2[2][3] * d2A);
-        ctx.VDEL[2][2][iv] += (ctx.VS1[2][5] + ctx.VS2[2][5] + ctx.VSX[2])
+        VB[2][1][iv] = VS1[2][1];
+        VB[2][2][iv] = VS1[2][2];
+        VA[2][1][iv] = VS2[2][1];
+        VA[2][2][iv] = VS2[2][2];
+        VDEL[2][2][iv] = ctx.LALFA
+          ? VSR[2] * reClmr + VSM[2] * msqClmr
+          : (VS1[2][4] * u1A + VS1[2][3] * d1A)
+            + (VS2[2][4] * u2A + VS2[2][3] * d2A);
+        VDEL[2][2][iv] += (VS1[2][5] + VS2[2][5] + VSX[2])
           * (xiUle1 * ule1A + xiUle2 * ule2A);
-        ctx.VDEL[2][1][iv] = ctx.VSREZ[2]
-          + (ctx.VS1[2][4] * due1 + ctx.VS1[2][3] * dds1)
-          + (ctx.VS2[2][4] * due2 + ctx.VS2[2][3] * dds2)
-          + (ctx.VS1[2][5] + ctx.VS2[2][5] + ctx.VSX[2])
+        VDEL[2][1][iv] = VSREZ[2]
+          + (VS1[2][4] * due1 + VS1[2][3] * dds1)
+          + (VS2[2][4] * due2 + VS2[2][3] * dds2)
+          + (VS1[2][5] + VS2[2][5] + VSX[2])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
         for (let jv = 1; jv <= nsys; jv += 1) {
-          ctx.VM[3][jv][iv] = ctx.VS1[3][3] * d1M[jv] + ctx.VS1[3][4] * u1M[jv]
-            + ctx.VS2[3][3] * d2M[jv] + ctx.VS2[3][4] * u2M[jv]
-            + (ctx.VS1[3][5] + ctx.VS2[3][5] + ctx.VSX[3])
+          VM[3][jv][iv] = VS1[3][3] * d1M[jv] + VS1[3][4] * u1M[jv]
+            + VS2[3][3] * d2M[jv] + VS2[3][4] * u2M[jv]
+            + (VS1[3][5] + VS2[3][5] + VSX[3])
             * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
         }
-        ctx.VB[3][1][iv] = ctx.VS1[3][1];
-        ctx.VB[3][2][iv] = ctx.VS1[3][2];
-        ctx.VA[3][1][iv] = ctx.VS2[3][1];
-        ctx.VA[3][2][iv] = ctx.VS2[3][2];
-        ctx.VDEL[3][2][iv] = ctx.LALFA
-          ? ctx.VSR[3] * reClmr + ctx.VSM[3] * msqClmr
-          : (ctx.VS1[3][4] * u1A + ctx.VS1[3][3] * d1A)
-            + (ctx.VS2[3][4] * u2A + ctx.VS2[3][3] * d2A);
-        ctx.VDEL[3][2][iv] += (ctx.VS1[3][5] + ctx.VS2[3][5] + ctx.VSX[3])
+        VB[3][1][iv] = VS1[3][1];
+        VB[3][2][iv] = VS1[3][2];
+        VA[3][1][iv] = VS2[3][1];
+        VA[3][2][iv] = VS2[3][2];
+        VDEL[3][2][iv] = ctx.LALFA
+          ? VSR[3] * reClmr + VSM[3] * msqClmr
+          : (VS1[3][4] * u1A + VS1[3][3] * d1A)
+            + (VS2[3][4] * u2A + VS2[3][3] * d2A);
+        VDEL[3][2][iv] += (VS1[3][5] + VS2[3][5] + VSX[3])
           * (xiUle1 * ule1A + xiUle2 * ule2A);
-        ctx.VDEL[3][1][iv] = ctx.VSREZ[3]
-          + (ctx.VS1[3][4] * due1 + ctx.VS1[3][3] * dds1)
-          + (ctx.VS2[3][4] * due2 + ctx.VS2[3][3] * dds2)
-          + (ctx.VS1[3][5] + ctx.VS2[3][5] + ctx.VSX[3])
+        VDEL[3][1][iv] = VSREZ[3]
+          + (VS1[3][4] * due1 + VS1[3][3] * dds1)
+          + (VS2[3][4] * due2 + VS2[3][3] * dds2)
+          + (VS1[3][5] + VS2[3][5] + VSX[3])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
-        ctx.VZ[1][1] = ctx.VS1[1][1] * cteCte1;
-        ctx.VZ[1][2] = ctx.VS1[1][1] * cteTte1 + ctx.VS1[1][2] * tteTte1;
-        ctx.VB[1][1][iv] = ctx.VS1[1][1] * cteCte2;
-        ctx.VB[1][2][iv] = ctx.VS1[1][1] * cteTte2 + ctx.VS1[1][2] * tteTte2;
+        VZ[1][1] = VS1[1][1] * cteCte1;
+        VZ[1][2] = VS1[1][1] * cteTte1 + VS1[1][2] * tteTte1;
+        VB[1][1][iv] = VS1[1][1] * cteCte2;
+        VB[1][2][iv] = VS1[1][1] * cteTte2 + VS1[1][2] * tteTte2;
 
-        ctx.VZ[2][1] = ctx.VS1[2][1] * cteCte1;
-        ctx.VZ[2][2] = ctx.VS1[2][1] * cteTte1 + ctx.VS1[2][2] * tteTte1;
-        ctx.VB[2][1][iv] = ctx.VS1[2][1] * cteCte2;
-        ctx.VB[2][2][iv] = ctx.VS1[2][1] * cteTte2 + ctx.VS1[2][2] * tteTte2;
+        VZ[2][1] = VS1[2][1] * cteCte1;
+        VZ[2][2] = VS1[2][1] * cteTte1 + VS1[2][2] * tteTte1;
+        VB[2][1][iv] = VS1[2][1] * cteCte2;
+        VB[2][2][iv] = VS1[2][1] * cteTte2 + VS1[2][2] * tteTte2;
 
-        ctx.VZ[3][1] = ctx.VS1[3][1] * cteCte1;
-        ctx.VZ[3][2] = ctx.VS1[3][1] * cteTte1 + ctx.VS1[3][2] * tteTte1;
-        ctx.VB[3][1][iv] = ctx.VS1[3][1] * cteCte2;
-        ctx.VB[3][2][iv] = ctx.VS1[3][1] * cteTte2 + ctx.VS1[3][2] * tteTte2;
+        VZ[3][1] = VS1[3][1] * cteCte1;
+        VZ[3][2] = VS1[3][1] * cteTte1 + VS1[3][2] * tteTte1;
+        VB[3][1][iv] = VS1[3][1] * cteCte2;
+        VB[3][2][iv] = VS1[3][1] * cteTte2 + VS1[3][2] * tteTte2;
       } else {
         ctx.blsys(ctx);
 
         for (let jv = 1; jv <= nsys; jv += 1) {
-          ctx.VM[1][jv][iv] = ctx.VS1[1][3] * d1M[jv] + ctx.VS1[1][4] * u1M[jv]
-            + ctx.VS2[1][3] * d2M[jv] + ctx.VS2[1][4] * u2M[jv]
-            + (ctx.VS1[1][5] + ctx.VS2[1][5] + ctx.VSX[1])
+          VM[1][jv][iv] = VS1[1][3] * d1M[jv] + VS1[1][4] * u1M[jv]
+            + VS2[1][3] * d2M[jv] + VS2[1][4] * u2M[jv]
+            + (VS1[1][5] + VS2[1][5] + VSX[1])
             * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
         }
-        ctx.VB[1][1][iv] = ctx.VS1[1][1];
-        ctx.VB[1][2][iv] = ctx.VS1[1][2];
-        ctx.VA[1][1][iv] = ctx.VS2[1][1];
-        ctx.VA[1][2][iv] = ctx.VS2[1][2];
-        ctx.VDEL[1][2][iv] = ctx.LALFA
-          ? ctx.VSR[1] * reClmr + ctx.VSM[1] * msqClmr
-          : (ctx.VS1[1][4] * u1A + ctx.VS1[1][3] * d1A)
-            + (ctx.VS2[1][4] * u2A + ctx.VS2[1][3] * d2A)
-            + (ctx.VS1[1][5] + ctx.VS2[1][5] + ctx.VSX[1])
+        VB[1][1][iv] = VS1[1][1];
+        VB[1][2][iv] = VS1[1][2];
+        VA[1][1][iv] = VS2[1][1];
+        VA[1][2][iv] = VS2[1][2];
+        VDEL[1][2][iv] = ctx.LALFA
+          ? VSR[1] * reClmr + VSM[1] * msqClmr
+          : (VS1[1][4] * u1A + VS1[1][3] * d1A)
+            + (VS2[1][4] * u2A + VS2[1][3] * d2A)
+            + (VS1[1][5] + VS2[1][5] + VSX[1])
             * (xiUle1 * ule1A + xiUle2 * ule2A);
-        ctx.VDEL[1][1][iv] = ctx.VSREZ[1]
-          + (ctx.VS1[1][4] * due1 + ctx.VS1[1][3] * dds1)
-          + (ctx.VS2[1][4] * due2 + ctx.VS2[1][3] * dds2)
-          + (ctx.VS1[1][5] + ctx.VS2[1][5] + ctx.VSX[1])
+        VDEL[1][1][iv] = VSREZ[1]
+          + (VS1[1][4] * due1 + VS1[1][3] * dds1)
+          + (VS2[1][4] * due2 + VS2[1][3] * dds2)
+          + (VS1[1][5] + VS2[1][5] + VSX[1])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
         for (let jv = 1; jv <= nsys; jv += 1) {
-          ctx.VM[2][jv][iv] = ctx.VS1[2][3] * d1M[jv] + ctx.VS1[2][4] * u1M[jv]
-            + ctx.VS2[2][3] * d2M[jv] + ctx.VS2[2][4] * u2M[jv]
-            + (ctx.VS1[2][5] + ctx.VS2[2][5] + ctx.VSX[2])
+          VM[2][jv][iv] = VS1[2][3] * d1M[jv] + VS1[2][4] * u1M[jv]
+            + VS2[2][3] * d2M[jv] + VS2[2][4] * u2M[jv]
+            + (VS1[2][5] + VS2[2][5] + VSX[2])
             * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
         }
-        ctx.VB[2][1][iv] = ctx.VS1[2][1];
-        ctx.VB[2][2][iv] = ctx.VS1[2][2];
-        ctx.VA[2][1][iv] = ctx.VS2[2][1];
-        ctx.VA[2][2][iv] = ctx.VS2[2][2];
-        ctx.VDEL[2][2][iv] = ctx.LALFA
-          ? ctx.VSR[2] * reClmr + ctx.VSM[2] * msqClmr
-          : (ctx.VS1[2][4] * u1A + ctx.VS1[2][3] * d1A)
-            + (ctx.VS2[2][4] * u2A + ctx.VS2[2][3] * d2A)
-            + (ctx.VS1[2][5] + ctx.VS2[2][5] + ctx.VSX[2])
+        VB[2][1][iv] = VS1[2][1];
+        VB[2][2][iv] = VS1[2][2];
+        VA[2][1][iv] = VS2[2][1];
+        VA[2][2][iv] = VS2[2][2];
+        VDEL[2][2][iv] = ctx.LALFA
+          ? VSR[2] * reClmr + VSM[2] * msqClmr
+          : (VS1[2][4] * u1A + VS1[2][3] * d1A)
+            + (VS2[2][4] * u2A + VS2[2][3] * d2A)
+            + (VS1[2][5] + VS2[2][5] + VSX[2])
             * (xiUle1 * ule1A + xiUle2 * ule2A);
-        ctx.VDEL[2][1][iv] = ctx.VSREZ[2]
-          + (ctx.VS1[2][4] * due1 + ctx.VS1[2][3] * dds1)
-          + (ctx.VS2[2][4] * due2 + ctx.VS2[2][3] * dds2)
-          + (ctx.VS1[2][5] + ctx.VS2[2][5] + ctx.VSX[2])
+        VDEL[2][1][iv] = VSREZ[2]
+          + (VS1[2][4] * due1 + VS1[2][3] * dds1)
+          + (VS2[2][4] * due2 + VS2[2][3] * dds2)
+          + (VS1[2][5] + VS2[2][5] + VSX[2])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
         for (let jv = 1; jv <= nsys; jv += 1) {
-          ctx.VM[3][jv][iv] = ctx.VS1[3][3] * d1M[jv] + ctx.VS1[3][4] * u1M[jv]
-            + ctx.VS2[3][3] * d2M[jv] + ctx.VS2[3][4] * u2M[jv]
-            + (ctx.VS1[3][5] + ctx.VS2[3][5] + ctx.VSX[3])
+          VM[3][jv][iv] = VS1[3][3] * d1M[jv] + VS1[3][4] * u1M[jv]
+            + VS2[3][3] * d2M[jv] + VS2[3][4] * u2M[jv]
+            + (VS1[3][5] + VS2[3][5] + VSX[3])
             * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
         }
-        ctx.VB[3][1][iv] = ctx.VS1[3][1];
-        ctx.VB[3][2][iv] = ctx.VS1[3][2];
-        ctx.VA[3][1][iv] = ctx.VS2[3][1];
-        ctx.VA[3][2][iv] = ctx.VS2[3][2];
-        ctx.VDEL[3][2][iv] = ctx.LALFA
-          ? ctx.VSR[3] * reClmr + ctx.VSM[3] * msqClmr
-          : (ctx.VS1[3][4] * u1A + ctx.VS1[3][3] * d1A)
-            + (ctx.VS2[3][4] * u2A + ctx.VS2[3][3] * d2A)
-            + (ctx.VS1[3][5] + ctx.VS2[3][5] + ctx.VSX[3])
+        VB[3][1][iv] = VS1[3][1];
+        VB[3][2][iv] = VS1[3][2];
+        VA[3][1][iv] = VS2[3][1];
+        VA[3][2][iv] = VS2[3][2];
+        VDEL[3][2][iv] = ctx.LALFA
+          ? VSR[3] * reClmr + VSM[3] * msqClmr
+          : (VS1[3][4] * u1A + VS1[3][3] * d1A)
+            + (VS2[3][4] * u2A + VS2[3][3] * d2A)
+            + (VS1[3][5] + VS2[3][5] + VSX[3])
             * (xiUle1 * ule1A + xiUle2 * ule2A);
-        ctx.VDEL[3][1][iv] = ctx.VSREZ[3]
-          + (ctx.VS1[3][4] * due1 + ctx.VS1[3][3] * dds1)
-          + (ctx.VS2[3][4] * due2 + ctx.VS2[3][3] * dds2)
-          + (ctx.VS1[3][5] + ctx.VS2[3][5] + ctx.VSX[3])
+        VDEL[3][1][iv] = VSREZ[3]
+          + (VS1[3][4] * due1 + VS1[3][3] * dds1)
+          + (VS2[3][4] * due2 + VS2[3][3] * dds2)
+          + (VS1[3][5] + VS2[3][5] + VSX[3])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
       }
@@ -1127,8 +1223,8 @@ function setbl(ctx) {
       }
 
       for (let js = 1; js <= 2; js += 1) {
-        for (let jbl = 2; jbl <= ctx.NBL[js]; jbl += 1) {
-          const jv = ctx.ISYS[jbl][js];
+        for (let jbl = 2; jbl <= NBL[js]; jbl += 1) {
+          const jv = ISYS[jbl][js];
           u1M[jv] = u2M[jv];
           d1M[jv] = d2M[jv];
         }
@@ -1147,7 +1243,7 @@ function setbl(ctx) {
       }
 
       for (let icom = 1; icom <= ctx.NCOM; icom += 1) {
-        ctx.COM1[icom] = ctx.COM2[icom];
+        COM1[icom] = COM2[icom];
       }
       if (typeof ctx.syncComToVars === 'function') {
         ctx.syncComToVars(ctx, 1);

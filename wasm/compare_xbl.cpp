@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "xbl.h"
+#include "xoper.h"
 
 namespace {
 
@@ -1363,16 +1364,22 @@ void dump_bl(std::ostream &out, const XBlState &bl) {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        std::cerr << "Usage: compare_xbl <state_json> [--out path]\n";
+        std::cerr << "Usage: compare_xbl <state_json> [--out path] [--mode setbl|mrchue|mrchdu|viscal] [--niter n]\n";
         return 2;
     }
 
     std::string state_path;
     std::string out_path;
+    std::string mode = "setbl";
+    int niter = 1;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--out" && i + 1 < argc) {
             out_path = argv[++i];
+        } else if (arg == "--mode" && i + 1 < argc) {
+            mode = argv[++i];
+        } else if (arg == "--niter" && i + 1 < argc) {
+            niter = std::stoi(argv[++i]);
         } else if (state_path.empty()) {
             state_path = arg;
         }
@@ -1430,7 +1437,18 @@ int main(int argc, char **argv) {
         }
     }
 
-    setbl(ctx, bl);
+    if (mode == "setbl") {
+        setbl(ctx, bl);
+    } else if (mode == "mrchue") {
+        mrchue(ctx, bl);
+    } else if (mode == "mrchdu") {
+        mrchdu(ctx, bl);
+    } else if (mode == "viscal") {
+        viscal(ctx, bl, niter);
+    } else {
+        std::cerr << "Unknown mode: " << mode << "\n";
+        return 2;
+    }
 
     std::ostringstream out_buf;
     out_buf << '{';

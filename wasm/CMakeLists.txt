@@ -36,5 +36,5 @@ add_executable(compare_xbl
 target_link_libraries(compare_xbl PRIVATE xfoil_core)
 
 if(EMSCRIPTEN)
-    target_link_options(compare_xbl PRIVATE -sWASM=1 -sALLOW_MEMORY_GROWTH=1)
+    target_link_options(compare_xbl PRIVATE -sWASM=1 -sALLOW_MEMORY_GROWTH=1 -sNODERAWFS=1)
 endif()

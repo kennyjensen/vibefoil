@@ -591,6 +591,7 @@ void setbl(XFoilState &ctx, XBlState &bl) {
         bl.TURB = false;
 
         double cti = 0.0;
+        double ami = 0.0;
         for (ibl = 2; ibl <= ctx.NBL[is_]; ++ibl) {
             const int iv = ctx.ISYS[ibl][is_];
 
@@ -602,7 +603,6 @@ void setbl(XFoilState &ctx, XBlState &bl) {
             const int i = ctx.IPAN[ibl][is_];
 
             const double xsi = ctx.XSSI[ibl][is_];
-            double ami = 0.0;
             if (ibl < ctx.ITRAN[is_]) {
                 ami = ctx.CTAU[ibl][is_];
             }
@@ -1223,6 +1223,7 @@ void mrchdu(XFoilState &ctx, XBlState &bl) {
         ctx.ITRAN[is_] = ctx.IBLTE[is_];
 
         double sens = 0.0;
+        double ami = 0.0;
         for (ibl = 2; ibl <= ctx.NBL[is_]; ++ibl) {
             const int ibm = ibl - 1;
 
@@ -1234,7 +1235,6 @@ void mrchdu(XFoilState &ctx, XBlState &bl) {
             double thi = ctx.THET[ibl][is_];
             double dsi = ctx.DSTR[ibl][is_];
 
-            double ami = 0.0;
             double cti = 0.0;
             if (ibl < itrold) {
                 ami = ctx.CTAU[ibl][is_];

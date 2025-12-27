@@ -1,1 +1,6 @@
 __pycache__/
+wasm/.emcache/
+wasm/build-*/
+wasm_tmp_*
+wasm_state.json
+1000.bl

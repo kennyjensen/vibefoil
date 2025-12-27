@@ -629,10 +629,151 @@ PsinResult psilin(XFoilState &ctx, int i, double xi, double yi, double nxi, doub
 }
 
 std::pair<double, double> pswlin(XFoilState &ctx, int i, double xi, double yi, double nxi, double nyi) {
-    const bool siglin = true;
-    const bool geolin = false;
-    const PsinResult res = psilin(ctx, i, xi, yi, nxi, nyi, geolin, siglin);
-    return {res.psi, res.psi_ni};
+    const int io = i;
+    const double cosa = std::cos(ctx.ALFA);
+    const double sina = std::sin(ctx.ALFA);
+
+    for (int jo = ctx.N + 1; jo <= ctx.N + ctx.NW; ++jo) {
+        ctx.DZDM[jo] = 0.0;
+        ctx.DQDM[jo] = 0.0;
+    }
+
+    double psi = 0.0;
+    double psi_ni = 0.0;
+
+    for (int jo = ctx.N + 1; jo <= ctx.N + ctx.NW - 1; ++jo) {
+        const int jp = jo + 1;
+
+        int jm = jo - 1;
+        int jq = jp + 1;
+        if (jo == ctx.N + 1) {
+            jm = jo;
+        } else if (jo == ctx.N + ctx.NW - 1) {
+            jq = jp;
+        }
+
+        const double dso = std::sqrt((ctx.X[jo] - ctx.X[jp]) * (ctx.X[jo] - ctx.X[jp])
+                                     + (ctx.Y[jo] - ctx.Y[jp]) * (ctx.Y[jo] - ctx.Y[jp]));
+        const double dsio = 1.0 / dso;
+
+        const double apan = ctx.APANEL[jo];
+
+        const double rx1 = xi - ctx.X[jo];
+        const double ry1 = yi - ctx.Y[jo];
+        const double rx2 = xi - ctx.X[jp];
+        const double ry2 = yi - ctx.Y[jp];
+
+        const double sx = (ctx.X[jp] - ctx.X[jo]) * dsio;
+        const double sy = (ctx.Y[jp] - ctx.Y[jo]) * dsio;
+
+        const double x1 = sx * rx1 + sy * ry1;
+        const double x2 = sx * rx2 + sy * ry2;
+        const double yy = sx * ry1 - sy * rx1;
+
+        const double rs1 = rx1 * rx1 + ry1 * ry1;
+        const double rs2 = rx2 * rx2 + ry2 * ry2;
+
+        double sgn = 0.0;
+        if (io >= ctx.N + 1 && io <= ctx.N + ctx.NW) {
+            sgn = 1.0;
+        } else {
+            sgn = std::copysign(1.0, yy);
+        }
+
+        double g1 = 0.0;
+        double t1 = 0.0;
+        if (io != jo && rs1 > 0.0) {
+            g1 = std::log(rs1);
+            t1 = std::atan2(sgn * x1, sgn * yy) - (0.5 - 0.5 * sgn) * ctx.PI;
+        }
+
+        double g2 = 0.0;
+        double t2 = 0.0;
+        if (io != jp && rs2 > 0.0) {
+            g2 = std::log(rs2);
+            t2 = std::atan2(sgn * x2, sgn * yy) - (0.5 - 0.5 * sgn) * ctx.PI;
+        }
+
+        const double x1i = sx * nxi + sy * nyi;
+        const double x2i = sx * nxi + sy * nyi;
+        const double yyi = sx * nyi - sy * nxi;
+
+        const double x0 = 0.5 * (x1 + x2);
+        const double rs0 = x0 * x0 + yy * yy;
+        const double g0 = std::log(rs0);
+        const double t0 = std::atan2(sgn * x0, sgn * yy) - (0.5 - 0.5 * sgn) * ctx.PI;
+
+        double dxinv = 1.0 / (x1 - x0);
+        double psum = x0 * (t0 - apan) - x1 * (t1 - apan) + 0.5 * yy * (g1 - g0);
+        double pdif = ((x1 + x0) * psum + rs1 * (t1 - apan) - rs0 * (t0 - apan) + (x0 - x1) * yy) * dxinv;
+
+        double psx1 = -(t1 - apan);
+        double psx0 = t0 - apan;
+        double psyy = 0.5 * (g1 - g0);
+
+        double pdx1 = ((x1 + x0) * psx1 + psum + 2.0 * x1 * (t1 - apan) - pdif) * dxinv;
+        double pdx0 = ((x1 + x0) * psx0 + psum - 2.0 * x0 * (t0 - apan) + pdif) * dxinv;
+        double pdyy = ((x1 + x0) * psyy + 2.0 * (x0 - x1 + yy * (t1 - t0))) * dxinv;
+
+        const double dsm = std::sqrt((ctx.X[jp] - ctx.X[jm]) * (ctx.X[jp] - ctx.X[jm])
+                                     + (ctx.Y[jp] - ctx.Y[jm]) * (ctx.Y[jp] - ctx.Y[jm]));
+        const double dsim = 1.0 / dsm;
+
+        double ssum = (ctx.SIG[jp] - ctx.SIG[jo]) * dsio + (ctx.SIG[jp] - ctx.SIG[jm]) * dsim;
+        double sdif = (ctx.SIG[jp] - ctx.SIG[jo]) * dsio - (ctx.SIG[jp] - ctx.SIG[jm]) * dsim;
+
+        psi = psi + ctx.QOPI * (psum * ssum + pdif * sdif);
+
+        ctx.DZDM[jm] = ctx.DZDM[jm] + ctx.QOPI * (-psum * dsim + pdif * dsim);
+        ctx.DZDM[jo] = ctx.DZDM[jo] + ctx.QOPI * (-psum * dsio - pdif * dsio);
+        ctx.DZDM[jp] = ctx.DZDM[jp] + ctx.QOPI * (psum * (dsio + dsim) + pdif * (dsio - dsim));
+
+        double psni = psx1 * x1i + psx0 * (x1i + x2i) * 0.5 + psyy * yyi;
+        double pdni = pdx1 * x1i + pdx0 * (x1i + x2i) * 0.5 + pdyy * yyi;
+        psi_ni = psi_ni + ctx.QOPI * (psni * ssum + pdni * sdif);
+
+        ctx.DQDM[jm] = ctx.DQDM[jm] + ctx.QOPI * (-psni * dsim + pdni * dsim);
+        ctx.DQDM[jo] = ctx.DQDM[jo] + ctx.QOPI * (-psni * dsio - pdni * dsio);
+        ctx.DQDM[jp] = ctx.DQDM[jp] + ctx.QOPI * (psni * (dsio + dsim) + pdni * (dsio - dsim));
+
+        dxinv = 1.0 / (x0 - x2);
+        psum = x2 * (t2 - apan) - x0 * (t0 - apan) + 0.5 * yy * (g0 - g2);
+        pdif = ((x0 + x2) * psum + rs0 * (t0 - apan) - rs2 * (t2 - apan) + (x2 - x0) * yy) * dxinv;
+
+        psx0 = -(t0 - apan);
+        double psx2 = t2 - apan;
+        psyy = 0.5 * (g0 - g2);
+
+        pdx0 = ((x0 + x2) * psx0 + psum + 2.0 * x0 * (t0 - apan) - pdif) * dxinv;
+        double pdx2 = ((x0 + x2) * psx2 + psum - 2.0 * x2 * (t2 - apan) + pdif) * dxinv;
+        pdyy = ((x0 + x2) * psyy + 2.0 * (x2 - x0 + yy * (t0 - t2))) * dxinv;
+
+        const double dsp = std::sqrt((ctx.X[jq] - ctx.X[jo]) * (ctx.X[jq] - ctx.X[jo])
+                                     + (ctx.Y[jq] - ctx.Y[jo]) * (ctx.Y[jq] - ctx.Y[jo]));
+        const double dsip = 1.0 / dsp;
+
+        ssum = (ctx.SIG[jq] - ctx.SIG[jo]) * dsip + (ctx.SIG[jp] - ctx.SIG[jo]) * dsio;
+        sdif = (ctx.SIG[jq] - ctx.SIG[jo]) * dsip - (ctx.SIG[jp] - ctx.SIG[jo]) * dsio;
+
+        psi = psi + ctx.QOPI * (psum * ssum + pdif * sdif);
+
+        ctx.DZDM[jo] = ctx.DZDM[jo] + ctx.QOPI * (-psum * (dsip + dsio) - pdif * (dsip - dsio));
+        ctx.DZDM[jp] = ctx.DZDM[jp] + ctx.QOPI * (psum * dsio - pdif * dsio);
+        ctx.DZDM[jq] = ctx.DZDM[jq] + ctx.QOPI * (psum * dsip + pdif * dsip);
+
+        psni = psx0 * (x1i + x2i) * 0.5 + psx2 * x2i + psyy * yyi;
+        pdni = pdx0 * (x1i + x2i) * 0.5 + pdx2 * x2i + pdyy * yyi;
+        psi_ni = psi_ni + ctx.QOPI * (psni * ssum + pdni * sdif);
+
+        ctx.DQDM[jo] = ctx.DQDM[jo] + ctx.QOPI * (-psni * (dsip + dsio) - pdni * (dsip - dsio));
+        ctx.DQDM[jp] = ctx.DQDM[jp] + ctx.QOPI * (psni * dsio - pdni * dsio);
+        ctx.DQDM[jq] = ctx.DQDM[jq] + ctx.QOPI * (psni * dsip + pdni * dsip);
+    }
+
+    psi = psi + ctx.QINF * (cosa * yi - sina * xi);
+    psi_ni = psi_ni + ctx.QINF * (cosa * nyi - sina * nxi);
+
+    return {psi, psi_ni};
 }
 
 void ggcalc(XFoilState &ctx) {
@@ -934,7 +1075,9 @@ void stfind(XFoilState &ctx) {
     const double dgam = ctx.GAM[i + 1] - ctx.GAM[i];
     const double ds = ctx.S[i + 1] - ctx.S[i];
 
-    if (ctx.GAM[i] < -ctx.GAM[i + 1]) {
+    if (dgam == 0.0) {
+        ctx.SST = 0.5 * (ctx.S[i] + ctx.S[i + 1]);
+    } else if (ctx.GAM[i] < -ctx.GAM[i + 1]) {
         ctx.SST = ctx.S[i] - ds * (ctx.GAM[i] / dgam);
     } else {
         ctx.SST = ctx.S[i + 1] - ds * (ctx.GAM[i + 1] / dgam);
@@ -947,8 +1090,13 @@ void stfind(XFoilState &ctx) {
         ctx.SST = ctx.S[i + 1] - 1.0e-7;
     }
 
-    ctx.SST_GO = (ctx.SST - ctx.S[i + 1]) / dgam;
-    ctx.SST_GP = (ctx.S[i] - ctx.SST) / dgam;
+    if (dgam == 0.0) {
+        ctx.SST_GO = 0.0;
+        ctx.SST_GP = 0.0;
+    } else {
+        ctx.SST_GO = (ctx.SST - ctx.S[i + 1]) / dgam;
+        ctx.SST_GP = (ctx.S[i] - ctx.SST) / dgam;
+    }
 }
 
 void iblpan(XFoilState &ctx) {

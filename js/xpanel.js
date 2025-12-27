@@ -402,13 +402,21 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
       jq = jp;
     } else if (jo === n - 1) {
       jp = 0;
-      if (((x[jo] - x[jp]) ** 2 + (y[jo] - y[jp]) ** 2) < seps ** 2) {
+      const dxTe = x[jo] - x[jp];
+      const dyTe = y[jo] - y[jp];
+      if ((dxTe * dxTe + dyTe * dyTe) < seps * seps) {
         skipTe = true;
         break;
       }
     }
 
-    const dso = Math.sqrt((x[jo] - x[jp]) ** 2 + (y[jo] - y[jp]) ** 2);
+    const xjo = x[jo];
+    const yjo = y[jo];
+    const xjp = x[jp];
+    const yjp = y[jp];
+    const dxPanel = xjo - xjp;
+    const dyPanel = yjo - yjp;
+    const dso = Math.sqrt(dxPanel * dxPanel + dyPanel * dyPanel);
     if (dso === 0.0) {
       continue;
     }
@@ -416,13 +424,13 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
     const dsio = 1.0 / dso;
     apan = apanel[jo];
 
-    const rx1 = xi - x[jo];
-    const ry1 = yi - y[jo];
-    const rx2 = xi - x[jp];
-    const ry2 = yi - y[jp];
+    const rx1 = xi - xjo;
+    const ry1 = yi - yjo;
+    const rx2 = xi - xjp;
+    const ry2 = yi - yjp;
 
-    const sx = (x[jp] - x[jo]) * dsio;
-    const sy = (y[jp] - y[jo]) * dsio;
+    const sx = (xjp - xjo) * dsio;
+    const sy = (yjp - yjo) * dsio;
 
     x1 = sx * rx1 + sy * ry1;
     x2 = sx * rx2 + sy * ry2;
@@ -496,7 +504,9 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
       let pdx0 = ((x1 + x0) * psx0 + psum - 2.0 * x0 * (t0 - apan) + pdif) * dxinv;
       let pdyy = ((x1 + x0) * psyy + 2.0 * (x0 - x1 + yy * (t1 - t0))) * dxinv;
 
-      const dsm = Math.sqrt((x[jp] - x[jm]) ** 2 + (y[jp] - y[jm]) ** 2);
+      const dxm = xjp - x[jm];
+      const dym = yjp - y[jm];
+      const dsm = Math.sqrt(dxm * dxm + dym * dym);
       const dsim = 1.0 / dsm;
 
       let ssum = (sig[jp] - sig[jo]) * dsio + (sig[jp] - sig[jm]) * dsim;
@@ -532,7 +542,9 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
       let pdx2 = ((x0 + x2) * psx2 + psum - 2.0 * x2 * (t2 - apan) + pdif) * dxinv;
       pdyy = ((x0 + x2) * psyy + 2.0 * (x2 - x0 + yy * (t0 - t2))) * dxinv;
 
-      const dsp = Math.sqrt((x[jq] - x[jo]) ** 2 + (y[jq] - y[jo]) ** 2);
+      const dxp = x[jq] - xjo;
+      const dyp = y[jq] - yjo;
+      const dsp = Math.sqrt(dxp * dxp + dyp * dyp);
       const dsip = 1.0 / dsp;
 
       ssum = (sig[jq] - sig[jo]) * dsip + (sig[jp] - sig[jo]) * dsio;
@@ -705,13 +717,21 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
       jq = jp;
     } else if (jo === n - 1) {
       jp = 0;
-      if (((x[jo] - x[jp]) ** 2 + (y[jo] - y[jp]) ** 2) < seps ** 2) {
+      const dxTe = x[jo] - x[jp];
+      const dyTe = y[jo] - y[jp];
+      if ((dxTe * dxTe + dyTe * dyTe) < seps * seps) {
         skipTeImage = true;
         break;
       }
     }
 
-    const dso = Math.sqrt((x[jo] - x[jp]) ** 2 + (y[jo] - y[jp]) ** 2);
+    const xjo0 = x[jo];
+    const yjo0 = y[jo];
+    const xjp0 = x[jp];
+    const yjp0 = y[jp];
+    const dxPanel = xjo0 - xjp0;
+    const dyPanel = yjo0 - yjp0;
+    const dso = Math.sqrt(dxPanel * dxPanel + dyPanel * dyPanel);
     if (dso === 0.0) {
       continue;
     }
@@ -719,10 +739,10 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
     const dsio = 1.0 / dso;
     apan = pi - apanel[jo] + 2.0 * alfa;
 
-    const xjo = x[jo] + 2.0 * (yimage + y[jo]) * sina;
-    const yjo = y[jo] - 2.0 * (yimage + y[jo]) * cosa;
-    const xjp = x[jp] + 2.0 * (yimage + y[jp]) * sina;
-    const yjp = y[jp] - 2.0 * (yimage + y[jp]) * cosa;
+    const xjo = xjo0 + 2.0 * (yimage + yjo0) * sina;
+    const yjo = yjo0 - 2.0 * (yimage + yjo0) * cosa;
+    const xjp = xjp0 + 2.0 * (yimage + yjp0) * sina;
+    const yjp = yjp0 - 2.0 * (yimage + yjp0) * cosa;
 
     const rx1 = xi - xjo;
     const ry1 = yi - yjo;
@@ -790,7 +810,9 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
       let pdx0 = ((x1 + x0) * psx0 + psum - 2.0 * x0 * (t0 - apan) + pdif) * dxinv;
       let pdyy = ((x1 + x0) * psyy + 2.0 * (x0 - x1 + yy * (t1 - t0))) * dxinv;
 
-      const dsm = Math.sqrt((x[jp] - x[jm]) ** 2 + (y[jp] - y[jm]) ** 2);
+      const dxm = x[jp] - x[jm];
+      const dym = y[jp] - y[jm];
+      const dsm = Math.sqrt(dxm * dxm + dym * dym);
       const dsim = 1.0 / dsm;
 
       let ssum = (sig[jp] - sig[jo]) * dsio + (sig[jp] - sig[jm]) * dsim;
@@ -825,7 +847,9 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
       let pdx2 = ((x0 + x2) * psx2 + psum - 2.0 * x2 * (t2 - apan) + pdif) * dxinv;
       pdyy = ((x0 + x2) * psyy + 2.0 * (x2 - x0 + yy * (t0 - t2))) * dxinv;
 
-      const dsp = Math.sqrt((x[jq] - x[jo]) ** 2 + (y[jq] - y[jo]) ** 2);
+      const dxp = x[jq] - x[jo];
+      const dyp = y[jq] - y[jo];
+      const dsp = Math.sqrt(dxp * dxp + dyp * dyp);
       const dsip = 1.0 / dsp;
 
       ssum = (sig[jq] - sig[jo]) * dsip + (sig[jp] - sig[jo]) * dsio;

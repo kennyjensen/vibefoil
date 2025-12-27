@@ -11,6 +11,7 @@ function digit(n) {
 }
 
 // 4-digit series: standard thickness distribution with parabolic mean line.
+// Matches NACA4 in naca.f.
 function naca4(ides, xx, yt, yc, nside, xb, yb) {
   const n4 = Math.floor(ides / 1000);
   const n3 = Math.floor((ides - n4 * 1000) / 100);
@@ -65,6 +66,7 @@ function naca4(ides, xx, yt, yc, nside, xb, yb) {
 }
 
 // 5-digit series: design CL and reflex/non-reflex camber with 4-digit thickness.
+// Matches NACA5 in naca.f.
 function naca5(ides, xx, yt, yc, nside, xb, yb) {
   const n5 = Math.floor(ides / 10000);
   const n4 = Math.floor((ides - n5 * 10000) / 1000);

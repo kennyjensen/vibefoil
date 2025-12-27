@@ -47,36 +47,6 @@ function create2d(rows, cols) {
   return arr;
 }
 
-// Optional consistency check for BL arrays; mirrors debug outputs in XFOIL.
-function blCheck(ctx, label, extra) {
-  if (!ctx.DEBUG_BL) return;
-  const fields = {
-    x1: ctx.X1,
-    x2: ctx.X2,
-    u1: ctx.U1,
-    u2: ctx.U2,
-    t1: ctx.T1,
-    t2: ctx.T2,
-    d1: ctx.D1,
-    d2: ctx.D2,
-    hk1: ctx.HK1,
-    hk2: ctx.HK2,
-    rt1: ctx.RT1,
-    rt2: ctx.RT2,
-    ampl1: ctx.AMPL1,
-    ampl2: ctx.AMPL2,
-  };
-  const bad = Object.entries(fields).filter(([, v]) => !Number.isFinite(v));
-  if (bad.length === 0) return;
-  const record = { label, bad: bad.map(([k]) => k), ...fields, ...extra };
-  if (!ctx.BL_TRACE) ctx.BL_TRACE = [];
-  if (ctx.BL_TRACE.length < 50) ctx.BL_TRACE.push(record);
-  console.warn('BLCHK:', record);
-  if (ctx.DEBUG_BL_FAILFAST) {
-    throw new Error(`BLCHK ${label}: non-finite ${bad.map(([k]) => k).join(', ')}`);
-  }
-}
-
 // Ensure BL context has all arrays; used to reuse or initialize state.
 function ensureCtx(ctx) {
   if (ctx.NCOM == null) ctx.NCOM = NCOM;
@@ -123,13 +93,13 @@ function copyCom(ctx, from, to) {
   syncComToVars(ctx, to);
 }
 
-// Transition check wrapper (delegates to the main routine).
+// Transition check wrapper (TRCHEK), delegates to the main routine.
 function trchek(ctxIn) {
   const ctx = ctxIn || this;
   trchek2(ctx);
 }
 
-// Auxiliary quantities for transition/separation damping logic.
+// Auxiliary quantities for transition/separation damping logic (AXSET).
 function axset(hk1, t1, rt1, a1, hk2, t2, rt2, a2, acrit, idampv) {
   let ax1;
   let ax1Hk1;
@@ -205,20 +175,27 @@ function axset(hk1, t1, rt1, a1, hk2, t2, rt2, a2, acrit, idampv) {
   };
 }
 
-// Main transition check pass (e^N criterion, separation adjustments).
+// Main transition check pass (TRCHEK2): e^N criterion, separation adjustments.
 function trchek2(ctx) {
+  // Fortran comments (TRCHEK2) highlight:
+  // - Compute amplification growth and transition forcing.
+  // - Preserve COM arrays for linearization of transition conditions.
   ensureCtx(ctx);
   const daeps = 5.0e-5;
 
+  // Save COM2 for use in linearization.
+  // Save COM1/COM2 for temporary linearization modifications.
   for (let icom = 1; icom <= NCOM; icom += 1) {
     ctx.C2SAV[icom] = ctx.COM2[icom];
   }
 
+  // Amplification rate based on damping model.
   let axOut = axset(ctx.HK1, ctx.T1, ctx.RT1, ctx.AMPL1,
     ctx.HK2, ctx.T2, ctx.RT2, ctx.AMPL2, ctx.AMCRIT, ctx.IDAMPV);
   let ax = axOut.ax;
   ctx.AMPL2 = ctx.AMPL1 + ax * (ctx.X2 - ctx.X1);
 
+  // Set up transition relations at X2 (continuity in amplification).
   let wf2 = 0.0;
   let wf2A1 = 0.0;
   let wf2A2 = 0.0;
@@ -508,11 +485,15 @@ function trchek2(ctx) {
   ctx.XT_XF = 0.0;
 }
 
-// Assemble BL system matrices and residuals (two-equation integral method).
+// Assemble BL system matrices and residuals (BLSYS).
 function blsys(ctxIn) {
+  // Fortran comments (BLSYS) highlight:
+  // - Assemble residuals for laminar/turbulent/wake branches.
+  // - Apply transition differences and similarity station handling.
   const ctx = ctxIn || this;
   ensureCtx(ctx);
 
+  // Select appropriate BL branch: wake / turbulent / laminar.
   if (ctx.WAKE) {
     blvar(3, ctx);
     blmid(3, ctx);
@@ -526,6 +507,7 @@ function blsys(ctxIn) {
 
   syncVarsToCom(ctx, 2);
 
+  // Similarity station: copy COM2 into COM1.
   if (ctx.SIMI) {
     for (let icom = 1; icom <= NCOM; icom += 1) {
       ctx.COM1[icom] = ctx.COM2[icom];
@@ -533,6 +515,7 @@ function blsys(ctxIn) {
     syncComToVars(ctx, 1);
   }
 
+  // Assemble residuals for transition or marching equations.
   if (ctx.TRAN) {
     trdif(ctx);
   } else if (ctx.SIMI) {
@@ -545,39 +528,7 @@ function blsys(ctxIn) {
     bldif(2, ctx);
   }
 
-  blCheck(ctx, 'BLSYS:after-bldif', {
-    simi: ctx.SIMI,
-    tran: ctx.TRAN,
-    turb: ctx.TURB,
-    wake: ctx.WAKE,
-  });
-
-  if (!Number.isFinite(ctx.VS1[1][1]) || !Number.isFinite(ctx.VS2[1][1])) {
-    console.warn('BLSYS: non-finite VS(1,1)', {
-      simi: ctx.SIMI,
-      tran: ctx.TRAN,
-      turb: ctx.TURB,
-      wake: ctx.WAKE,
-      x1: ctx.X1,
-      x2: ctx.X2,
-      t1: ctx.T1,
-      t2: ctx.T2,
-      d1: ctx.D1,
-      d2: ctx.D2,
-      u1: ctx.U1,
-      u2: ctx.U2,
-      hk1: ctx.HK1,
-      hk2: ctx.HK2,
-      rt1: ctx.RT1,
-      rt2: ctx.RT2,
-      ampl1: ctx.AMPL1,
-      ampl2: ctx.AMPL2,
-      s1: ctx.S1,
-      s2: ctx.S2,
-      vs11: ctx.VS1[1][1],
-      vs21: ctx.VS2[1][1],
-    });
-  }
+  // No extra diagnostics.
 
   if (ctx.SIMI) {
     for (let k = 1; k <= 4; k += 1) {
@@ -588,6 +539,7 @@ function blsys(ctxIn) {
     }
   }
 
+  // Clear local system arrays for TE closure.
   for (let k = 1; k <= 4; k += 1) {
     const resU1 = ctx.VS1[k][4];
     const resU2 = ctx.VS2[k][4];
@@ -599,8 +551,10 @@ function blsys(ctxIn) {
   }
 }
 
-// Trailing-edge system coupling for displacement thickness in the wake.
+// Trailing-edge system coupling for displacement thickness in the wake (TESYS).
 function tesys(cte, tte, dte, ctxIn) {
+  // Fortran comments (TESYS) highlight:
+  // - Couple wake displacement thickness to TE conditions.
   const ctx = ctxIn || this;
   ensureCtx(ctx);
 
@@ -615,6 +569,7 @@ function tesys(cte, tte, dte, ctxIn) {
     }
   }
 
+  // Use wake branch variables.
   blvar(3, ctx);
 
   ctx.VS1[1][1] = -1.0;
@@ -630,11 +585,14 @@ function tesys(cte, tte, dte, ctxIn) {
   ctx.VSREZ[3] = dte - ctx.D2 - ctx.DW2;
 }
 
-// Predictor step for BL marching (advance with previous station values).
+// Predictor step for BL marching (BLPRV).
 function blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctxIn) {
+  // Fortran comments (BLPRV) highlight:
+  // - Predictor step uses previous-station values.
   const ctx = ctxIn || this;
   ensureCtx(ctx);
 
+  // Predictor: populate station-2 variables from inputs.
   ctx.X2 = xsi;
   ctx.AMPL2 = ami;
   ctx.S2 = cti;
@@ -651,11 +609,14 @@ function blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctxIn) {
   syncVarsToCom(ctx, 2);
 }
 
-// Initialize BL profiles at the leading edge (laminar start).
+// Initialize BL profiles at the leading edge (BLKIN).
 function blkin(ctxIn) {
+  // Fortran comments (BLKIN) highlight:
+  // - Initialize laminar BL quantities at the leading edge.
   const ctx = ctxIn || this;
   ensureCtx(ctx);
 
+  // Initialize compressibility and density ratios at station 2.
   ctx.M2 = ctx.U2 * ctx.U2 * ctx.HSTINV / (ctx.GM1BL * (1.0 - 0.5 * ctx.U2 * ctx.U2 * ctx.HSTINV));
   const tr2 = 1.0 + 0.5 * ctx.GM1BL * ctx.M2;
   ctx.M2_U2 = 2.0 * ctx.M2 * tr2 / ctx.U2;
@@ -700,8 +661,10 @@ function blkin(ctxIn) {
   syncVarsToCom(ctx, 2);
 }
 
-// Variable updates from BL system solution (laminar/turbulent branches).
+// Variable updates from BL system solution (BLVAR).
 function blvar(ityp, ctxIn) {
+  // Fortran comments (BLVAR) highlight:
+  // - Compute HK/HS/CF/DI/DE for laminar or turbulent branch.
   const ctx = ctxIn || this;
   ensureCtx(ctx);
 
@@ -981,8 +944,10 @@ function blvar(ityp, ctxIn) {
   syncVarsToCom(ctx, 2);
 }
 
-// Midpoint evaluation for BL integrals; stabilizes marching scheme.
+// Midpoint evaluation for BL integrals; stabilizes marching scheme (BLMID).
 function blmid(ityp, ctxIn) {
+  // Fortran comments (BLMID) highlight:
+  // - Midpoint averages for system assembly stability.
   const ctx = ctxIn || this;
   ensureCtx(ctx);
 
@@ -1046,8 +1011,10 @@ function blmid(ityp, ctxIn) {
   ctx.CFM_RE = 0.5 * (ctx.CFM_RTA * ctx.RT1_RE + ctx.CFM_RTA * ctx.RT2_RE);
 }
 
-// Transition differential system used in Newton updates.
+// Transition differential system used in Newton updates (TRDIF).
 function trdif(ctxIn) {
+  // Fortran comments (TRDIF) highlight:
+  // - Build transition equations for Newton updates.
   const ctx = ctxIn || this;
   ensureCtx(ctx);
   const bl1 = create2d(4, 5);
@@ -1357,8 +1324,10 @@ function trdif(ctxIn) {
   syncComToVars(ctx, 1);
 }
 
-// Differential equations for BL integrals (laminar/turbulent).
+// Differential equations for BL integrals (BLDIF).
 function bldif(ityp, ctxIn) {
+  // Fortran comments (BLDIF) highlight:
+  // - Log/linear forms for BL integrals.
   const ctx = ctxIn || this;
   ensureCtx(ctx);
 
@@ -1368,6 +1337,7 @@ function bldif(ityp, ctxIn) {
   let hlog;
   let ddlog;
 
+  // Log-space or linear forms depending on marching type.
   if (ityp === 0) {
     xlog = 1.0;
     ulog = ctx.BULE;
@@ -1711,7 +1681,7 @@ function bldif(ityp, ctxIn) {
   ctx.VSREZ[3] = -rezh;
 }
 
-// Laminar damping function for transition criteria.
+// Laminar damping function for transition criteria (DAMPL).
 function dampl(hk, th, rt) {
   const dgr = 0.08;
   const hmi = 1.0 / (hk - 1.0);
@@ -1763,7 +1733,7 @@ function dampl(hk, th, rt) {
   return { ax, axHk, axTh, axRt };
 }
 
-// Modified damping for separated flow regions.
+// Modified damping for separated flow regions (DAMPL2).
 function dampl2(hk, th, rt) {
   const dgr = 0.08;
   const hk1 = 3.5;
@@ -1865,7 +1835,7 @@ function dampl2(hk, th, rt) {
   return { ax, axHk, axTh, axRt };
 }
 
-// Kinematic shape factor relation for compressibility correction.
+// Kinematic shape factor relation for compressibility correction (HKIN).
 function hkin(h, msq) {
   const hk = (h - 0.29 * msq) / (1.0 + 0.113 * msq);
   const hkH = 1.0 / (1.0 + 0.113 * msq);
@@ -1873,6 +1843,7 @@ function hkin(h, msq) {
   return { hk, hkH, hkMsq };
 }
 
+// Laminar dissipation function (DIL).
 function dil(hk, rt) {
   let di;
   let diHk;
@@ -1889,6 +1860,7 @@ function dil(hk, rt) {
   return { di, diHk, diRt };
 }
 
+// Wake dissipation function (DILW).
 function dilw(hk, rt) {
   const msq = 0.0;
   const hslRes = hsl(hk, rt, msq);
@@ -1900,6 +1872,7 @@ function dilw(hk, rt) {
   return { di, diHk, diRt };
 }
 
+// Laminar shear stress function (HSL).
 function hsl(hk, rt, msq) {
   let hs;
   let hsHk;
@@ -1919,6 +1892,7 @@ function hsl(hk, rt, msq) {
   return { hs, hsHk, hsRt: 0.0, hsMsq: 0.0 };
 }
 
+// Laminar skin friction coefficient (CFL).
 function cfl(hk, rt, msq) {
   let cf;
   let cfHk;
@@ -1936,6 +1910,7 @@ function cfl(hk, rt, msq) {
   return { cf, cfHk, cfRt, cfMsq };
 }
 
+// Turbulent dissipation integral for shear flow (DIT).
 function dit(hs, us, cf, st) {
   const di = (0.5 * cf * us + st * st * (1.0 - us)) * 2.0 / hs;
   const diHs = -(0.5 * cf * us + st * st * (1.0 - us)) * 2.0 / hs ** 2;
@@ -1945,6 +1920,7 @@ function dit(hs, us, cf, st) {
   return { di, diHs, diUs, diCf, diSt };
 }
 
+// Turbulent separation shape factor correlation (HST).
 function hst(hk, rt, msq) {
   const hsmin = 1.5;
   const dhsinf = 0.015;
@@ -1994,13 +1970,14 @@ function hst(hk, rt, msq) {
   }
 
   const fm = 1.0 + 0.014 * msq;
-  const hsMsq = 0.028 / fm - 0.014 * hs / fm;
   hs = (hs + 0.028 * msq) / fm;
   hsHk /= fm;
   hsRt /= fm;
+  const hsMsq = 0.028 / fm - 0.014 * hs / fm;
   return { hs, hsHk, hsRt, hsMsq };
 }
 
+// Turbulent skin friction correlation (CFT).
 function cft(hk, rt, msq, cffac = 1.0) {
   const gam = 1.4;
   const gm1 = gam - 1.0;
@@ -2020,6 +1997,7 @@ function cft(hk, rt, msq, cffac = 1.0) {
   return { cf, cfHk, cfRt, cfMsq };
 }
 
+// Compressible turbulent shape factor correction (HCT).
 function hct(hk, msq) {
   const hc = msq * (0.064 / (hk - 0.8) + 0.251);
   const hcHk = msq * (-0.064 / (hk - 0.8) ** 2);

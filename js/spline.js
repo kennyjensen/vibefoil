@@ -11,8 +11,8 @@ function checkN(n, name) {
   }
 }
 
-// Thomas algorithm for a tridiagonal system; used by spline solvers to obtain
-// first derivatives under boundary constraints (natural or clamped).
+// Thomas algorithm for a tridiagonal system (TRISOL).
+// Used by spline solvers to obtain first derivatives with boundary constraints.
 function trisol(a, b, c, d, kk, dOffset = 0) {
   for (let k = 1; k < kk; k += 1) {
     const km = k - 1;
@@ -30,8 +30,8 @@ function trisol(a, b, c, d, kk, dOffset = 0) {
   }
 }
 
-// Cubic spline with end conditions from XFOIL's SPLINE: solves for derivatives
-// in s-parametric space, consistent with NASA airfoil geometry workflows.
+// Cubic spline with end conditions (SPLINE).
+// Solves for derivatives in s-parametric space.
 function spline(x, xs, s, n) {
   checkN(n, 'SPLINE');
   const a = new Float64Array(n);
@@ -58,8 +58,8 @@ function spline(x, xs, s, n) {
   trisol(a, b, c, xs, n);
 }
 
-// Spline derivative solver with explicit end-slope options:
-//  999/-999 sentinel values reproduce XFOIL's "natural"/"not-a-knot" handling.
+// Spline derivative solver with explicit end-slope options (SPLIND).
+// 999/-999 sentinel values reproduce XFOIL's "natural"/"not-a-knot" handling.
 function splindOffset(x, xs, s, n, xs1, xs2, offset) {
   checkN(n, 'SPLIND');
   const a = new Float64Array(n);
@@ -120,7 +120,7 @@ function splind(x, xs, s, n, xs1, xs2) {
   splindOffset(x, xs, s, n, xs1, xs2, 0);
 }
 
-// Piecewise linear derivative estimate (used as a fallback / initializer).
+// Piecewise linear derivative estimate (SPLINA).
 function splina(x, xs, s, n) {
   let lend = true;
   let xs1 = 0.0;
@@ -146,8 +146,7 @@ function splina(x, xs, s, n) {
   xs[n - 1] = xs1;
 }
 
-// Cubic spline evaluation in s; follows Abbott & von Doenhoff style parametric
-// reconstruction with Hermite-form coefficients.
+// Cubic spline evaluation (SEVAL).
 function seval(ss, x, xs, s, n) {
   let ilow = 0;
   let i = n - 1;
@@ -168,7 +167,7 @@ function seval(ss, x, xs, s, n) {
   return t * x[i] + (1.0 - t) * x[i - 1] + (t - t * t) * ((1.0 - t) * cx1 - t * cx2);
 }
 
-// First derivative of spline evaluation, used for curvature and BL metrics.
+// First derivative of spline evaluation (DEVAL).
 function deval(ss, x, xs, s, n) {
   let ilow = 0;
   let i = n - 1;
@@ -191,7 +190,7 @@ function deval(ss, x, xs, s, n) {
   return devalValue;
 }
 
-// Second derivative of spline evaluation, used for curvature and stability checks.
+// Second derivative of spline evaluation (D2VAL).
 function d2val(ss, x, xs, s, n) {
   let ilow = 0;
   let i = n - 1;
@@ -214,8 +213,7 @@ function d2val(ss, x, xs, s, n) {
   return d2valValue;
 }
 
-// Curvature kappa(s) from parametric cubic splines, stable near the LE by
-// imposing a lower bound on |ds/dt| as done in the original solver.
+// Curvature from parametric cubic splines (CURV).
 function curv(ss, x, xs, y, ys, s, n) {
   let ilow = 0;
   let i = n - 1;
@@ -248,7 +246,7 @@ function curv(ss, x, xs, y, ys, s, n) {
   return (xd * ydd - yd * xdd) / (sd ** 3);
 }
 
-// Derivative of curvature with respect to s; used in some smoothing/logistics.
+// Derivative of curvature with respect to s (CURVS).
 function curvs(ss, x, xs, y, ys, s, n) {
   let ilow = 0;
   let i = n - 1;
@@ -289,7 +287,7 @@ function curvs(ss, x, xs, y, ys, s, n) {
   return (dtopdt * bot - dbotdt * top) / (bot ** 2);
 }
 
-// Invert s(x) by Newton iteration on the spline (XFOIL's SINVRT).
+// Invert s(x) by Newton iteration on the spline (SINVRT).
 // Keeps the same termination tolerance and returns input on failure.
 function sinvrt(si, xi, x, xs, s, n) {
   const sisav = si;
@@ -309,7 +307,7 @@ function sinvrt(si, xi, x, xs, s, n) {
   return sisav;
 }
 
-// Cumulative arc-length parameterization along (x,y), classic spline setup.
+// Cumulative arc-length parameterization along (x,y) (SCALC).
 function scalc(x, y, s, n) {
   s[0] = 0.0;
   for (let i = 1; i < n; i += 1) {
@@ -319,8 +317,7 @@ function scalc(x, y, s, n) {
   }
 }
 
-// Iterative arc-length reparameterization with Simpson-like correction, used
-// to reduce interpolation error in geometry spline fits.
+// Iterative arc-length reparameterization with Simpson-like correction (SPLNXY).
 function splnxy(x, xs, y, ys, s, n) {
   const xt = new Float64Array(KMAX + 1);
   const yt = new Float64Array(KMAX + 1);
@@ -417,7 +414,7 @@ function segspl(x, xs, s, n) {
   splindOffset(x, xs, s, nseg, -999.0, -999.0, iseg0);
 }
 
-// Segment-wise spline derivative solve with user-specified end slopes.
+// Segment-wise spline derivative solve with user-specified end slopes (SEGSPLD).
 function segspld(x, xs, s, n, xs1, xs2) {
   if (s[0] === s[1]) {
     throw new Error('SEGSPL:  First input point duplicated');

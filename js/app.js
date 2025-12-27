@@ -1,38 +1,14 @@
-import { scalc, segspl, seval } from './spline.js';
+import { scalc, segspl } from './spline.js';
 import {
   apcalc,
-  tecalc,
-  xywake,
-  qwcalc,
   ncalc,
   psilin,
   ggcalc,
-  qdcalc,
+  stfind,
 } from './xpanel.js';
-import {
-  blpini,
-  iblsys,
-  mrcl,
-  comset,
-  mrchue,
-  setbl,
-  blsolv,
-  update as blUpdate,
-} from './xbl.js';
-import {
-  NCOM,
-  ensureCtx,
-  syncComToVars,
-  syncVarsToCom,
-  blprv,
-  blkin,
-  blvar,
-  blmid,
-  trchek,
-  tesys,
-  blsys,
-  hkin,
-} from './xblsys.js';
+import { computeCoefficients, cpcalc, tecalc, pangen } from './xfoil.js';
+import { buildBlContext, computeQvisFromUedg, specal, viscal } from './xoper.js';
+import { createMatrix } from './arrays.js';
 
 // High-level orchestrator for the XFOIL port: UI, geometry generation,
 // inviscid panel solve, viscous BL coupling, and plotting.
@@ -44,6 +20,7 @@ const alphaCanvas = document.getElementById('alphaPlot');
 const alphaCtx = alphaCanvas ? alphaCanvas.getContext('2d') : null;
 const polarCanvas = document.getElementById('polarPlot');
 const polarCtx = polarCanvas ? polarCanvas.getContext('2d') : null;
+
 
 // UI controls mirrored from the DOM; values drive geometry and solver setup.
 const seriesRadios = Array.from(document.querySelectorAll('input[name="series"]'));
@@ -95,12 +72,14 @@ const runCaseList = document.getElementById('runCaseList');
 const addRunCaseButton = document.getElementById('addRunCase');
 
 // Geometry buffers (airfoil surface and custom inputs); sizes follow XFOIL nside.
-const nside = 80;
+const nside = 123;
 const xx = new Float64Array(nside);
 const yt = new Float64Array(nside);
 const yc = new Float64Array(nside);
 const xb = new Float64Array(2 * nside);
 const yb = new Float64Array(2 * nside);
+const xbBuffer = new Float64Array(2 * nside);
+const ybBuffer = new Float64Array(2 * nside);
 const xbCustom = new Float64Array(2 * nside);
 const ybCustom = new Float64Array(2 * nside);
 let customAirfoil = null;
@@ -116,34 +95,6 @@ const runCases = [];
 let activeCaseId = null;
 let nextCaseId = 1;
 let sweeping = false;
-
-// Matrix helpers mirror Fortran 1-based indexing expectations in BL modules.
-function createMatrix(rows, cols) {
-  const matrix = new Array(rows);
-  for (let i = 0; i < rows; i += 1) {
-    matrix[i] = new Float64Array(cols);
-  }
-  return matrix;
-}
-
-function createMatrix1(rows, cols) {
-  const matrix = new Array(rows + 1);
-  for (let i = 0; i <= rows; i += 1) {
-    matrix[i] = new Float64Array(cols + 1);
-  }
-  return matrix;
-}
-
-function createTensor3(d1, d2, d3) {
-  const tensor = new Array(d1 + 1);
-  for (let i = 0; i <= d1; i += 1) {
-    tensor[i] = new Array(d2 + 1);
-    for (let j = 0; j <= d2; j += 1) {
-      tensor[i][j] = new Float64Array(d3 + 1);
-    }
-  }
-  return tensor;
-}
 
 // NACA 4-digit designation formatting for UI/overlay.
 function updateLabels(m, p, t) {
@@ -908,41 +859,8 @@ function buildPanelContext(nb, alphaRad) {
 }
 
 // Stagnation point from circulation sign change; used to split upper/lower.
-function findStagnation(ctxPanel, nb) {
-  const gam = ctxPanel.GAM;
-  let ist = Math.floor(nb / 2) - 1;
-  for (let i = 0; i < nb - 1; i += 1) {
-    if (gam[i] >= 0.0 && gam[i + 1] < 0.0) {
-      ist = i;
-      break;
-    }
-  }
-
-  const s = ctxPanel.S;
-  const dgam = gam[ist + 1] - gam[ist];
-  const ds = s[ist + 1] - s[ist];
-  let sst;
-  if (dgam !== 0.0) {
-    if (gam[ist] < -gam[ist + 1]) {
-      sst = s[ist] - ds * (gam[ist] / dgam);
-    } else {
-      sst = s[ist + 1] - ds * (gam[ist + 1] / dgam);
-    }
-  } else {
-    sst = 0.5 * (s[ist] + s[ist + 1]);
-  }
-
-  if (sst <= s[ist]) sst = s[ist] + 1.0e-7;
-  if (sst >= s[ist + 1]) sst = s[ist + 1] - 1.0e-7;
-
-  const sstGo = dgam !== 0.0 ? (sst - s[ist + 1]) / dgam : 0.0;
-  const sstGp = dgam !== 0.0 ? (s[ist] - sst) / dgam : 0.0;
-
-  return { ist, sst, sstGo, sstGp };
-}
-
 function getSurfaceIndices(nb, ctxPanel) {
-  const { ist } = findStagnation(ctxPanel, nb);
+  const { ist } = stfind(ctxPanel, nb);
   const upperIdx = [];
   for (let i = ist; i >= 0; i -= 1) {
     upperIdx.push(i);
@@ -952,30 +870,6 @@ function getSurfaceIndices(nb, ctxPanel) {
     lowerIdx.push(i);
   }
   return { upperIdx, lowerIdx };
-}
-
-// Combine QINV basis with alpha rotation to get inviscid edge velocity.
-function computeQinv(ctxPanel, alphaRad, nb) {
-  const total = nb + (ctxPanel.NW ?? 0);
-  const qinv = new Float64Array(total + 1);
-  const qinvA = new Float64Array(total + 1);
-  const cosA = Math.cos(alphaRad);
-  const sinA = Math.sin(alphaRad);
-  for (let i = 1; i <= total; i += 1) {
-    const q0 = ctxPanel.QINVU[i - 1][0];
-    const q90 = ctxPanel.QINVU[i - 1][1];
-    const qi = cosA * q0 + sinA * q90;
-    qinv[i] = Number.isFinite(qi) ? qi : 0.0;
-    const qAi = -sinA * q0 + cosA * q90;
-    qinvA[i] = Number.isFinite(qAi) ? qAi : 0.0;
-  }
-  if (ctxPanel.QINV) {
-    ctxPanel.QINV.set(qinv);
-  }
-  if (ctxPanel.QINV_A) {
-    ctxPanel.QINV_A.set(qinvA);
-  }
-  return { qinv, qinvA };
 }
 
 function getChordPoints(nb) {
@@ -1025,245 +919,6 @@ function loadCustomAirfoil(data) {
   currentAirfoilName = data.name;
 }
 
-// Map boundary-layer station indices to panel indices (upper/lower + wake).
-function iblpan(blCtx, nb, nw = 0) {
-  const ist = blCtx.IST;
-
-  let ibl = 1;
-  for (let i = ist; i >= 1; i -= 1) {
-    ibl += 1;
-    blCtx.IPAN[ibl][1] = i;
-    blCtx.VTI[ibl][1] = 1.0;
-  }
-  blCtx.IBLTE[1] = ibl;
-  blCtx.NBL[1] = ibl;
-
-  ibl = 1;
-  for (let i = ist + 1; i <= nb; i += 1) {
-    ibl += 1;
-    blCtx.IPAN[ibl][2] = i;
-    blCtx.VTI[ibl][2] = -1.0;
-  }
-  blCtx.IBLTE[2] = ibl;
-  for (let iw = 1; iw <= nw; iw += 1) {
-    const i = nb + iw;
-    const iblw = blCtx.IBLTE[2] + iw;
-    blCtx.IPAN[iblw][2] = i;
-    blCtx.VTI[iblw][2] = -1.0;
-  }
-  blCtx.NBL[2] = blCtx.IBLTE[2] + nw;
-
-  for (let iw = 1; iw <= nw; iw += 1) {
-    blCtx.IPAN[blCtx.IBLTE[1] + iw][1] = blCtx.IPAN[blCtx.IBLTE[2] + iw][2];
-    blCtx.VTI[blCtx.IBLTE[1] + iw][1] = 1.0;
-  }
-
-  blCtx.LIPAN = true;
-}
-
-function xicalc(blCtx, ctxPanel) {
-  const s = ctxPanel.S;
-  const nb = ctxPanel.N;
-  const nw = ctxPanel.NW ?? 0;
-  const x = ctxPanel.X;
-  const y = ctxPanel.Y;
-  const xp = ctxPanel.XP;
-  const yp = ctxPanel.YP;
-  const xeps = 1.0e-7 * (s[nb - 1] - s[0]);
-  const sAt = (i) => s[i - 1];
-
-  blCtx.XSSI[1][1] = 0.0;
-  for (let ibl = 2; ibl <= blCtx.IBLTE[1]; ibl += 1) {
-    const i = blCtx.IPAN[ibl][1];
-    blCtx.XSSI[ibl][1] = Math.max(blCtx.SST - sAt(i), xeps);
-  }
-
-  blCtx.XSSI[1][2] = 0.0;
-  for (let ibl = 2; ibl <= blCtx.IBLTE[2]; ibl += 1) {
-    const i = blCtx.IPAN[ibl][2];
-    blCtx.XSSI[ibl][2] = Math.max(sAt(i) - blCtx.SST, xeps);
-  }
-
-  if (nw <= 0) {
-    return;
-  }
-
-  const ibl1 = blCtx.IBLTE[1] + 1;
-  blCtx.XSSI[ibl1][1] = blCtx.XSSI[ibl1 - 1][1];
-
-  const ibl2 = blCtx.IBLTE[2] + 1;
-  blCtx.XSSI[ibl2][2] = blCtx.XSSI[ibl2 - 1][2];
-
-  for (let ibl = blCtx.IBLTE[2] + 2; ibl <= blCtx.NBL[2]; ibl += 1) {
-    const i = blCtx.IPAN[ibl][2];
-    const dxssi = Math.sqrt((x[i - 1] - x[i - 2]) ** 2 + (y[i - 1] - y[i - 2]) ** 2);
-
-    const ibl1w = blCtx.IBLTE[1] + ibl - blCtx.IBLTE[2];
-    const ibl2w = blCtx.IBLTE[2] + ibl - blCtx.IBLTE[2];
-    blCtx.XSSI[ibl1w][1] = blCtx.XSSI[ibl1w - 1][1] + dxssi;
-    blCtx.XSSI[ibl2w][2] = blCtx.XSSI[ibl2w - 1][2] + dxssi;
-  }
-
-  const telrat = 2.5;
-  const crosp = (xp[0] * yp[nb - 1] - yp[0] * xp[nb - 1])
-    / Math.sqrt((xp[0] ** 2 + yp[0] ** 2) * (xp[nb - 1] ** 2 + yp[nb - 1] ** 2));
-  let dwdxte = crosp / Math.sqrt(Math.max(1.0 - crosp ** 2, 1.0e-12));
-  dwdxte = Math.max(dwdxte, -3.0 / telrat);
-  dwdxte = Math.min(dwdxte, 3.0 / telrat);
-
-  const aa = 3.0 + telrat * dwdxte;
-  const bb = -2.0 - telrat * dwdxte;
-
-  if (ctxPanel.SHARP) {
-    for (let iw = 1; iw <= nw; iw += 1) {
-      blCtx.WGAP[iw] = 0.0;
-    }
-  } else {
-    for (let iw = 1; iw <= nw; iw += 1) {
-      const ibl = blCtx.IBLTE[2] + iw;
-      const zn = 1.0 - (blCtx.XSSI[ibl][2] - blCtx.XSSI[blCtx.IBLTE[2]][2]) / (telrat * ctxPanel.ANTE);
-      blCtx.WGAP[iw] = 0.0;
-      if (zn >= 0.0) {
-        blCtx.WGAP[iw] = ctxPanel.ANTE * (aa + bb * zn) * zn ** 2;
-      }
-    }
-  }
-}
-
-// Build BL input arrays from inviscid edge velocities (XFOIL UICALC).
-function uicalc(blCtx, qinv, qinvA) {
-  for (let is = 1; is <= 2; is += 1) {
-    blCtx.UINV[1][is] = 0.0;
-    blCtx.UINV_A[1][is] = 0.0;
-    for (let ibl = 2; ibl <= blCtx.NBL[is]; ibl += 1) {
-      const i = blCtx.IPAN[ibl][is];
-      blCtx.UINV[ibl][is] = blCtx.VTI[ibl][is] * qinv[i];
-      blCtx.UINV_A[ibl][is] = blCtx.VTI[ibl][is] * qinvA[i];
-    }
-  }
-}
-
-// Compute viscous edge speed array from BL variables (XFOIL QVFUE).
-function qvfue(blCtx, qvis) {
-  for (let is = 1; is <= 2; is += 1) {
-    for (let ibl = 2; ibl <= blCtx.NBL[is]; ibl += 1) {
-      const i = blCtx.IPAN[ibl][is];
-      qvis[i] = blCtx.VTI[ibl][is] * blCtx.UEDG[ibl][is];
-    }
-  }
-}
-
-// Update panel circulation from viscous edge velocities (GAMQV).
-function gamqv(ctxPanel, qvis, qinvA) {
-  const nb = ctxPanel.N;
-  for (let i = 1; i <= nb; i += 1) {
-    ctxPanel.GAM[i - 1] = qvis[i];
-    if (ctxPanel.GAM_A) {
-      ctxPanel.GAM_A[i - 1] = qinvA[i];
-    }
-  }
-  if (ctxPanel.QVIS) {
-    ctxPanel.QVIS.set(qvis);
-  }
-}
-
-function stmove(ctxPanel, blCtx, qinv, qinvA) {
-  const nb = ctxPanel.N;
-  const istOld = blCtx.IST;
-  const { ist, sst, sstGo, sstGp } = findStagnation(ctxPanel, nb);
-  const istNew = ist + 1;
-
-  blCtx.IST = istNew;
-  blCtx.SST = sst;
-  blCtx.SST_GO = sstGo;
-  blCtx.SST_GP = sstGp;
-
-  if (istNew === istOld) {
-    xicalc(blCtx, ctxPanel);
-    return;
-  }
-
-  iblpan(blCtx, nb, ctxPanel.NW ?? 0);
-  uicalc(blCtx, qinv, qinvA);
-  xicalc(blCtx, ctxPanel);
-  iblsys(blCtx);
-
-  if (istNew > istOld) {
-    const idif = istNew - istOld;
-    blCtx.ITRAN[1] += idif;
-    blCtx.ITRAN[2] -= idif;
-
-    for (let ibl = blCtx.NBL[1]; ibl >= idif + 2; ibl -= 1) {
-      blCtx.CTAU[ibl][1] = blCtx.CTAU[ibl - idif][1];
-      blCtx.THET[ibl][1] = blCtx.THET[ibl - idif][1];
-      blCtx.DSTR[ibl][1] = blCtx.DSTR[ibl - idif][1];
-      blCtx.UEDG[ibl][1] = blCtx.UEDG[ibl - idif][1];
-    }
-
-    const dudx = blCtx.UEDG[idif + 2][1] / blCtx.XSSI[idif + 2][1];
-    for (let ibl = idif + 1; ibl >= 2; ibl -= 1) {
-      blCtx.CTAU[ibl][1] = blCtx.CTAU[idif + 2][1];
-      blCtx.THET[ibl][1] = blCtx.THET[idif + 2][1];
-      blCtx.DSTR[ibl][1] = blCtx.DSTR[idif + 2][1];
-      blCtx.UEDG[ibl][1] = dudx * blCtx.XSSI[ibl][1];
-    }
-
-    for (let ibl = 2; ibl <= blCtx.NBL[2] - idif; ibl += 1) {
-      blCtx.CTAU[ibl][2] = blCtx.CTAU[ibl + idif][2];
-      blCtx.THET[ibl][2] = blCtx.THET[ibl + idif][2];
-      blCtx.DSTR[ibl][2] = blCtx.DSTR[ibl + idif][2];
-      blCtx.UEDG[ibl][2] = blCtx.UEDG[ibl + idif][2];
-    }
-  } else {
-    const idif = istOld - istNew;
-    blCtx.ITRAN[1] -= idif;
-    blCtx.ITRAN[2] += idif;
-
-    for (let ibl = blCtx.NBL[2]; ibl >= idif + 2; ibl -= 1) {
-      blCtx.CTAU[ibl][2] = blCtx.CTAU[ibl - idif][2];
-      blCtx.THET[ibl][2] = blCtx.THET[ibl - idif][2];
-      blCtx.DSTR[ibl][2] = blCtx.DSTR[ibl - idif][2];
-      blCtx.UEDG[ibl][2] = blCtx.UEDG[ibl - idif][2];
-    }
-
-    const dudx = blCtx.UEDG[idif + 2][2] / blCtx.XSSI[idif + 2][2];
-    for (let ibl = idif + 1; ibl >= 2; ibl -= 1) {
-      blCtx.CTAU[ibl][2] = blCtx.CTAU[idif + 2][2];
-      blCtx.THET[ibl][2] = blCtx.THET[idif + 2][2];
-      blCtx.DSTR[ibl][2] = blCtx.DSTR[idif + 2][2];
-      blCtx.UEDG[ibl][2] = dudx * blCtx.XSSI[ibl][2];
-    }
-
-    for (let ibl = 2; ibl <= blCtx.NBL[1] - idif; ibl += 1) {
-      blCtx.CTAU[ibl][1] = blCtx.CTAU[ibl + idif][1];
-      blCtx.THET[ibl][1] = blCtx.THET[ibl + idif][1];
-      blCtx.DSTR[ibl][1] = blCtx.DSTR[ibl + idif][1];
-      blCtx.UEDG[ibl][1] = blCtx.UEDG[ibl + idif][1];
-    }
-  }
-
-  const ueps = 1.0e-7;
-  for (let is = 1; is <= 2; is += 1) {
-    for (let ibl = 2; ibl <= blCtx.NBL[is]; ibl += 1) {
-      if (blCtx.UEDG[ibl][is] <= ueps) {
-        blCtx.UEDG[ibl][is] = ueps;
-      }
-      blCtx.MASS[ibl][is] = blCtx.DSTR[ibl][is] * blCtx.UEDG[ibl][is];
-    }
-  }
-
-  const ist0 = blCtx.IST - 1;
-  const upperIdx = [];
-  for (let i = ist0; i >= 0; i -= 1) {
-    upperIdx.push(i);
-  }
-  const lowerIdx = [];
-  for (let i = ist0 + 1; i < nb; i += 1) {
-    lowerIdx.push(i);
-  }
-  blCtx.upperIdx = upperIdx;
-  blCtx.lowerIdx = lowerIdx;
-}
 
 // Cp plot in XFOIL style: viscous Cp with optional inviscid overlay.
 function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpWake = []) {
@@ -1422,437 +1077,6 @@ function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpW
   }
 
   cpCtx.restore();
-}
-
-// Integrated force/moment coefficients, matching XFOIL's panel conventions.
-function computeCoefficients(nb, ctxPanel, blCtx, alphaRad, qinvA, viscous) {
-  const x = ctxPanel.X;
-  const y = ctxPanel.Y;
-  const gam = ctxPanel.GAM;
-  const qinf = ctxPanel.QINF ?? 1.0;
-  const minf = viscous ? blCtx?.MINF ?? 0.0 : 0.0;
-  const xref = 0.25;
-  const yref = 0.0;
-
-  const sa = Math.sin(alphaRad);
-  const ca = Math.cos(alphaRad);
-  const beta = Math.sqrt(Math.max(1.0 - minf ** 2, 0.0));
-  const betaMsq = beta === 0.0 ? 0.0 : -0.5 / beta;
-  const bfac = 0.5 * minf ** 2 / (1.0 + beta);
-  const bfacMsq = 0.5 / (1.0 + beta) - bfac / (1.0 + beta) * betaMsq;
-
-  let cl = 0.0;
-  let cm = 0.0;
-  let cdp = 0.0;
-  let clAlf = 0.0;
-  let clMsq = 0.0;
-
-  let cginc = 1.0 - (gam[0] / qinf) ** 2;
-  let cpg1 = cginc / (beta + bfac * cginc);
-  let cpg1Msq = -cpg1 / (beta + bfac * cginc) * (betaMsq + bfacMsq * cginc);
-  let cpiGam = -2.0 * gam[0] / qinf ** 2;
-  let cpcCpi = (1.0 - bfac * cpg1) / (beta + bfac * cginc);
-  let cpg1Alf = cpcCpi * cpiGam * (qinvA?.[1] ?? 0.0);
-
-  for (let i = 0; i < nb; i += 1) {
-    const ip = i === nb - 1 ? 0 : i + 1;
-    cginc = 1.0 - (gam[ip] / qinf) ** 2;
-    const cpg2 = cginc / (beta + bfac * cginc);
-    const cpg2Msq = -cpg2 / (beta + bfac * cginc) * (betaMsq + bfacMsq * cginc);
-    cpiGam = -2.0 * gam[ip] / qinf ** 2;
-    cpcCpi = (1.0 - bfac * cpg2) / (beta + bfac * cginc);
-    const cpg2Alf = cpcCpi * cpiGam * (qinvA?.[ip + 1] ?? 0.0);
-
-    const dx = (x[ip] - x[i]) * ca + (y[ip] - y[i]) * sa;
-    const dy = (y[ip] - y[i]) * ca - (x[ip] - x[i]) * sa;
-    const dg = cpg2 - cpg1;
-
-    const ax = (0.5 * (x[ip] + x[i]) - xref) * ca + (0.5 * (y[ip] + y[i]) - yref) * sa;
-    const ay = (0.5 * (y[ip] + y[i]) - yref) * ca - (0.5 * (x[ip] + x[i]) - xref) * sa;
-    const ag = 0.5 * (cpg2 + cpg1);
-
-    const dxAlf = -(x[ip] - x[i]) * sa + (y[ip] - y[i]) * ca;
-    const agAlf = 0.5 * (cpg2Alf + cpg1Alf);
-    const agMsq = 0.5 * (cpg2Msq + cpg1Msq);
-
-    cl += dx * ag;
-    cdp -= dy * ag;
-    cm -= dx * (ag * ax + dg * dx / 12.0) + dy * (ag * ay + dg * dy / 12.0);
-    clAlf += dx * agAlf + ag * dxAlf;
-    clMsq += dx * agMsq;
-
-    cpg1 = cpg2;
-    cpg1Alf = cpg2Alf;
-    cpg1Msq = cpg2Msq;
-  }
-
-  let cd = 0.0;
-  let cdf = 0.0;
-  if (viscous && blCtx?.LBLINI) {
-    const thwake = blCtx.THET[blCtx.NBL[2]][2];
-    const urat = blCtx.UEDG[blCtx.NBL[2]][2] / qinf;
-    const uewake = blCtx.UEDG[blCtx.NBL[2]][2]
-      * (1.0 - blCtx.TKLAM) / (1.0 - blCtx.TKLAM * urat ** 2);
-    const shwake = blCtx.DSTR[blCtx.NBL[2]][2] / blCtx.THET[blCtx.NBL[2]][2];
-    cd = 2.0 * thwake * (uewake / qinf) ** (0.5 * (5.0 + shwake));
-
-    for (let is = 1; is <= 2; is += 1) {
-      for (let ibl = 3; ibl <= blCtx.IBLTE[is]; ibl += 1) {
-        const i = blCtx.IPAN[ibl][is] - 1;
-        const im = blCtx.IPAN[ibl - 1][is] - 1;
-        const dx = (x[i] - x[im]) * ca + (y[i] - y[im]) * sa;
-        cdf += 0.5 * (blCtx.TAU[ibl][is] + blCtx.TAU[ibl - 1][is]) * dx * 2.0 / qinf ** 2;
-      }
-    }
-  }
-
-  return { cl, cm, cd, cdf, cdp, clAlf, clMsq };
-}
-
-// Compressibility-corrected Cp (CPCALC), matching XFOIL's formulation.
-function cpcalc(qvals, qinf, minf) {
-  const n = qvals.length - 1;
-  const cp = new Float64Array(n + 1);
-  const beta = Math.sqrt(Math.max(1.0 - minf ** 2, 0.0));
-  const bfac = 0.5 * minf ** 2 / (1.0 + beta);
-  for (let i = 1; i <= n; i += 1) {
-    const q = qvals[i] ?? 0.0;
-    const cpinc = 1.0 - (q / qinf) ** 2;
-    const den = beta + bfac * cpinc;
-    cp[i] = den !== 0.0 ? cpinc / den : cpinc;
-  }
-  return cp;
-}
-
-// Allocate/initialize BL arrays and geometry mapping used by viscous solver.
-function buildBlContext(nb, ctxPanel, alphaRad, ncr) {
-  const nw = ctxPanel.NW ?? 0;
-  const total = nb + nw;
-  const nbl = total + 1;
-  const ctxBl = {
-    N: nb,
-    NW: nw,
-    IQX: nb,
-    X: new Float64Array(total + 1),
-    Y: new Float64Array(total + 1),
-    S: new Float64Array(total + 1),
-    NBL: new Int32Array(3),
-    IBLTE: new Int32Array(3),
-    ISYS: createMatrix1(nbl, 2),
-    IPAN: createMatrix1(nbl, 2),
-    VTI: createMatrix1(nbl, 2),
-    XSSI: createMatrix1(nbl, 2),
-    UEDG: createMatrix1(nbl, 2),
-    UINV: createMatrix1(nbl, 2),
-    UINV_A: createMatrix1(nbl, 2),
-    THET: createMatrix1(nbl, 2),
-    DSTR: createMatrix1(nbl, 2),
-    CTAU: createMatrix1(nbl, 2),
-    MASS: createMatrix1(nbl, 2),
-    TAU: createMatrix1(nbl, 2),
-    DIS: createMatrix1(nbl, 2),
-    CTQ: createMatrix1(nbl, 2),
-    DELT: createMatrix1(nbl, 2),
-    TSTR: createMatrix1(nbl, 2),
-    WGAP: new Float64Array(nw + 1),
-    ACRIT: new Float64Array(3),
-    XSTRIP: new Float64Array(3),
-    ITRAN: new Int32Array(3),
-    TFORCE: new Array(3).fill(false),
-    XSSITR: new Float64Array(3),
-    W1: new Float64Array(nb + 1),
-    W2: new Float64Array(nb + 1),
-    W3: new Float64Array(nb + 1),
-    W4: new Float64Array(nb + 1),
-    DTOR: Math.PI / 180.0,
-    ANTE: 0.0,
-    GAMBL: 1.4,
-    GM1BL: 0.4,
-    GAMM1: 0.4,
-    MINF: 0.0,
-    QINF: 1.0,
-    QINFBL: 1.0,
-    TKBL: 0.0,
-    TKBL_MS: 0.0,
-    RSTBL: 1.0,
-    RSTBL_MS: 0.0,
-    REYBL: 1.0e6,
-    REYBL_RE: 1.0,
-    REYBL_MS: 0.0,
-    HSTINV: 0.0,
-    HSTINV_MS: 0.0,
-    HVRAT: 0.0,
-    IDAMPV: 0,
-    NCOM,
-    blprv,
-    blkin,
-    blvar,
-    blmid,
-    trchek,
-    tesys,
-    blsys,
-    hkin,
-    syncComToVars,
-    syncVarsToCom,
-  };
-
-  for (let i = 1; i <= total; i += 1) {
-    ctxBl.X[i] = ctxPanel.X[i - 1];
-    ctxBl.Y[i] = ctxPanel.Y[i - 1];
-    ctxBl.S[i] = ctxPanel.S[i - 1];
-  }
-
-  let leIndex = 0;
-  let minX = xb[0];
-  for (let i = 1; i < nb; i += 1) {
-    if (xb[i] < minX) {
-      minX = xb[i];
-      leIndex = i;
-    }
-  }
-  const sLE = ctxBl.S[leIndex + 1];
-  ctxBl.SLE = sLE;
-  const { ist, sst, sstGo, sstGp } = findStagnation(ctxPanel, nb);
-  ctxBl.SST = sst;
-  ctxBl.SST_GO = sstGo;
-  ctxBl.SST_GP = sstGp;
-  ctxBl.IST = ist + 1;
-  ctxBl.XLE = ctxBl.X[leIndex + 1];
-  ctxBl.YLE = ctxBl.Y[leIndex + 1];
-  ctxBl.XTE = 0.5 * (ctxBl.X[1] + ctxBl.X[nb]);
-  ctxBl.YTE = 0.5 * (ctxBl.Y[1] + ctxBl.Y[nb]);
-
-  const cosA = Math.cos(alphaRad);
-  const sinA = Math.sin(alphaRad);
-  const qinv = new Float64Array(total + 1);
-  const qinvA = new Float64Array(total + 1);
-  for (let i = 1; i <= total; i += 1) {
-    const q0 = ctxPanel.QINVU[i - 1][0];
-    const q90 = ctxPanel.QINVU[i - 1][1];
-    const qi = cosA * q0 + sinA * q90;
-    qinv[i] = Number.isFinite(qi) ? qi : 0.0;
-    const qAi = -sinA * q0 + cosA * q90;
-    qinvA[i] = Number.isFinite(qAi) ? qAi : 0.0;
-  }
-
-  ctxBl.IVX = nbl;
-
-  const acrit = Number.isFinite(ncr) ? ncr : 9.0;
-  ctxBl.ACRIT[1] = acrit;
-  ctxBl.ACRIT[2] = acrit;
-  ctxBl.XSTRIP[1] = 1.0;
-  ctxBl.XSTRIP[2] = 1.0;
-
-  const upperIdx = [];
-  for (let i = ist; i >= 0; i -= 1) {
-    upperIdx.push(i);
-  }
-  const lowerIdx = [];
-  for (let i = ist + 1; i < nb; i += 1) {
-    lowerIdx.push(i);
-  }
-  ctxBl.upperIdx = upperIdx;
-  ctxBl.lowerIdx = lowerIdx;
-
-  iblpan(ctxBl, nb, nw);
-  xicalc(ctxBl, ctxPanel);
-
-  for (let is = 1; is <= 2; is += 1) {
-    let lastUe = 1.0e-6;
-    for (let iblIdx = 2; iblIdx <= ctxBl.NBL[is]; iblIdx += 1) {
-      const i = ctxBl.IPAN[iblIdx][is];
-      const uinv = ctxBl.VTI[iblIdx][is] * qinv[i];
-      const uinvA = ctxBl.VTI[iblIdx][is] * qinvA[i];
-      ctxBl.UINV[iblIdx][is] = Number.isFinite(uinv) ? uinv : lastUe;
-      ctxBl.UINV_A[iblIdx][is] = Number.isFinite(uinvA) ? uinvA : 0.0;
-      const ue = Number.isFinite(uinv) && uinv > 0.0 ? uinv : lastUe;
-      ctxBl.UEDG[iblIdx][is] = ue > 0.0 ? ue : 1.0e-6;
-      lastUe = ctxBl.UEDG[iblIdx][is];
-    }
-  }
-
-  ensureCtx(ctxBl);
-  blpini(ctxBl);
-  iblsys(ctxBl);
-
-  ctxBl.XP = new Float64Array(nb + 1);
-  ctxBl.YP = new Float64Array(nb + 1);
-  for (let i = 1; i <= nb; i += 1) {
-    ctxBl.XP[i] = ctxPanel.XP[i - 1];
-    ctxBl.YP[i] = ctxPanel.YP[i - 1];
-  }
-
-  const nsys = ctxBl.NSYS;
-  ctxBl.VA = createTensor3(3, 2, nsys);
-  ctxBl.VB = createTensor3(3, 2, nsys);
-  ctxBl.VDEL = createTensor3(3, 2, nsys);
-  ctxBl.VM = createTensor3(3, nsys, nsys);
-  ctxBl.VZ = createMatrix1(3, 2);
-  ctxBl.VACCEL = 0.01;
-  ctxBl.XOCTR = new Float64Array(3);
-  ctxBl.YOCTR = new Float64Array(3);
-  ctxBl.TINDEX = new Float64Array(3);
-  ctxBl.CL = 0.0;
-  ctxBl.CLSPEC = 0.0;
-  ctxBl.LALFA = true;
-  ctxBl.IDAMP = 0;
-  ctxBl.LBLINI = false;
-  ctxBl.GAMMA = 1.4;
-  ctxBl.GAMM1 = 0.4;
-  ctxBl.MINF1 = ctxBl.MINF;
-  ctxBl.REINF1 = ctxBl.REYBL;
-  ctxBl.MATYP = 1;
-  ctxBl.RETYP = 1;
-  ctxBl.MINF_CL = 0.0;
-  ctxBl.REINF_CL = 0.0;
-  ctxBl.DEBUG_BL = true;
-  ctxBl.DEBUG_BL_FAILFAST = false;
-
-  return ctxBl;
-}
-
-// Reconstruct viscous edge velocities from BL state when QVIS is absent.
-function computeQvisFromUedg(blCtx, nb, qinv) {
-  const qvis = new Float64Array(nb);
-  for (let is = 1; is <= 2; is += 1) {
-    for (let ibl = 2; ibl <= blCtx.NBL[is]; ibl += 1) {
-      const i = blCtx.IPAN[ibl][is];
-      const qv = blCtx.VTI[ibl][is] * blCtx.UEDG[ibl][is];
-      if (i >= 1 && i <= nb) qvis[i - 1] = qv;
-    }
-  }
-  for (let i = 0; i < nb; i += 1) {
-    if (!Number.isFinite(qvis[i]) || qvis[i] === 0.0) {
-      qvis[i] = qinv[i + 1] ?? 0.0;
-    }
-  }
-  return qvis;
-}
-
-// Initialize BL operating point (alpha, Mach, Re) to match XFOIL's OPER init.
-function applyXfoilOperInit(blCtx, alphaRad, reinf1) {
-  blCtx.LVISC = true;
-  blCtx.LVCONV = false;
-  blCtx.LWAKE = blCtx.NW > 0;
-  blCtx.LALFA = true;
-  blCtx.ALFA = alphaRad;
-  blCtx.ADEG = alphaRad / blCtx.DTOR;
-  blCtx.AWAKE = alphaRad;
-  blCtx.AVISC = alphaRad;
-  blCtx.MINF1 = blCtx.MINF;
-  blCtx.REINF1 = reinf1;
-  blCtx.REINF = reinf1;
-  blCtx.MINF_CL = 0.0;
-  blCtx.REINF_CL = 0.0;
-}
-
-// Reinitialize BL state for retry without changing the governing equations.
-function resetBlState(blCtx) {
-  blCtx.LBLINI = false;
-  for (let is = 1; is <= 2; is += 1) {
-    for (let ibl = 1; ibl <= blCtx.NBL[is]; ibl += 1) {
-      blCtx.CTAU[ibl][is] = 0.0;
-      blCtx.THET[ibl][is] = 0.0;
-      blCtx.DSTR[ibl][is] = 0.0;
-      blCtx.MASS[ibl][is] = 0.0;
-      blCtx.TAU[ibl][is] = 0.0;
-      blCtx.DIS[ibl][is] = 0.0;
-      blCtx.CTQ[ibl][is] = 0.0;
-      blCtx.DELT[ibl][is] = 0.0;
-      blCtx.TSTR[ibl][is] = 0.0;
-      const uinv = blCtx.UINV[ibl][is];
-      const ue = Number.isFinite(uinv) && uinv > 0.0 ? uinv : 1.0e-6;
-      blCtx.UEDG[ibl][is] = ue;
-    }
-  }
-}
-
-// Iterative viscous solve with optional re-init; mirrors XFOIL convergence logic.
-function solveViscous(blCtx, ctxPanel, qinv, qinvA, maxIter = 20, maxRetry = 2) {
-  const total = ctxPanel.N + (ctxPanel.NW ?? 0);
-  const qvis = new Float64Array(total + 1);
-  const eps1 = 1.0e-4;
-
-  uicalc(blCtx, qinv, qinvA);
-  let converged = false;
-  for (let attempt = 0; attempt <= maxRetry; attempt += 1) {
-    if (!blCtx.LBLINI) {
-      for (let ibl = 1; ibl <= blCtx.NBL[1]; ibl += 1) {
-        blCtx.UEDG[ibl][1] = blCtx.UINV[ibl][1];
-      }
-      for (let ibl = 1; ibl <= blCtx.NBL[2]; ibl += 1) {
-        blCtx.UEDG[ibl][2] = blCtx.UINV[ibl][2];
-      }
-    }
-
-    for (let iter = 0; iter < maxIter; iter += 1) {
-      setbl(blCtx);
-      const ok = blsolv(blCtx);
-      if (!ok) break;
-      blUpdate(blCtx);
-
-      if (blCtx.LALFA) {
-        mrcl(blCtx, blCtx.CL);
-        comset(blCtx);
-      } else {
-        uicalc(blCtx, qinv, qinvA);
-      }
-
-      qvfue(blCtx, qvis);
-      gamqv(ctxPanel, qvis, qinvA);
-      stmove(ctxPanel, blCtx, qinv, qinvA);
-
-      if (Number.isFinite(blCtx.RMSBL) && blCtx.RMSBL < eps1) {
-        blCtx.LVCONV = true;
-        blCtx.AVISC = blCtx.ALFA;
-        blCtx.MVISC = blCtx.MINF;
-        converged = true;
-        break;
-      }
-    }
-
-    if (converged) break;
-    if (attempt < maxRetry) {
-      resetBlState(blCtx);
-    }
-  }
-
-  if (blCtx.DEBUG_BL) {
-    for (let is = 1; is <= 2; is += 1) {
-      const xt = blCtx.XSSITR[is];
-    if (Number.isFinite(xt) && xt > 0.0) {
-      const str = is === 1 ? blCtx.SST - xt : blCtx.SST + xt;
-      const xtr = seval(str, ctxPanel.X, ctxPanel.XP, ctxPanel.S, ctxPanel.N);
-      const ytr = seval(str, ctxPanel.Y, ctxPanel.YP, ctxPanel.S, ctxPanel.N);
-      const chx = blCtx.XTE - blCtx.XLE;
-      const chy = blCtx.YTE - blCtx.YLE;
-      const chsq = chx * chx + chy * chy || 1.0;
-      const xoctr = ((xtr - blCtx.XLE) * chx + (ytr - blCtx.YLE) * chy) / chsq;
-      if (!Number.isFinite(xtr) || !Number.isFinite(ytr) || !Number.isFinite(xoctr)) {
-        console.warn('BL: transition mapping non-finite', {
-          is,
-          ibl: blCtx.ITRAN[is],
-          xt,
-          str,
-          sst: blCtx.SST,
-          sle: blCtx.SLE,
-          s1: ctxPanel.S[0],
-          sn: ctxPanel.S[ctxPanel.N - 1],
-          xle: blCtx.XLE,
-          yle: blCtx.YLE,
-          xte: blCtx.XTE,
-          yte: blCtx.YTE,
-          xtr,
-          ytr,
-          xoctr,
-        });
-      }
-      console.warn(`BL: side ${is} transition x/c = ${Number.isFinite(xoctr) ? xoctr.toFixed(4) : 'NaN'} (ibl=${blCtx.ITRAN[is]})`);
-    }
-    }
-  }
-
-  return { qvis, converged };
 }
 
 function drawContours(bounds, grid, nx, ny, isoValues) {
@@ -2202,12 +1426,18 @@ function update() {
   updateAlphaLabel(alphaDeg);
 
   let nb = 0;
+  let bufferX = null;
+  let bufferY = null;
+  let bufferN = 0;
   if (source === 'custom') {
     if (!customAirfoil) {
       currentAirfoilName = 'Load .dat airfoil';
       return;
     }
     nb = customAirfoil.nb;
+    bufferX = xbCustom;
+    bufferY = ybCustom;
+    bufferN = nb;
     xb.set(xbCustom);
     yb.set(ybCustom);
   } else if (mode === '4') {
@@ -2218,7 +1448,14 @@ function update() {
     updateLabels(m, p, t);
 
     const ides = m * 1000 + p * 100 + t;
-    ({ nb } = globalThis.Naca.naca4(ides, xx, yt, yc, nside, xb, yb));
+    ({ nb } = globalThis.Naca.naca4(ides, xx, yt, yc, nside, xbBuffer, ybBuffer));
+    bufferX = xbBuffer;
+    bufferY = ybBuffer;
+    bufferN = nb;
+    const panelRes = pangen(xbBuffer, ybBuffer, nb);
+    nb = panelRes.n;
+    xb.set(panelRes.x);
+    yb.set(panelRes.y);
   } else {
     if (mode === '5') {
       const series = series5Select.value;
@@ -2230,9 +1467,15 @@ function update() {
 
       updateLabels5(series, t);
 
-      const result = globalThis.Naca.naca5(ides, xx, yt, yc, nside, xb, yb);
+      const result = globalThis.Naca.naca5(ides, xx, yt, yc, nside, xbBuffer, ybBuffer);
       if (result.ok) {
-        nb = result.nb;
+        bufferX = xbBuffer;
+        bufferY = ybBuffer;
+        bufferN = result.nb;
+        const panelRes = pangen(xbBuffer, ybBuffer, result.nb);
+        nb = panelRes.n;
+        xb.set(panelRes.x);
+        yb.set(panelRes.y);
       } else {
         return;
       }
@@ -2257,11 +1500,17 @@ function update() {
         yt,
         yc,
         nside,
-        xb,
-        yb,
+        xbBuffer,
+        ybBuffer,
       );
       if (result.ok) {
-        nb = result.nb;
+        bufferX = xbBuffer;
+        bufferY = ybBuffer;
+        bufferN = result.nb;
+        const panelRes = pangen(xbBuffer, ybBuffer, result.nb);
+        nb = panelRes.n;
+        xb.set(panelRes.x);
+        yb.set(panelRes.y);
         currentAirfoilName = result.name || currentAirfoilName;
       } else {
         return;
@@ -2274,62 +1523,28 @@ function update() {
   ctx.clearRect(0, 0, bounds.width, bounds.height);
 
   const ctxPanel = buildPanelContext(nb, alphaRad);
-  if (viscousToggle.checked && ctxPanel) {
-    xywake(ctxPanel);
-    qwcalc(ctxPanel);
-  }
-  const { qinv, qinvA } = computeQinv(ctxPanel, alphaRad, nb);
-
   let blCtx = null;
+  let qinv = null;
+  let qinvA = null;
   if (viscousToggle.checked && ctxPanel) {
-    const dij = qdcalc(ctxPanel);
     const ncr = parseFloat(ncrInput.value);
-    blCtx = buildBlContext(nb, ctxPanel, alphaRad, ncr);
-    blCtx.DIJ = dij;
+    blCtx = buildBlContext(nb, ctxPanel, ncr);
     const mach = parseFloat(machInput.value);
     const reinf = parseFloat(reynoldsInput.value);
     blCtx.MINF = Number.isFinite(mach) ? mach : 0.0;
     blCtx.MINF1 = blCtx.MINF;
-    applyXfoilOperInit(blCtx, alphaRad, Number.isFinite(reinf) ? reinf : 1.0e6);
 
-    const { qvis, converged } = solveViscous(blCtx, ctxPanel, qinv, qinvA, 20);
-    for (let i = 0; i < nb; i += 1) {
-      if (!Number.isFinite(ctxPanel.GAM[i])) {
-        ctxPanel.GAM[i] = qvis[i + 1] ?? qinv[i + 1] ?? 0.0;
-      }
-    }
-    blCtx.LVCONV = converged;
-
-    let uinvMin = Infinity;
-    let uinvMax = -Infinity;
-    let uedgMin = Infinity;
-    let uedgMax = -Infinity;
-    let badUedg = 0;
-    for (let is = 1; is <= 2; is += 1) {
-      for (let ibl = 2; ibl <= blCtx.NBL[is]; ibl += 1) {
-        const uinv = blCtx.UINV[ibl][is];
-        const uedg = blCtx.UEDG[ibl][is];
-        if (Number.isFinite(uinv)) {
-          uinvMin = Math.min(uinvMin, uinv);
-          uinvMax = Math.max(uinvMax, uinv);
-        }
-        if (Number.isFinite(uedg)) {
-          uedgMin = Math.min(uedgMin, uedg);
-          uedgMax = Math.max(uedgMax, uedg);
-        } else {
-          badUedg += 1;
-        }
-      }
-    }
-    console.warn('BL: Ue stats', {
-      uinvMin,
-      uinvMax,
-      uedgMin,
-      uedgMax,
-      badUedg,
-      rmsbl: blCtx.RMSBL,
-      rmxbl: blCtx.RMXBL,
-    });
+    ({ qinv, qinvA } = viscal(
+      blCtx,
+      ctxPanel,
+      alphaRad,
+      reinf,
+      {
+        logSurface: true,
+      },
+    ));
+  } else if (ctxPanel) {
+    ({ qinv, qinvA } = specal(ctxPanel, alphaRad));
   }
 
   if (ctxPanel) {
@@ -2419,33 +1634,6 @@ function update() {
   }
   drawAlphaSweepPlot();
   drawPolarPlot();
-
-  if (viscousToggle.checked && ctxPanel && blCtx) {
-    let maxDelta = 0.0;
-    for (let ibl = 2; ibl <= blCtx.NBL[1]; ibl += 1) {
-      const d = blCtx.DELT[ibl][1];
-      if (Number.isFinite(d)) maxDelta = Math.max(maxDelta, d);
-    }
-    for (let ibl = 2; ibl <= blCtx.NBL[2]; ibl += 1) {
-      const d = blCtx.DELT[ibl][2];
-      if (Number.isFinite(d)) maxDelta = Math.max(maxDelta, d);
-    }
-    if (maxDelta <= 0.0) {
-      console.warn('BL: DELT sample', {
-        del1: blCtx.DELT[2][1],
-        del2: blCtx.DELT[2][2],
-        th1: blCtx.THET[2][1],
-        th2: blCtx.THET[2][2],
-        ds1: blCtx.DSTR[2][1],
-        ds2: blCtx.DSTR[2][2],
-        ue1: blCtx.UEDG[2][1],
-        ue2: blCtx.UEDG[2][2],
-        hk2: blCtx.HK2,
-        hs2: blCtx.HS2,
-        cf2: blCtx.CF2,
-      });
-    }
-  }
 
   drawAirfoil(nb, bounds);
   if (viscous && blCtx) {

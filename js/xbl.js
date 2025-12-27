@@ -4,36 +4,6 @@
 import { splind, sinvrt, seval } from './spline.js';
 import { gauss } from './xsolve.js';
 
-// Debug guard for non-finite BL state; mirrors XFOIL's diagnostic checks.
-function blCheck(ctx, label, extra) {
-  if (!ctx.DEBUG_BL) return;
-  const fields = {
-    x1: ctx.X1,
-    x2: ctx.X2,
-    u1: ctx.U1,
-    u2: ctx.U2,
-    t1: ctx.T1,
-    t2: ctx.T2,
-    d1: ctx.D1,
-    d2: ctx.D2,
-    hk1: ctx.HK1,
-    hk2: ctx.HK2,
-    rt1: ctx.RT1,
-    rt2: ctx.RT2,
-    ampl1: ctx.AMPL1,
-    ampl2: ctx.AMPL2,
-  };
-  const bad = Object.entries(fields).filter(([, v]) => !Number.isFinite(v));
-  if (bad.length === 0) return;
-  const record = { label, bad: bad.map(([k]) => k), ...fields, ...extra };
-  if (!ctx.BL_TRACE) ctx.BL_TRACE = [];
-  if (ctx.BL_TRACE.length < 50) ctx.BL_TRACE.push(record);
-  console.warn('BLCHK:', record);
-  if (ctx.DEBUG_BL_FAILFAST) {
-    throw new Error(`BLCHK ${label}: non-finite ${bad.map(([k]) => k).join(', ')}`);
-  }
-}
-
 // 1-based to 0-based wrapper for Gaussian elimination (Fortran compatibility).
 function gauss1(n, z, r) {
   const z0 = new Array(n);
@@ -59,7 +29,7 @@ function gauss1(n, z, r) {
   }
 }
 
-// Displacement thickness limiter based on shape factor constraint.
+// Displacement thickness limiter based on shape factor constraint (DSLIM).
 function dslim(ctx, dstr, thet, uedg, msq, hklim) {
   const h = dstr / thet;
   const { hk, hkH } = ctx.hkin(h, msq);
@@ -67,7 +37,7 @@ function dslim(ctx, dstr, thet, uedg, msq, hklim) {
   return dstr + dh * thet;
 }
 
-// Initialize BL empirical constants (XFOIL defaults).
+// Initialize BL empirical constants (BLPINI).
 function blpini(ctx) {
   ctx.SCCON = 5.6;
   ctx.GACON = 6.70;
@@ -85,7 +55,7 @@ function blpini(ctx) {
   ctx.CFFAC = 1.0;
 }
 
-// Mach/Re updates for fixed CL or alpha families (operating condition map).
+// Mach/Re updates for fixed CL or alpha families (MRCL).
 function mrcl(ctx, cls) {
   const cla = Math.max(cls, 1.0e-6);
   let minf;
@@ -123,7 +93,7 @@ function mrcl(ctx, cls) {
   return { mCls, rCls };
 }
 
-// Precompute coefficients and intermediate BL parameters for marching.
+// Precompute coefficients and intermediate BL parameters for marching (COMSET).
 function comset(ctx) {
   const beta = Math.sqrt(Math.max(1.0 - ctx.MINF ** 2, 0.0));
   const betaMsq = beta === 0.0 ? 0.0 : -0.5 / beta;
@@ -131,7 +101,7 @@ function comset(ctx) {
   ctx.TK_MSQ = 1.0 / (1.0 + beta) ** 2 - 2.0 * ctx.TKLAM / (1.0 + beta) * betaMsq;
 }
 
-// Initialize BL system matrices and coupling terms for marching.
+// Initialize BL system matrices and coupling terms for marching (IBLSYS).
 function iblsys(ctx) {
   let iv = 0;
   for (let is = 1; is <= 2; is += 1) {
@@ -147,17 +117,29 @@ function iblsys(ctx) {
   }
 }
 
-// March Ue and related quantities along the surface and wake.
+// March Ue and related quantities along the surface and wake (MRCHUE).
+// Laminar/turbulent switching and wake handling follow XFOIL's marching scheme.
 function mrchue(ctx) {
   const hlmax = 3.8;
   const htmax = 2.5;
+  if (!ctx.HTARG || ctx.HTARG.length < 3
+    || ctx.HTARG[1].length <= ctx.NBL[1]
+    || ctx.HTARG[2].length <= ctx.NBL[2]) {
+    ctx.HTARG = [
+      null,
+      new Float64Array(ctx.NBL[1] + 1),
+      new Float64Array(ctx.NBL[2] + 1),
+    ];
+  } else {
+    ctx.HTARG[1].fill(0.0);
+    ctx.HTARG[2].fill(0.0);
+  }
 
   function resetThwaites(xsi, uei) {
     const ucon = uei / (xsi ** ctx.BULE);
-    const safeUcon = ucon > 0.0 ? ucon : 1.0e-6;
-    const tsq = 0.45 / (safeUcon * (5.0 * ctx.BULE + 1.0) * ctx.REYBL)
+    const tsq = 0.45 / (ucon * (5.0 * ctx.BULE + 1.0) * ctx.REYBL)
       * (xsi ** (1.0 - ctx.BULE));
-    const thi = Math.sqrt(Math.max(tsq, 1.0e-12));
+    const thi = Math.sqrt(tsq);
     const dsi = 2.2 * thi;
     return { thi, dsi };
   }
@@ -178,68 +160,22 @@ function mrchue(ctx) {
 
     let cti = 0.03;
 
+    // Initialize laminar start on each side.
     ctx.TRAN = false;
     ctx.TURB = false;
     ctx.ITRAN[is] = ctx.IBLTE[is];
-    ctx.THET[2][is] = thi;
-    ctx.DSTR[2][is] = dsi;
-    ctx.CTAU[2][is] = ami;
-    ctx.MASS[2][is] = dsi * uei;
-
     for (ibl = 2; ibl <= ctx.NBL[is]; ibl += 1) {
       const ibm = ibl - 1;
 
       const simi = ibl === 2;
       const wake = ibl > ctx.IBLTE[is];
+      ctx.TRAN = ibl === ctx.ITRAN[is];
+      ctx.TURB = ibl > ctx.ITRAN[is];
       ctx.SIMI = simi;
       ctx.WAKE = wake;
 
-      if (ibl > 2) {
-        const xsiPrev = ctx.XSSI[ibm][is];
-        const ueiPrev = ctx.UEDG[ibm][is];
-        const thiPrev = ctx.THET[ibm][is];
-        const dsiPrev = ctx.DSTR[ibm][is];
-        if (ctx.DEBUG_BL && (!Number.isFinite(thiPrev) || !Number.isFinite(dsiPrev))) {
-          console.warn('MRCHUE:prev-input non-finite', {
-            is,
-            ibl,
-            ibm,
-            xsiPrev,
-            ueiPrev,
-            thiPrev,
-            dsiPrev,
-          });
-          if (ctx.DEBUG_BL_FAILFAST) {
-            throw new Error('MRCHUE:prev-input non-finite');
-          }
-        }
-        let amiPrev = ibm < ctx.ITRAN[is] ? ctx.CTAU[ibm][is] : 0.0;
-        let ctiPrev = ibm >= ctx.ITRAN[is] ? ctx.CTAU[ibm][is] : 0.0;
-        if (!Number.isFinite(amiPrev)) amiPrev = 0.0;
-        if (!Number.isFinite(ctiPrev) || ctiPrev <= 0.0) ctiPrev = 0.03;
-        let dswPrev = 0.0;
-        if (ibm > ctx.IBLTE[is]) {
-          const iwPrev = ibm - ctx.IBLTE[is];
-          dswPrev = ctx.WGAP[iwPrev];
-        }
-        ctx.blprv(xsiPrev, amiPrev, ctiPrev, thiPrev, dsiPrev, dswPrev, ueiPrev, ctx);
-        ctx.blkin(ctx);
-        blCheck(ctx, 'MRCHUE:prev', { is, ibl, ibm });
-        for (let icom = 1; icom <= ctx.NCOM; icom += 1) {
-          ctx.COM1[icom] = ctx.COM2[icom];
-        }
-        if (typeof ctx.syncComToVars === 'function') {
-          ctx.syncComToVars(ctx, 1);
-        }
-      }
-
       xsi = ctx.XSSI[ibl][is];
-      uei = ctx.UEDG[ibl]?.[is];
-      if (!Number.isFinite(uei) || uei <= 0.0) {
-        const fallback = ctx.UEDG[ibm]?.[is];
-        uei = Number.isFinite(fallback) && fallback > 0.0 ? fallback : 1.0e-6;
-        if (ctx.UEDG[ibl]) ctx.UEDG[ibl][is] = uei;
-      }
+      uei = ctx.UEDG[ibl][is];
 
       let dswaki = 0.0;
       if (wake) {
@@ -254,40 +190,8 @@ function mrchue(ctx) {
       let hklim = 0.0;
 
       for (let itbl = 1; itbl <= 25; itbl += 1) {
-        if (!Number.isFinite(uei) || uei <= 0.0) {
-          const uFromArray = ctx.UEDG[ibl]?.[is];
-          const uFromPrev = ctx.UEDG[ibm]?.[is];
-          if (Number.isFinite(uFromArray) && uFromArray > 0.0) {
-            uei = uFromArray;
-          } else if (Number.isFinite(uFromPrev) && uFromPrev > 0.0) {
-            uei = uFromPrev;
-          } else {
-            uei = 1.0e-6;
-          }
-        }
-        if (!Number.isFinite(thi) || !Number.isFinite(dsi) || thi <= 0.0 || dsi <= 0.0) {
-          const reset = resetThwaites(xsi, uei);
-          thi = reset.thi;
-          dsi = reset.dsi;
-        }
         ctx.blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
         ctx.blkin(ctx);
-        if (!Number.isFinite(ctx.HK2) || !Number.isFinite(ctx.RT2)) {
-          console.warn('BL: non-finite after BLKIN', {
-            is,
-            ibl,
-            xsi,
-            uei,
-            thi,
-            dsi,
-            hk2: ctx.HK2,
-            rt2: ctx.RT2,
-            u2: ctx.U2,
-            t2: ctx.T2,
-            d2: ctx.D2,
-          });
-          break;
-        }
 
         if (!simi && !ctx.TURB) {
           ctx.trchek(ctx);
@@ -317,38 +221,6 @@ function mrchue(ctx) {
         ctx.blsys(ctx);
       }
 
-        if (ctx.DEBUG_BL && ibl === 2 && !ctx._dbgIbl2Checked) {
-          let badVs = false;
-          for (let k = 1; k <= 4; k += 1) {
-            if (!Number.isFinite(ctx.VSREZ[k])) badVs = true;
-            for (let l = 1; l <= 4; l += 1) {
-              if (!Number.isFinite(ctx.VS2[k][l])) badVs = true;
-            }
-          }
-          if (badVs) {
-            console.warn('MRCHUE:ibl2 bad VS', {
-              is,
-              ibl,
-              itbl,
-              thi,
-              dsi,
-              uei,
-              hk2: ctx.HK2,
-              rt2: ctx.RT2,
-              vsrez: [ctx.VSREZ[1], ctx.VSREZ[2], ctx.VSREZ[3], ctx.VSREZ[4]],
-              vs2: [
-                [ctx.VS2[1][1], ctx.VS2[1][2], ctx.VS2[1][3], ctx.VS2[1][4]],
-                [ctx.VS2[2][1], ctx.VS2[2][2], ctx.VS2[2][3], ctx.VS2[2][4]],
-                [ctx.VS2[3][1], ctx.VS2[3][2], ctx.VS2[3][3], ctx.VS2[3][4]],
-                [ctx.VS2[4][1], ctx.VS2[4][2], ctx.VS2[4][3], ctx.VS2[4][4]],
-              ],
-            });
-            if (ctx.DEBUG_BL_FAILFAST) {
-              throw new Error('MRCHUE:ibl2 bad VS');
-            }
-          }
-          ctx._dbgIbl2Checked = true;
-        }
 
         if (direct) {
           ctx.VS2[4][1] = 0.0;
@@ -359,21 +231,6 @@ function mrchue(ctx) {
 
           gauss1(4, ctx.VS2, ctx.VSREZ);
 
-          if (ctx.DEBUG_BL && ibl === 2 && !Number.isFinite(ctx.VSREZ[3])) {
-            console.warn('MRCHUE:ibl2 bad VSREZ', {
-              is,
-              ibl,
-              itbl,
-              thi,
-              dsi,
-              uei,
-              vsrez: [ctx.VSREZ[1], ctx.VSREZ[2], ctx.VSREZ[3], ctx.VSREZ[4]],
-            });
-            if (ctx.DEBUG_BL_FAILFAST) {
-              throw new Error('MRCHUE:ibl2 bad VSREZ');
-            }
-          }
-
           dmax = Math.max(Math.abs(ctx.VSREZ[2] / thi), Math.abs(ctx.VSREZ[3] / dsi));
           if (ibl < ctx.ITRAN[is]) dmax = Math.max(dmax, Math.abs(ctx.VSREZ[1] / 10.0));
           if (ibl >= ctx.ITRAN[is]) dmax = Math.max(dmax, Math.abs(ctx.VSREZ[1] / cti));
@@ -381,22 +238,24 @@ function mrchue(ctx) {
           let rlx = 1.0;
           if (dmax > 0.3) rlx = 0.3 / dmax;
 
+          let hktest = null;
+          let hmax = null;
           if (ibl !== ctx.IBLTE[is] + 1) {
             msq = uei * uei * ctx.HSTINV / (ctx.GM1BL * (1.0 - 0.5 * uei * uei * ctx.HSTINV));
             const htest = (dsi + rlx * ctx.VSREZ[3]) / (thi + rlx * ctx.VSREZ[2]);
             const hkin = ctx.hkin(htest, msq);
-            const hktest = hkin.hk;
+            hktest = hkin.hk;
 
-            let hmax = htmax;
+            hmax = htmax;
             if (ibl < ctx.ITRAN[is]) hmax = hlmax;
             direct = hktest < hmax;
           }
 
-          if (direct) {
-            if (ibl >= ctx.ITRAN[is]) cti = cti + rlx * ctx.VSREZ[1];
-            thi = thi + rlx * ctx.VSREZ[2];
-            dsi = dsi + rlx * ctx.VSREZ[3];
-          } else {
+        if (direct) {
+          if (ibl >= ctx.ITRAN[is]) cti = cti + rlx * ctx.VSREZ[1];
+          thi = thi + rlx * ctx.VSREZ[2];
+          dsi = dsi + rlx * ctx.VSREZ[3];
+        } else {
             if (ibl < ctx.ITRAN[is]) {
               htarg = ctx.HK1 + 0.03 * (ctx.X2 - ctx.X1) / ctx.T1;
             } else if (ibl === ctx.ITRAN[is]) {
@@ -411,20 +270,23 @@ function mrchue(ctx) {
               hk2 = hk2 - (hk2 + constant * (hk2 - 1.0) ** 3 - ctx.HK1)
                 / (1.0 + 3.0 * constant * (hk2 - 1.0) ** 2);
               htarg = hk2;
-            } else {
-              htarg = ctx.HK1 - 0.15 * (ctx.X2 - ctx.X1) / ctx.T1;
-            }
+          } else {
+            htarg = ctx.HK1 - 0.15 * (ctx.X2 - ctx.X1) / ctx.T1;
+          }
 
-            if (wake) {
-              htarg = Math.max(htarg, 1.01);
-            } else {
-              const hmax = ibl < ctx.ITRAN[is] ? hlmax : htmax;
-              htarg = Math.max(htarg, hmax);
-            }
+          if (wake) {
+            htarg = Math.max(htarg, 1.01);
+          } else {
+            const hmax = ibl < ctx.ITRAN[is] ? hlmax : htmax;
+            htarg = Math.max(htarg, hmax);
+          }
 
-            // Inverse mode: retry with prescribed Hk.
-            direct = false;
-            continue;
+          ctx.HTARG[is][ibl] = htarg;
+          console.log(` MRCHUE: Inverse mode at ${String(ibl).padStart(4)}     Hk =${htarg.toFixed(3).padStart(8)}`);
+
+          // Inverse mode: retry with prescribed Hk.
+          direct = false;
+          continue;
           }
         } else {
           ctx.VS2[4][1] = 0.0;
@@ -470,6 +332,7 @@ function mrchue(ctx) {
       }
 
       if (dmax > 1.0e-5) {
+        console.log(` MRCHUE: Convergence failed at${String(ibl).padStart(4)}  side${String(is).padStart(3)}    Res =${dmax.toExponential(4).padStart(12)}`);
         if (dmax > 0.1 && ibl > 3) {
           if (ibl <= ctx.IBLTE[is]) {
             thi = ctx.THET[ibm][is] * (ctx.XSSI[ibl][is] / ctx.XSSI[ibm][is]) ** 0.5;
@@ -521,16 +384,6 @@ function mrchue(ctx) {
       ctx.DELT[ibl][is] = ctx.DE2;
       ctx.TSTR[ibl][is] = ctx.HS2 * ctx.T2;
 
-      if (ctx.DEBUG_BL && ibl === 2) {
-        const th2 = ctx.THET[ibl][is];
-        const ds2 = ctx.DSTR[ibl][is];
-        if (!Number.isFinite(th2) || !Number.isFinite(ds2)) {
-          console.warn('MRCHUE:ibl2 non-finite', { is, ibl, th2, ds2 });
-          if (ctx.DEBUG_BL_FAILFAST) {
-            throw new Error('MRCHUE:ibl2 non-finite');
-          }
-        }
-      }
 
       ctx.blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
       ctx.blkin(ctx);
@@ -541,11 +394,12 @@ function mrchue(ctx) {
         ctx.syncComToVars(ctx, 1);
       }
 
-      if (ctx.TRAN || ibl === ctx.IBLTE[is]) {
-        ctx.TURB = true;
-        ctx.TFORCE[is] = ctx.TRFORC;
-        ctx.XSSITR[is] = ctx.XT;
-      }
+    // Set transition state and force turbulence at TE.
+    if (ctx.TRAN || ibl === ctx.IBLTE[is]) {
+      ctx.TURB = true;
+      ctx.TFORCE[is] = ctx.TRFORC;
+      ctx.XSSITR[is] = ctx.XT;
+    }
 
       ctx.TRAN = false;
 
@@ -557,7 +411,11 @@ function mrchue(ctx) {
   }
 }
 
+// March Ue and BL variables with transition logic (MRCHDU).
 function mrchdu(ctx) {
+  // Fortran comments (MRCHDU) highlight:
+  // - March with transition logic and sensitivity weighting.
+  // - Update CTAU/THET/DSTR/UEDG based on branch (lam/turb/wake).
   const deps = 5.0e-6;
   const senswt = 1000.0;
 
@@ -570,6 +428,7 @@ function mrchdu(ctx) {
     let uei = ctx.UEDG[ibl][is];
     ctx.BULE = 1.0;
 
+    // Save previous transition index.
     const itrold = ctx.ITRAN[is];
 
     ctx.TRAN = false;
@@ -577,6 +436,7 @@ function mrchdu(ctx) {
     ctx.ITRAN[is] = ctx.IBLTE[is];
 
     let sens = 0.0;
+    let ami = 0.0;
 
     for (ibl = 2; ibl <= ctx.NBL[is]; ibl += 1) {
       const ibm = ibl - 1;
@@ -590,22 +450,9 @@ function mrchdu(ctx) {
 
       xsi = ctx.XSSI[ibl][is];
       uei = ctx.UEDG[ibl][is];
-      if (ctx.DEBUG_BL && ibl === 2 && !Number.isFinite(uei)) {
-        console.warn('MRCHDU:ibl2 non-finite UEDG', { is, ibl, uei });
-        if (ctx.DEBUG_BL_FAILFAST) {
-          throw new Error('MRCHDU:ibl2 non-finite UEDG');
-        }
-      }
       let thi = ctx.THET[ibl][is];
       let dsi = ctx.DSTR[ibl][is];
-      if (ctx.DEBUG_BL && ibl === 2 && (!Number.isFinite(thi) || !Number.isFinite(dsi))) {
-        console.warn('MRCHDU:ibl2 non-finite THET/DSTR', { is, ibl, thi, dsi });
-        if (ctx.DEBUG_BL_FAILFAST) {
-          throw new Error('MRCHDU:ibl2 non-finite THET/DSTR');
-        }
-      }
 
-      let ami = 0.0;
       let cti = 0.03;
       if (ibl < itrold) {
         ami = ctx.CTAU[ibl][is];
@@ -671,7 +518,8 @@ function mrchdu(ctx) {
           if (ibl < itrold) {
             if (ctx.TRAN) ctx.CTAU[ibl][is] = 0.03;
             if (ctx.TURB) ctx.CTAU[ibl][is] = ctx.CTAU[ibl - 1][is];
-            if (ctx.TRAN || ctx.TURB) {
+        // Turbulent or transition branch.
+        if (ctx.TRAN || ctx.TURB) {
               cti = ctx.CTAU[ibl][is];
               ctx.S2 = cti;
             }
@@ -816,6 +664,7 @@ function mrchdu(ctx) {
         ctx.syncComToVars(ctx, 1);
       }
 
+      // Force transition at TE or if transition detected.
       if (ctx.TRAN || ibl === ctx.IBLTE[is]) {
         ctx.TURB = true;
         ctx.TFORCE[is] = ctx.TRFORC;
@@ -827,8 +676,11 @@ function mrchdu(ctx) {
   }
 }
 
-// Assemble current BL state into system form prior to Newton iteration.
+// Assemble current BL state into system form prior to Newton iteration (SETBL).
 function setbl(ctx) {
+  // Fortran comments (SETBL) highlight:
+  // - Assemble system matrices and residuals for Newton iteration.
+  // - Set transition indices, compute TE coupling, and fill V arrays.
   const nsys = ctx.NSYS;
   const COM1 = ctx.COM1;
   const COM2 = ctx.COM2;
@@ -836,8 +688,11 @@ function setbl(ctx) {
   const VB = ctx.VB;
   const VDEL = ctx.VDEL;
   const VM = ctx.VM;
+  // No tracing; setbl assembles VA/VB/VDEL/VM directly.
+  // Clear COM arrays before assembling system.
   COM1.fill(0.0, 1);
   COM2.fill(0.0, 1);
+  // Index maps for system line -> side/BL index.
   if (!ctx.IV_TO_IS || ctx.IV_TO_IS.length < nsys + 1) {
     ctx.IV_TO_IS = new Int32Array(nsys + 1);
     ctx.IV_TO_IBL = new Int32Array(nsys + 1);
@@ -896,58 +751,12 @@ function setbl(ctx) {
   ctx.IDAMPV = ctx.IDAMP ?? ctx.IDAMPV ?? 0;
   ctx.DWTE = ctx.WGAP[1] ?? 0.0;
 
-  const UINV = ctx.UINV;
-  const UEDG = ctx.UEDG;
-  for (let is = 1; is <= 2; is += 1) {
-    for (let ibl = 2; ibl <= NBL[is]; ibl += 1) {
-      const uinv = UINV[ibl][is];
-      let ue = UEDG[ibl][is];
-      if (!Number.isFinite(ue) || ue <= 0.0) {
-        ue = Number.isFinite(uinv) ? Math.abs(uinv) : 1.0e-6;
-        UEDG[ibl][is] = ue > 0.0 ? ue : 1.0e-6;
-      }
-    }
-  }
-
   if (!ctx.LBLINI) {
     mrchue(ctx);
     ctx.LBLINI = true;
   }
 
   mrchdu(ctx);
-
-  const CTAU = ctx.CTAU;
-  const ITRAN = ctx.ITRAN;
-  for (let is = 1; is <= 2; is += 1) {
-    for (let ibl = 2; ibl <= NBL[is]; ibl += 1) {
-      if (!Number.isFinite(CTAU[ibl][is])) {
-        CTAU[ibl][is] = ibl < ITRAN[is] ? 0.0 : 0.03;
-      }
-    }
-  }
-
-  for (let is = 1; is <= 2; is += 1) {
-    for (let ibl = 2; ibl <= NBL[is]; ibl += 1) {
-      let uei = UEDG[ibl][is];
-      if (!Number.isFinite(uei) || uei <= 0.0) {
-        const uinv = UINV[ibl][is];
-        uei = Number.isFinite(uinv) ? Math.abs(uinv) : 1.0e-6;
-        UEDG[ibl][is] = uei > 0.0 ? uei : 1.0e-6;
-      }
-      let thi = ctx.THET[ibl][is];
-      let dsi = ctx.DSTR[ibl][is];
-      if (!Number.isFinite(thi) || !Number.isFinite(dsi) || thi <= 0.0 || dsi <= 0.0) {
-        const xsi = ctx.XSSI[ibl][is];
-        const ucon = uei / (xsi ** 1.0);
-        const tsq = 0.45 / (Math.max(ucon, 1.0e-6) * 6.0 * ctx.REYBL) * xsi ** 0.0;
-        thi = Math.sqrt(Math.max(tsq, 1.0e-12));
-        dsi = 2.2 * thi;
-        ctx.THET[ibl][is] = thi;
-        ctx.DSTR[ibl][is] = dsi;
-      }
-      ctx.MASS[ibl][is] = ctx.DSTR[ibl][is] * ctx.UEDG[ibl][is];
-    }
-  }
 
   const maxNbl = Math.max(ctx.NBL[1], ctx.NBL[2]);
   const usav = new Array(maxNbl + 1);
@@ -986,7 +795,6 @@ function setbl(ctx) {
         ctx.UEDG[ibl][is] = usav[ibl][is];
       }
     }
-    console.warn('SETBL: UESET produced non-finite UEDG', { badUeSet });
   }
 
   const ile1 = ctx.IPAN[2][1];
@@ -1044,6 +852,8 @@ function setbl(ctx) {
     ctx.TRAN = false;
     ctx.TURB = false;
 
+    let ami = 0.0;
+    let cti = 0.0;
     for (let ibl = 2; ibl <= ctx.NBL[is]; ibl += 1) {
       const iv = ctx.ISYS[ibl][is];
 
@@ -1055,36 +865,12 @@ function setbl(ctx) {
       const i = ctx.IPAN[ibl][is];
 
       const xsi = ctx.XSSI[ibl][is];
-      let ami = ibl < ctx.ITRAN[is] ? ctx.CTAU[ibl][is] : 0.0;
-      let cti = ibl >= ctx.ITRAN[is] ? ctx.CTAU[ibl][is] : 0.0;
-      if (!Number.isFinite(ami)) ami = 0.0;
-      if (!Number.isFinite(cti)) cti = 0.03;
-      let uei = ctx.UEDG[ibl][is];
-      let thi = ctx.THET[ibl][is];
-      let mdi = ctx.MASS[ibl][is];
-      let ueiSafe = uei;
-      if (!Number.isFinite(ueiSafe) || ueiSafe <= 0.0) {
-        const uinv = ctx.UINV[ibl][is];
-        ueiSafe = Number.isFinite(uinv) ? Math.abs(uinv) : 1.0e-6;
-        ctx.UEDG[ibl][is] = ueiSafe;
-      }
-      const ueiUse = Number.isFinite(ueiSafe) && ueiSafe > 0.0 ? ueiSafe : 1.0e-6;
-      uei = ueiUse;
-      let dsi = mdi / uei;
-      if (!Number.isFinite(thi) || !Number.isFinite(dsi) || thi <= 0.0 || dsi <= 0.0) {
-        const xsi = ctx.XSSI[ibl][is];
-        const ucon = ueiSafe / (xsi ** 1.0);
-        const tsq = 0.45 / (Math.max(ucon, 1.0e-6) * 6.0 * ctx.REYBL) * xsi ** 0.0;
-        thi = Math.sqrt(Math.max(tsq, 1.0e-12));
-        dsi = 2.2 * thi;
-        ctx.THET[ibl][is] = thi;
-        ctx.DSTR[ibl][is] = dsi;
-      }
-      if (!Number.isFinite(mdi)) {
-        mdi = dsi * ueiSafe;
-        ctx.MASS[ibl][is] = mdi;
-      }
-      dsi = mdi / uei;
+      if (ibl < ctx.ITRAN[is]) ami = ctx.CTAU[ibl][is];
+      if (ibl >= ctx.ITRAN[is]) cti = ctx.CTAU[ibl][is];
+      const uei = ctx.UEDG[ibl][is];
+      const thi = ctx.THET[ibl][is];
+      const mdi = ctx.MASS[ibl][is];
+      const dsi = mdi / uei;
 
       let dswaki = 0.0;
       if (ctx.WAKE) {
@@ -1111,9 +897,8 @@ function setbl(ctx) {
       const due2 = ctx.UEDG[ibl][is] - usav[ibl][is];
       const dds2 = d2U2 * due2;
 
-      ctx.blprv(xsi, ami, cti, thi, dsi, dswaki, ueiSafe, ctx);
+      ctx.blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
       ctx.blkin(ctx);
-      blCheck(ctx, 'SETBL:cur', { is, ibl });
 
       if (ctx.TRAN) {
         ctx.trchek(ctx);
@@ -1169,84 +954,6 @@ function setbl(ctx) {
         ctx.VB[1][2][iv] = ctx.VS1[1][2];
         ctx.VA[1][1][iv] = ctx.VS2[1][1];
         ctx.VA[1][2][iv] = ctx.VS2[1][2];
-
-        if (!Number.isFinite(ctx.VS2[1][1])) {
-          console.warn('SETBL: non-finite VS2(1,1)', {
-            is,
-            ibl,
-            simi: ctx.SIMI,
-            tran: ctx.TRAN,
-            turb: ctx.TURB,
-            x1: ctx.X1,
-            x2: ctx.X2,
-            t1: ctx.T1,
-            t2: ctx.T2,
-            d1: ctx.D1,
-            d2: ctx.D2,
-            u1: ctx.U1,
-            u2: ctx.U2,
-            hk1: ctx.HK1,
-            hk2: ctx.HK2,
-            rt1: ctx.RT1,
-            rt2: ctx.RT2,
-            ampl1: ctx.AMPL1,
-            ampl2: ctx.AMPL2,
-            s1: ctx.S1,
-            s2: ctx.S2,
-          });
-        }
-
-        if (!Number.isFinite(ctx.VS2[1][1])) {
-          console.warn('SETBL: non-finite VS2(1,1)', {
-            is,
-            ibl,
-            simi: ctx.SIMI,
-            tran: ctx.TRAN,
-            turb: ctx.TURB,
-            x1: ctx.X1,
-            x2: ctx.X2,
-            t1: ctx.T1,
-            t2: ctx.T2,
-            d1: ctx.D1,
-            d2: ctx.D2,
-            u1: ctx.U1,
-            u2: ctx.U2,
-            hk1: ctx.HK1,
-            hk2: ctx.HK2,
-            rt1: ctx.RT1,
-            rt2: ctx.RT2,
-            ampl1: ctx.AMPL1,
-            ampl2: ctx.AMPL2,
-            s1: ctx.S1,
-            s2: ctx.S2,
-          });
-        }
-
-        if (!Number.isFinite(ctx.VS2[1][1])) {
-          console.warn('SETBL: non-finite VS2(1,1)', {
-            is,
-            ibl,
-            simi: ctx.SIMI,
-            tran: ctx.TRAN,
-            turb: ctx.TURB,
-            x1: ctx.X1,
-            x2: ctx.X2,
-            t1: ctx.T1,
-            t2: ctx.T2,
-            d1: ctx.D1,
-            d2: ctx.D2,
-            u1: ctx.U1,
-            u2: ctx.U2,
-            hk1: ctx.HK1,
-            hk2: ctx.HK2,
-            rt1: ctx.RT1,
-            rt2: ctx.RT2,
-            ampl1: ctx.AMPL1,
-            ampl2: ctx.AMPL2,
-            s1: ctx.S1,
-            s2: ctx.S2,
-          });
-        }
 
         ctx.VDEL[1][2][iv] = ctx.LALFA
           ? ctx.VSR[1] * reClmr + ctx.VSM[1] * msqClmr
@@ -1387,19 +1094,6 @@ function setbl(ctx) {
           + (ctx.VS1[3][5] + ctx.VS2[3][5] + ctx.VSX[3])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
-        if (!Number.isFinite(ctx.VS2[2][2]) || !Number.isFinite(ctx.HK2) || !Number.isFinite(ctx.RT2)) {
-          console.warn('SETBL: non-finite system terms', {
-            is,
-            ibl,
-            xsi: ctx.X2,
-            uei: ctx.U2,
-            t2: ctx.T2,
-            d2: ctx.D2,
-            hk2: ctx.HK2,
-            rt2: ctx.RT2,
-            vs22: ctx.VS2[2][2],
-          });
-        }
       }
 
       if (ctx.TRAN) {
@@ -1412,8 +1106,13 @@ function setbl(ctx) {
         const chx = ctx.XTE - ctx.XLE;
         const chy = ctx.YTE - ctx.YLE;
         const chsq = chx ** 2 + chy ** 2;
-        const xtr = seval(str, ctx.X, ctx.XP, ctx.S, ctx.N);
-        const ytr = seval(str, ctx.Y, ctx.YP, ctx.S, ctx.N);
+        const s = ctx.S.subarray(1, ctx.N + 1);
+        const x = ctx.X.subarray(1, ctx.N + 1);
+        const y = ctx.Y.subarray(1, ctx.N + 1);
+        const xp = ctx.XP.subarray(1, ctx.N + 1);
+        const yp = ctx.YP.subarray(1, ctx.N + 1);
+        const xtr = seval(str, x, xp, s, ctx.N);
+        const ytr = seval(str, y, yp, s, ctx.N);
         ctx.XOCTR[is] = ((xtr - ctx.XLE) * chx + (ytr - ctx.YLE) * chy) / chsq;
         ctx.YOCTR[is] = ((ytr - ctx.YLE) * chx - (xtr - ctx.XLE) * chy) / chsq;
       }
@@ -1456,200 +1155,11 @@ function setbl(ctx) {
     }
   }
 
-  let badVa = 0;
-  for (let iv = 1; iv <= nsys; iv += 1) {
-    if (!Number.isFinite(VA[1][1][iv])) {
-      badVa += 1;
-      if (badVa <= 3) {
-        console.warn('SETBL: non-finite VA11', {
-          iv,
-          is: ivToIs[iv],
-          ibl: ivToIbl[iv],
-          va11: VA[1][1][iv],
-          vb11: VB[1][1][iv],
-          va22: VA[2][2][iv],
-          vm33: VM[3][iv][iv],
-        });
-      }
-    }
-  }
-  if (badVa > 0) {
-    console.warn('SETBL: non-finite VA11 count', { badVa });
-  }
+  // No additional diagnostics.
 }
 
-// Solve BL system with Newton iterations (laminar/turbulent switching).
-function blsolv(ctx) {
-  const nsys = ctx.NSYS;
-  const ivte1 = ctx.ISYS[ctx.IBLTE[1]][1];
-  const VA = ctx.VA;
-  const VB = ctx.VB;
-  const VM = ctx.VM;
-  const VDEL = ctx.VDEL;
-  const vacc1 = ctx.VACCEL;
-  const vacc2 = ctx.VACCEL * 2.0 / (ctx.S[ctx.N] - ctx.S[1]);
-  const vacc3 = ctx.VACCEL * 2.0 / (ctx.S[ctx.N] - ctx.S[1]);
-
-  for (let iv = 1; iv <= nsys; iv += 1) {
-    const ivp = iv + 1;
-
-    const va11 = VA[1][1][iv];
-    const va22 = VA[2][2][iv];
-    const vm33 = VM[3][iv][iv];
-    if (!Number.isFinite(va11) || !Number.isFinite(va22) || !Number.isFinite(vm33)
-      || va11 === 0.0 || va22 === 0.0 || vm33 === 0.0) {
-      console.warn('BLSOLV: singular block', { iv, va11, va22, vm33 });
-      return false;
-    }
-
-    let pivot = 1.0 / va11;
-    VA[1][2][iv] *= pivot;
-    for (let l = iv; l <= nsys; l += 1) {
-      VM[1][l][iv] *= pivot;
-    }
-    VDEL[1][1][iv] *= pivot;
-    VDEL[1][2][iv] *= pivot;
-
-    for (let k = 2; k <= 3; k += 1) {
-      const vtmp = VA[k][1][iv];
-      VA[k][2][iv] -= vtmp * VA[1][2][iv];
-      for (let l = iv; l <= nsys; l += 1) {
-        VM[k][l][iv] -= vtmp * VM[1][l][iv];
-      }
-      VDEL[k][1][iv] -= vtmp * VDEL[1][1][iv];
-      VDEL[k][2][iv] -= vtmp * VDEL[1][2][iv];
-    }
-
-    pivot = 1.0 / VA[2][2][iv];
-    for (let l = iv; l <= nsys; l += 1) {
-      VM[2][l][iv] *= pivot;
-    }
-    VDEL[2][1][iv] *= pivot;
-    VDEL[2][2][iv] *= pivot;
-
-    {
-      const k = 3;
-      const vtmp = VA[k][2][iv];
-      for (let l = iv; l <= nsys; l += 1) {
-        VM[k][l][iv] -= vtmp * VM[2][l][iv];
-      }
-      VDEL[k][1][iv] -= vtmp * VDEL[2][1][iv];
-      VDEL[k][2][iv] -= vtmp * VDEL[2][2][iv];
-    }
-
-    pivot = 1.0 / VM[3][iv][iv];
-    for (let l = ivp; l <= nsys; l += 1) {
-      VM[3][l][iv] *= pivot;
-    }
-    VDEL[3][1][iv] *= pivot;
-    VDEL[3][2][iv] *= pivot;
-
-    {
-      const vtmp1 = VM[1][iv][iv];
-      const vtmp2 = VM[2][iv][iv];
-      for (let l = ivp; l <= nsys; l += 1) {
-        VM[1][l][iv] -= vtmp1 * VM[3][l][iv];
-        VM[2][l][iv] -= vtmp2 * VM[3][l][iv];
-      }
-      VDEL[1][1][iv] -= vtmp1 * VDEL[3][1][iv];
-      VDEL[2][1][iv] -= vtmp2 * VDEL[3][1][iv];
-      VDEL[1][2][iv] -= vtmp1 * VDEL[3][2][iv];
-      VDEL[2][2][iv] -= vtmp2 * VDEL[3][2][iv];
-    }
-
-    {
-      const vtmp = VA[1][2][iv];
-      for (let l = ivp; l <= nsys; l += 1) {
-        VM[1][l][iv] -= vtmp * VM[2][l][iv];
-      }
-      VDEL[1][1][iv] -= vtmp * VDEL[2][1][iv];
-      VDEL[1][2][iv] -= vtmp * VDEL[2][2][iv];
-    }
-
-    if (iv === nsys) continue;
-
-    for (let k = 1; k <= 3; k += 1) {
-      const vtmp1 = VB[k][1][ivp];
-      const vtmp2 = VB[k][2][ivp];
-      const vtmp3 = VM[k][iv][ivp];
-      for (let l = ivp; l <= nsys; l += 1) {
-        VM[k][l][ivp] -= vtmp1 * VM[1][l][iv]
-          + vtmp2 * VM[2][l][iv]
-          + vtmp3 * VM[3][l][iv];
-      }
-      VDEL[k][1][ivp] -= vtmp1 * VDEL[1][1][iv]
-        + vtmp2 * VDEL[2][1][iv]
-        + vtmp3 * VDEL[3][1][iv];
-      VDEL[k][2][ivp] -= vtmp1 * VDEL[1][2][iv]
-        + vtmp2 * VDEL[2][2][iv]
-        + vtmp3 * VDEL[3][2][iv];
-    }
-
-    if (iv === ivte1) {
-      const ivz = ctx.ISYS[ctx.IBLTE[2] + 1][2];
-      for (let k = 1; k <= 3; k += 1) {
-        const vtmp1 = ctx.VZ[k][1];
-        const vtmp2 = ctx.VZ[k][2];
-        for (let l = ivp; l <= nsys; l += 1) {
-          VM[k][l][ivz] -= vtmp1 * VM[1][l][iv]
-            + vtmp2 * VM[2][l][iv];
-        }
-        VDEL[k][1][ivz] -= vtmp1 * VDEL[1][1][iv]
-          + vtmp2 * VDEL[2][1][iv];
-        VDEL[k][2][ivz] -= vtmp1 * VDEL[1][2][iv]
-          + vtmp2 * VDEL[2][2][iv];
-      }
-    }
-
-    if (ivp === nsys) continue;
-
-    for (let kv = iv + 2; kv <= nsys; kv += 1) {
-      const vtmp1 = VM[1][iv][kv];
-      const vtmp2 = VM[2][iv][kv];
-      const vtmp3 = VM[3][iv][kv];
-
-      if (Math.abs(vtmp1) > vacc1) {
-        for (let l = ivp; l <= nsys; l += 1) {
-          VM[1][l][kv] -= vtmp1 * VM[3][l][iv];
-        }
-        VDEL[1][1][kv] -= vtmp1 * VDEL[3][1][iv];
-        VDEL[1][2][kv] -= vtmp1 * VDEL[3][2][iv];
-      }
-      if (Math.abs(vtmp2) > vacc2) {
-        for (let l = ivp; l <= nsys; l += 1) {
-          VM[2][l][kv] -= vtmp2 * VM[3][l][iv];
-        }
-        VDEL[2][1][kv] -= vtmp2 * VDEL[3][1][iv];
-        VDEL[2][2][kv] -= vtmp2 * VDEL[3][2][iv];
-      }
-      if (Math.abs(vtmp3) > vacc3) {
-        for (let l = ivp; l <= nsys; l += 1) {
-          VM[3][l][kv] -= vtmp3 * VM[3][l][iv];
-        }
-        VDEL[3][1][kv] -= vtmp3 * VDEL[3][1][iv];
-        VDEL[3][2][kv] -= vtmp3 * VDEL[3][2][iv];
-      }
-    }
-  }
-
-  for (let iv = nsys; iv >= 2; iv -= 1) {
-    let vtmp = VDEL[3][1][iv];
-    for (let kv = iv - 1; kv >= 1; kv -= 1) {
-      VDEL[1][1][kv] -= VM[1][iv][kv] * vtmp;
-      VDEL[2][1][kv] -= VM[2][iv][kv] * vtmp;
-      VDEL[3][1][kv] -= VM[3][iv][kv] * vtmp;
-    }
-    vtmp = VDEL[3][2][iv];
-    for (let kv = iv - 1; kv >= 1; kv -= 1) {
-      VDEL[1][2][kv] -= VM[1][iv][kv] * vtmp;
-      VDEL[2][2][kv] -= VM[2][iv][kv] * vtmp;
-      VDEL[3][2][kv] -= VM[3][iv][kv] * vtmp;
-    }
-  }
-
-  return true;
-}
-
+// Forced transition position on each side (XIFSET).
+// Map x/c to arc-length position along each surface.
 function xifset(ctx, is) {
   if (ctx.XSTRIP[is] >= 1.0) {
     ctx.XIFORC = ctx.XSSI[ctx.IBLTE[is]][is];
@@ -1660,21 +1170,28 @@ function xifset(ctx, is) {
   const chy = ctx.YTE - ctx.YLE;
   const chsq = chx ** 2 + chy ** 2;
 
+  let dxNan = 0;
+  let agNan = 0;
   for (let i = 1; i <= ctx.N; i += 1) {
     ctx.W1[i] = ((ctx.X[i] - ctx.XLE) * chx + (ctx.Y[i] - ctx.YLE) * chy) / chsq;
     ctx.W2[i] = ((ctx.Y[i] - ctx.YLE) * chx - (ctx.X[i] - ctx.XLE) * chy) / chsq;
   }
 
-  splind(ctx.W1, ctx.W3, ctx.S, ctx.N, -999.0, -999.0);
-  splind(ctx.W2, ctx.W4, ctx.S, ctx.N, -999.0, -999.0);
+  const s1 = ctx.S.subarray(1, ctx.N + 1);
+  const w1 = ctx.W1.subarray(1, ctx.N + 1);
+  const w2 = ctx.W2.subarray(1, ctx.N + 1);
+  const w3 = ctx.W3.subarray(1, ctx.N + 1);
+  const w4 = ctx.W4.subarray(1, ctx.N + 1);
+  splind(w1, w3, s1, ctx.N, -999.0, -999.0);
+  splind(w2, w4, s1, ctx.N, -999.0, -999.0);
 
   if (is === 1) {
     let str = ctx.SLE + (ctx.S[1] - ctx.SLE) * ctx.XSTRIP[is];
-    str = sinvrt(str, ctx.XSTRIP[is], ctx.W1, ctx.W3, ctx.S, ctx.N);
+    str = sinvrt(str, ctx.XSTRIP[is], w1, w3, s1, ctx.N);
     ctx.XIFORC = Math.min((ctx.SST - str), ctx.XSSI[ctx.IBLTE[is]][is]);
   } else {
     let str = ctx.SLE + (ctx.S[ctx.N] - ctx.SLE) * ctx.XSTRIP[is];
-    str = sinvrt(str, ctx.XSTRIP[is], ctx.W1, ctx.W3, ctx.S, ctx.N);
+    str = sinvrt(str, ctx.XSTRIP[is], w1, w3, s1, ctx.N);
     ctx.XIFORC = Math.min((str - ctx.SST), ctx.XSSI[ctx.IBLTE[is]][is]);
   }
 
@@ -1683,11 +1200,16 @@ function xifset(ctx, is) {
   }
 }
 
-// Finalize BL step: update state variables and derived quantities.
+// Finalize BL step: update state variables and derived quantities (UPDATE).
+// Computes Newton deltas for (Ctau, Theta, m) and applies them to the BL state.
 function update(ctx) {
+  // Fortran comments (UPDATE) highlight:
+  // - Solve for alpha/CL correction (DAC) with relaxation.
+  // - Update BL variables and enforce limits.
   const dalmax = 0.5 * ctx.DTOR;
   const dalmin = -0.5 * ctx.DTOR;
 
+  // Allowable alpha/CL step limits.
   let dclmin = -0.5;
   const dclmax = 0.5;
   if (ctx.MATYP !== 1) dclmin = Math.max(-0.5, -0.9 * ctx.CL);
@@ -1698,51 +1220,6 @@ function update(ctx) {
   const uAc = Array.from({ length: ctx.IVX + 1 }, () => new Float64Array(3));
   const qnew = new Float64Array(ctx.IQX + 1);
   const qAc = new Float64Array(ctx.IQX + 1);
-
-  if (ctx.DEBUG_BL) {
-    let badMass = 0;
-    let badTh = 0;
-    let badDs = 0;
-    let badUe = 0;
-    for (let is = 1; is <= 2; is += 1) {
-      for (let ibl = 2; ibl <= ctx.NBL[is]; ibl += 1) {
-        if (!Number.isFinite(ctx.MASS[ibl][is])) badMass += 1;
-        if (!Number.isFinite(ctx.THET[ibl][is])) badTh += 1;
-        if (!Number.isFinite(ctx.DSTR[ibl][is])) badDs += 1;
-        if (!Number.isFinite(ctx.UEDG[ibl][is])) badUe += 1;
-      }
-    }
-    if (badMass || badTh || badDs || badUe) {
-      console.warn('BL: non-finite state pre-update', {
-        badMass,
-        badTh,
-        badDs,
-        badUe,
-      });
-      if (ctx.DEBUG_BL_FAILFAST) {
-        throw new Error('BL: non-finite state pre-update');
-      }
-    }
-  }
-
-  if (ctx.DEBUG_BL) {
-    let badVdel = 0;
-    for (let is = 1; is <= 2; is += 1) {
-      for (let ibl = 2; ibl <= ctx.NBL[is]; ibl += 1) {
-        const iv = ctx.ISYS[ibl][is];
-        if (!Number.isFinite(ctx.VDEL[1][1][iv]) || !Number.isFinite(ctx.VDEL[2][1][iv])
-          || !Number.isFinite(ctx.VDEL[3][1][iv])) {
-          badVdel += 1;
-        }
-      }
-    }
-    if (badVdel > 0) {
-      console.warn('BL: non-finite VDEL', { badVdel });
-      if (ctx.DEBUG_BL_FAILFAST) {
-        throw new Error('BL: non-finite VDEL');
-      }
-    }
-  }
 
   for (let is = 1; is <= 2; is += 1) {
     for (let ibl = 2; ibl <= ctx.NBL[is]; ibl += 1) {
@@ -1799,19 +1276,20 @@ function update(ctx) {
   {
     const i = 1;
     const cginc = 1.0 - (qnew[i] / ctx.QINF) ** 2;
-    cpg1 = cginc / (beta + bfac * cginc);
+    const den1 = beta + bfac * cginc;
+    cpg1 = cginc / den1;
     cpg1Ms = -cpg1 / (beta + bfac * cginc) * (betaMsq + bfacMsq * cginc);
     const cpiQ = -2.0 * qnew[i] / ctx.QINF ** 2;
     const cpcCpi = (1.0 - bfac * cpg1) / (beta + bfac * cginc);
     cpg1Ac = cpcCpi * cpiQ * qAc[i];
   }
-
   for (let i = 1; i <= ctx.N; i += 1) {
     let ip = i + 1;
     if (i === ctx.N) ip = 1;
 
     const cginc = 1.0 - (qnew[ip] / ctx.QINF) ** 2;
-    const cpg2 = cginc / (beta + bfac * cginc);
+    const den2 = beta + bfac * cginc;
+    const cpg2 = cginc / den2;
     const cpg2Ms = -cpg2 / (beta + bfac * cginc) * (betaMsq + bfacMsq * cginc);
 
     const cpiQ = -2.0 * qnew[ip] / ctx.QINF ** 2;
@@ -1837,16 +1315,20 @@ function update(ctx) {
 
   let rlx = 1.0;
   let dac = 0.0;
+  let denom = 0.0;
 
   if (ctx.LALFA) {
-    dac = (clnew - ctx.CL) / (1.0 - clAc - clMs * 2.0 * ctx.MINF * ctx.MINF_CL);
+    denom = 1.0 - clAc - clMs * 2.0 * ctx.MINF * ctx.MINF_CL;
+    dac = (clnew - ctx.CL) / denom;
     if (rlx * dac > dclmax) rlx = dclmax / dac;
     if (rlx * dac < dclmin) rlx = dclmin / dac;
   } else {
-    dac = (clnew - ctx.CLSPEC) / (0.0 - clAc - clA);
+    denom = 0.0 - clAc - clA;
+    dac = (clnew - ctx.CLSPEC) / denom;
     if (rlx * dac > dalmax) rlx = dalmax / dac;
     if (rlx * dac < dalmin) rlx = dalmin / dac;
   }
+  ctx.DAC = dac;
 
   ctx.RMSBL = 0.0;
   ctx.RMXBL = 0.0;
@@ -1915,6 +1397,7 @@ function update(ctx) {
   }
 
   ctx.RMSBL = Math.sqrt(ctx.RMSBL / (4.0 * (ctx.NBL[1] + ctx.NBL[2])));
+  ctx.RLX = rlx;
 
   if (ctx.LALFA) {
     ctx.CL = ctx.CL + rlx * dac;
@@ -1995,9 +1478,7 @@ function ueset(ctx) {
           dui += ueM * ctx.MASS[jbl][js];
         }
       }
-      let ue = ctx.UINV[ibl][is] + dui;
-      if (!Number.isFinite(ue) || ue <= 0.0) ue = 1.0e-6;
-      ctx.UEDG[ibl][is] = ue;
+      ctx.UEDG[ibl][is] = ctx.UINV[ibl][is] + dui;
     }
   }
 }
@@ -2012,7 +1493,6 @@ export {
   mrchdu,
   ueset,
   setbl,
-  blsolv,
   xifset,
   update,
 };

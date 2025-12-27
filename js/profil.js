@@ -8,7 +8,10 @@ function sign1(value) {
 }
 
 // Turbulent wall-profile solver: returns displacement thickness and skin friction.
+// Implements PRWALL from profil.f.
 function prwall(params) {
+  // Fortran comments (PRWALL) highlight:
+  // - Turbulent wall profile with compressibility corrections.
   const dstar = params.dstar;
   const theta = params.theta;
   const rt = params.rt;
@@ -326,7 +329,10 @@ function prwall(params) {
 }
 
 // Evaluate wall-normal velocity profile for given integral quantities.
+// Turbulent wall-law velocity profile construction (UWALL).
 function uwall(params) {
+  // Fortran comments (UWALL) highlight:
+  // - Construct velocity profile using wall-law integrals.
   const th = params.th;
   const uo = params.uo;
   const d0 = params.de;
@@ -426,6 +432,7 @@ function create3d(n1, n2, n3) {
 }
 
 // Block tridiagonal solver for profile equations (3x3 blocks).
+// Solve a 3x3 block tridiagonal system (B3SOLV).
 function b3solv(A, B, C, R, n, nrhs, nrmax) {
   for (let i = 1; i <= n; i += 1) {
     const im = i - 1;
@@ -524,7 +531,10 @@ function b3solv(A, B, C, R, n, nrhs, nrmax) {
 }
 
 // Laminar similarity solution helper (Falkner-Skan family).
+// Falkner-Skan laminar similarity profile (FS).
 function fs(params) {
+  // Fortran comments (FS) highlight:
+  // - Falkner-Skan similarity solution for laminar profiles.
   const inorm = params.inorm;
   const ispec = params.ispec;
   let bspec = params.bspec;

@@ -4,6 +4,7 @@
 const KPRX = 129;
 
 // Assemble a velocity profile from integral quantities (turbulent/laminar).
+// Mirrors BLU's profile reconstruction using PRWALL/UWALL or FS fallback.
 function bluProfile(params, deps) {
   if (!params || typeof params.hk !== 'number') {
     throw new Error('bluProfile requires params.hk');
@@ -103,7 +104,7 @@ function bluProfile(params, deps) {
   };
 }
 
-// Turbulent skin-friction correlation with compressibility correction.
+// Turbulent skin-friction correlation with compressibility correction (CFT).
 function cft(hk, rt, msq, cffac = 1.0) {
   const gam = 1.4;
   const gm1 = gam - 1.0;

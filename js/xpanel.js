@@ -2,6 +2,7 @@
 import { segspl } from './spline.js';
 import { atanc, setexp } from './xutils.js?v=1';
 import { ludcmp, baksub } from './xsolve.js';
+import { iblsys } from './xbl.js';
 
 // Panel-method core: geometry processing, wake setup, and influence calculations.
 
@@ -10,7 +11,7 @@ function sign1(value) {
   return value >= 0.0 ? 1.0 : -1.0;
 }
 
-// Compute panel angles with trailing-edge handling (sharp vs rounded).
+// Compute panel angles with trailing-edge handling (APCALC).
 function apcalc(ctx) {
   const { N: n, X: x, Y: y, NX: nx, NY: ny, APANEL: apanel, SHARP: sharp, PI: pi, ANTE: ante, ASTE: aste, DSTE: dste } = ctx;
 
@@ -35,35 +36,7 @@ function apcalc(ctx) {
   }
 }
 
-// Trailing-edge geometry diagnostics: sharpness and TE vector quantities.
-function tecalc(ctx) {
-  const { N: n, X: x, Y: y, XP: xp, YP: yp } = ctx;
-
-  const dxte = x[0] - x[n - 1];
-  const dyte = y[0] - y[n - 1];
-  const dxs = 0.5 * (-xp[0] + xp[n - 1]);
-  const dys = 0.5 * (-yp[0] + yp[n - 1]);
-
-  const ante = dxs * dyte - dys * dxte;
-  const aste = dxs * dxte + dys * dyte;
-  const dste = Math.sqrt(dxte * dxte + dyte * dyte);
-
-  let xmin = Infinity;
-  let xmax = -Infinity;
-  for (let i = 0; i < n; i += 1) {
-    xmin = Math.min(xmin, x[i]);
-    xmax = Math.max(xmax, x[i]);
-  }
-  const chord = Math.max(xmax - xmin, 1.0e-12);
-  const sharp = dste < 0.0001 * chord;
-
-  ctx.ANTE = ante;
-  ctx.ASTE = aste;
-  ctx.DSTE = dste;
-  ctx.SHARP = sharp;
-}
-
-// Generate wake panels aligned with local streamline direction.
+// Generate wake panels aligned with local streamline direction (XYWAKE).
 function xywake(ctx) {
   const { N: n, X: x, Y: y, XP: xp, YP: yp, S: s, NX: nx, NY: ny, APANEL: apanel } = ctx;
   const waklen = ctx.WAKLEN ?? 1.0;
@@ -73,14 +46,18 @@ function xywake(ctx) {
     return;
   }
 
+  // First wake point spacing from average of TE-adjacent panel lengths.
   const ds1 = 0.5 * ((s[1] - s[0]) + (s[n - 1] - s[n - 2]));
-  let xmin = Infinity;
-  let xmax = -Infinity;
-  for (let i = 0; i < n; i += 1) {
-    xmin = Math.min(xmin, x[i]);
-    xmax = Math.max(xmax, x[i]);
+  let chord = ctx.CHORD;
+  if (!Number.isFinite(chord) || chord <= 0.0) {
+    let xmin = Infinity;
+    let xmax = -Infinity;
+    for (let i = 0; i < n; i += 1) {
+      xmin = Math.min(xmin, x[i]);
+      xmax = Math.max(xmax, x[i]);
+    }
+    chord = xmax - xmin;
   }
-  const chord = xmax - xmin;
   const snew = ctx.SNEW ?? new Float64Array(n + nw);
   if (!ctx.SNEW || ctx.SNEW.length < n + nw) {
     ctx.SNEW = snew;
@@ -96,6 +73,7 @@ function xywake(ctx) {
   ctx.XTE = xte;
   ctx.YTE = yte;
 
+  // Set first wake point a tiny distance behind TE.
   const i0 = n;
   const sx = 0.5 * (yp[n - 1] - yp[0]);
   const sy = 0.5 * (xp[0] - xp[n - 1]);
@@ -106,6 +84,7 @@ function xywake(ctx) {
   y[i0] = yte + 0.0001 * nx[i0];
   s[i0] = s[n - 1];
 
+  // Streamfunction gradient components at the first wake point.
   const psiX = psilin(i0, x[i0], y[i0], 1.0, 0.0, false, false, ctx).psiNi;
   const psiY = psilin(i0, x[i0], y[i0], 0.0, 1.0, false, false, ctx).psiNi;
   const denom = Math.sqrt(psiX * psiX + psiY * psiY) || 1.0;
@@ -113,14 +92,16 @@ function xywake(ctx) {
   ny[i0 + 1] = -psiY / denom;
   apanel[i0] = Math.atan2(psiY, psiX);
 
+  // Set rest of wake points downstream.
   for (let iw = 1; iw < nw; iw += 1) {
     const i = n + iw;
     const ds = snew[i] - snew[i - 1];
-    x[i] = x[i - 1] - ds * ny[i - 1];
-    y[i] = y[i - 1] + ds * nx[i - 1];
+    x[i] = x[i - 1] - ds * ny[i];
+    y[i] = y[i - 1] + ds * nx[i];
     s[i] = s[i - 1] + ds;
     if (i === n + nw - 1) break;
 
+    // Normal vector for next wake point.
     const psiXw = psilin(i, x[i], y[i], 1.0, 0.0, false, false, ctx).psiNi;
     const psiYw = psilin(i, x[i], y[i], 0.0, 1.0, false, false, ctx).psiNi;
     const denomw = Math.sqrt(psiXw * psiXw + psiYw * psiYw) || 1.0;
@@ -134,12 +115,14 @@ function xywake(ctx) {
   ctx.LWDIJ = false;
 }
 
-// Wake strength initialization based on Kutta condition and geometry.
+// Wake strength initialization based on Kutta condition and geometry (QWCALC).
 function qwcalc(ctx) {
   const { N: n, NW: nw = 0, QINVU: qinvu, X: x, Y: y, NX: nx, NY: ny } = ctx;
+  // First wake point (same as TE).
   if (nw <= 0) return;
   qinvu[n][0] = qinvu[n - 1][0];
   qinvu[n][1] = qinvu[n - 1][1];
+  // Rest of wake.
   for (let i = n + 1; i < n + nw; i += 1) {
     const res = psilin(i, x[i], y[i], nx[i], ny[i], false, false, ctx);
     qinvu[i][0] = res.qtan1;
@@ -147,7 +130,7 @@ function qwcalc(ctx) {
   }
 }
 
-// Compute unit normals along the surface from spline parameterization.
+// Compute unit normals along the surface from spline parameterization (NCALC).
 function ncalc(x, y, s, n, xn, yn) {
   if (n <= 1) {
     return;
@@ -189,7 +172,7 @@ function ncalc(x, y, s, n, xn, yn) {
   }
 }
 
-// Assemble the panel influence matrix and RHS for gamma solution.
+// Assemble the panel influence matrix and RHS for gamma solution (GGCALC).
 function ggcalc(ctx) {
   const {
     N: n,
@@ -223,6 +206,7 @@ function ggcalc(ctx) {
     gamu[i][1] = 0.0;
   }
 
+  // Set up influence matrix rows for each control point.
   for (let i = 0; i < n; i += 1) {
     const { psi } = psilin(i, x[i], y[i], nx[i], ny[i], false, true, ctx);
 
@@ -239,6 +223,7 @@ function ggcalc(ctx) {
     gamu[i][1] = -res2;
   }
 
+  // Kutta condition row.
   for (let j = 0; j < n + 1; j += 1) {
     aij[n][j] = 0.0;
   }
@@ -247,10 +232,12 @@ function ggcalc(ctx) {
   gamu[n][0] = 0.0;
   gamu[n][1] = 0.0;
 
+  // Multiply each dPsi/dSig vector by inverse of dPsi/dGam matrix.
   for (let j = 0; j < n; j += 1) {
     bij[n][j] = 0.0;
   }
 
+  // Sharp TE gamma extrapolation row.
   if (sharp) {
     const ag1 = Math.atan2(-yp[0], -xp[0]);
     const ag2 = atanc(yp[n - 1], xp[n - 1], ag1);
@@ -277,6 +264,7 @@ function ggcalc(ctx) {
     gamu[n - 1][1] = -sbis;
   }
 
+  // Factor matrix and solve for alpha=0 and alpha=90 distributions.
   ludcmp(n + 1, aij, aijpiv);
 
   const rhs1 = new Float64Array(n + 1);
@@ -294,6 +282,7 @@ function ggcalc(ctx) {
     gamu[i][1] = rhs2[i];
   }
 
+  // Superimpose alpha=0 and alpha=90 distributions.
   const cosa = Math.cos(alfa);
   const sina = Math.sin(alfa);
   for (let i = 0; i < n; i += 1) {
@@ -303,9 +292,14 @@ function ggcalc(ctx) {
   }
 }
 
-// Streamfunction/velocity influence at (xi, yi) from a straight panel.
-// Derived from classical source/vortex panel integrals (Drela formulation).
+// Streamfunction/velocity influence at (xi, yi) from a straight panel (PSILIN).
+// Derived from classic source/vortex panel integrals (Drela formulation).
 function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
+  // Fortran comments (PSILIN) highlight:
+  // - Skip zero-length TE panel.
+  // - Use sign of yy for branch cuts in atan/log.
+  // - Apply TE source/vortex correction for sharp/round TE.
+  // - Accumulate streamfunction, normal derivative, and tangent velocities.
   const {
     N: n,
     X: x,
@@ -439,6 +433,7 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
 
     const sgn = (io >= 0 && io <= n - 1) ? 1.0 : sign1(yy);
 
+    // Guard self-influence for logarithms.
     if (io !== jo && rs1 > 0.0) {
       g1 = Math.log(rs1);
       t1 = Math.atan2(sgn * x1, sgn * yy) + (0.5 - 0.5 * sgn) * pi;
@@ -459,6 +454,7 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
     x2i = sx * nxi + sy * nyi;
     yyi = sx * nyi - sy * nxi;
 
+    // Geometry derivative terms for linearized influence coefficients.
     if (geolin) {
       const nxo = nx[jo];
       const nyo = ny[jo];
@@ -473,12 +469,14 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
       yyp = -((rx1 - x1 * sy) * nyp - (ry1 + x1 * sx) * nxp) * dsio;
     }
 
+    // Trailing edge panel: store indices for TE correction.
     if (jo === n - 1) {
       teJo = jo;
       teJp = jp;
       break;
     }
 
+    // Linear source variation on panels.
     if (siglin) {
       const x0 = 0.5 * (x1 + x2);
       const rs0 = x0 * x0 + yy * yy;
@@ -504,6 +502,7 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
       let ssum = (sig[jp] - sig[jo]) * dsio + (sig[jp] - sig[jm]) * dsim;
       let sdif = (sig[jp] - sig[jo]) * dsio - (sig[jp] - sig[jm]) * dsim;
 
+      // Accumulate streamfunction and its normal derivative.
       psi += qopi * (psum * ssum + pdif * sdif);
 
       dzdm[jm] += qopi * (-psum * dsim + pdif * dsim);
@@ -967,7 +966,7 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
   };
 }
 
-// Wake-panel influence (vortex sheet), used for Kutta and wake alignment.
+// Wake-panel influence (PSWLIN), used for Kutta and wake alignment.
 function pswlin(i, xi, yi, nxi, nyi, ctx) {
   const {
     N: n,
@@ -1123,8 +1122,12 @@ function pswlin(i, xi, yi, nxi, nyi, ctx) {
   return { psi, psiNi };
 }
 
-// dQ/dgamma sensitivity for viscous coupling (XFOIL's QDCALC).
+// dQ/dgamma sensitivity for viscous coupling (QDCALC).
 function qdcalc(ctx) {
+  // Fortran comments (QDCALC) highlight:
+  // - Multiply dPsi/dSig by inverse of dPsi/dGam.
+  // - No direct source influence for Kutta/TE extrapolation rows.
+  // - Wake-point dQtan/dGam and dQtan/dSig contributions.
   const n = ctx.N;
   const nw = ctx.NW ?? 0;
   const total = n + nw;
@@ -1146,6 +1149,7 @@ function qdcalc(ctx) {
   }
 
   if (nw > 0) {
+    // Source influence on airfoil surface.
     for (let i = 0; i < n; i += 1) {
       pswlin(i, ctx.X[i], ctx.Y[i], ctx.NX[i], ctx.NY[i], ctx);
       for (let j = n; j < total; j += 1) {
@@ -1153,6 +1157,7 @@ function qdcalc(ctx) {
       }
     }
 
+    // Kutta condition: no direct source influence.
     for (let j = n; j < total; j += 1) {
       ctx.BIJ[n][j] = 0.0;
       if (ctx.SHARP) ctx.BIJ[n - 1][j] = 0.0;
@@ -1175,6 +1180,7 @@ function qdcalc(ctx) {
       cij[iw] = new Float64Array(n);
     }
 
+    // Wake contribution: dQtan/dGam and dQtan/dSig at wake points.
     for (let i = n; i < total; i += 1) {
       const iw = i - n;
       psilin(i, ctx.X[i], ctx.Y[i], ctx.NX[i], ctx.NY[i], false, true, ctx);
@@ -1188,6 +1194,7 @@ function qdcalc(ctx) {
       }
     }
 
+    // Add effect of all sources on airfoil vorticity (wake Qtan).
     for (let i = n; i < total; i += 1) {
       const iw = i - n;
       for (let j = 0; j < n; j += 1) {
@@ -1206,6 +1213,7 @@ function qdcalc(ctx) {
       }
     }
 
+    // First wake point has same velocity as trailing edge.
     for (let j = 1; j <= total; j += 1) {
       dij[n + 1][j] = dij[n][j];
     }
@@ -1217,9 +1225,341 @@ function qdcalc(ctx) {
   return dij;
 }
 
+// Stagnation point from circulation sign change; used to split upper/lower (STFIND).
+function stfind(ctxPanel, nb) {
+  const gam = ctxPanel.GAM;
+  // Locate stagnation point where GAM changes sign.
+  let ist = Math.floor(nb / 2) - 1;
+  let found = false;
+  for (let i = 0; i < nb - 1; i += 1) {
+    if (gam[i] >= 0.0 && gam[i + 1] < 0.0) {
+      ist = i;
+      found = true;
+      break;
+    }
+  }
+
+  const s = ctxPanel.S;
+  if (!found) {
+    console.warn('STFIND: Stagnation point not found. Continuing ...');
+    ist = Math.floor(nb / 2) - 1;
+  }
+
+  const dgam = gam[ist + 1] - gam[ist];
+  const ds = s[ist + 1] - s[ist];
+  let sst;
+  if (dgam !== 0.0) {
+    if (gam[ist] < -gam[ist + 1]) {
+      sst = s[ist] - ds * (gam[ist] / dgam);
+    } else {
+      sst = s[ist + 1] - ds * (gam[ist + 1] / dgam);
+    }
+  } else {
+    sst = 0.5 * (s[ist] + s[ist + 1]);
+  }
+
+  if (sst <= s[ist]) sst = s[ist] + 1.0e-7;
+  if (sst >= s[ist + 1]) sst = s[ist + 1] - 1.0e-7;
+
+  const sstGo = dgam !== 0.0 ? (sst - s[ist + 1]) / dgam : 0.0;
+  const sstGp = dgam !== 0.0 ? (s[ist] - sst) / dgam : 0.0;
+
+  return { ist, sst, sstGo, sstGp };
+}
+
+// Map boundary-layer station indices to panel indices (IBLPAN).
+function iblpan(blCtx, nb, nw = 0) {
+  const ist = blCtx.IST;
+
+  // Top surface first.
+  let ibl = 1;
+  for (let i = ist; i >= 1; i -= 1) {
+    ibl += 1;
+    blCtx.IPAN[ibl][1] = i;
+    blCtx.VTI[ibl][1] = 1.0;
+  }
+  blCtx.IBLTE[1] = ibl;
+  blCtx.NBL[1] = ibl;
+
+  // Bottom surface next.
+  ibl = 1;
+  for (let i = ist + 1; i <= nb; i += 1) {
+    ibl += 1;
+    blCtx.IPAN[ibl][2] = i;
+    blCtx.VTI[ibl][2] = -1.0;
+  }
+  blCtx.IBLTE[2] = ibl;
+  // Wake points.
+  for (let iw = 1; iw <= nw; iw += 1) {
+    const i = nb + iw;
+    const iblw = blCtx.IBLTE[2] + iw;
+    blCtx.IPAN[iblw][2] = i;
+    blCtx.VTI[iblw][2] = -1.0;
+  }
+  blCtx.NBL[2] = blCtx.IBLTE[2] + nw;
+
+  // Upper wake pointers (for plotting).
+  for (let iw = 1; iw <= nw; iw += 1) {
+    blCtx.IPAN[blCtx.IBLTE[1] + iw][1] = blCtx.IPAN[blCtx.IBLTE[2] + iw][2];
+    blCtx.VTI[blCtx.IBLTE[1] + iw][1] = 1.0;
+  }
+
+  blCtx.LIPAN = true;
+}
+
+// Surface arc-length mapping for BL stations (XICALC).
+function xicalc(blCtx, ctxPanel) {
+  const s = ctxPanel.S;
+  const nb = ctxPanel.N;
+  const nw = ctxPanel.NW ?? 0;
+  const x = ctxPanel.X;
+  const y = ctxPanel.Y;
+  const xp = ctxPanel.XP;
+  const yp = ctxPanel.YP;
+  const xeps = 1.0e-7 * (s[nb - 1] - s[0]);
+  const sAt = (i) => s[i - 1];
+
+  // Minimum xi node arc length near stagnation point.
+  blCtx.XSSI[1][1] = 0.0;
+  for (let ibl = 2; ibl <= blCtx.IBLTE[1]; ibl += 1) {
+    const i = blCtx.IPAN[ibl][1];
+    blCtx.XSSI[ibl][1] = Math.max(blCtx.SST - sAt(i), xeps);
+  }
+
+  blCtx.XSSI[1][2] = 0.0;
+  for (let ibl = 2; ibl <= blCtx.IBLTE[2]; ibl += 1) {
+    const i = blCtx.IPAN[ibl][2];
+    blCtx.XSSI[ibl][2] = Math.max(sAt(i) - blCtx.SST, xeps);
+  }
+
+  if (nw <= 0) {
+    return;
+  }
+
+  // Wake arc lengths (both sides).
+  const ibl1 = blCtx.IBLTE[1] + 1;
+  blCtx.XSSI[ibl1][1] = blCtx.XSSI[ibl1 - 1][1];
+
+  const ibl2 = blCtx.IBLTE[2] + 1;
+  blCtx.XSSI[ibl2][2] = blCtx.XSSI[ibl2 - 1][2];
+
+  for (let ibl = blCtx.IBLTE[2] + 2; ibl <= blCtx.NBL[2]; ibl += 1) {
+    const i = blCtx.IPAN[ibl][2];
+    const dxssi = Math.sqrt((x[i - 1] - x[i - 2]) ** 2 + (y[i - 1] - y[i - 2]) ** 2);
+
+    const ibl1w = blCtx.IBLTE[1] + ibl - blCtx.IBLTE[2];
+    const ibl2w = blCtx.IBLTE[2] + ibl - blCtx.IBLTE[2];
+    blCtx.XSSI[ibl1w][1] = blCtx.XSSI[ibl1w - 1][1] + dxssi;
+    blCtx.XSSI[ibl2w][2] = blCtx.XSSI[ibl2w - 1][2] + dxssi;
+  }
+
+  const telrat = 2.5;
+  const crosp = (xp[0] * yp[nb - 1] - yp[0] * xp[nb - 1])
+    / Math.sqrt((xp[0] ** 2 + yp[0] ** 2) * (xp[nb - 1] ** 2 + yp[nb - 1] ** 2));
+  let dwdxte = crosp / Math.sqrt(1.0 - crosp ** 2);
+  dwdxte = Math.max(dwdxte, -3.0 / telrat);
+  dwdxte = Math.min(dwdxte, 3.0 / telrat);
+
+  const aa = 3.0 + telrat * dwdxte;
+  const bb = -2.0 - telrat * dwdxte;
+
+  if (ctxPanel.SHARP) {
+    for (let iw = 1; iw <= nw; iw += 1) {
+      blCtx.WGAP[iw] = 0.0;
+    }
+  } else {
+    for (let iw = 1; iw <= nw; iw += 1) {
+      const ibl = blCtx.IBLTE[2] + iw;
+      const zn = 1.0 - (blCtx.XSSI[ibl][2] - blCtx.XSSI[blCtx.IBLTE[2]][2]) / (telrat * ctxPanel.ANTE);
+      blCtx.WGAP[iw] = 0.0;
+      if (zn >= 0.0) {
+        blCtx.WGAP[iw] = ctxPanel.ANTE * (aa + bb * zn) * zn ** 2;
+      }
+    }
+  }
+}
+
+// Build BL input arrays from inviscid edge velocities (XFOIL UICALC).
+// UINV(IBL,IS) = VTI * QINV(I), UINV_A likewise.
+function uicalc(blCtx, qinv, qinvA) {
+  for (let is = 1; is <= 2; is += 1) {
+    blCtx.UINV[1][is] = 0.0;
+    blCtx.UINV_A[1][is] = 0.0;
+    for (let ibl = 2; ibl <= blCtx.NBL[is]; ibl += 1) {
+      const i = blCtx.IPAN[ibl][is];
+      blCtx.UINV[ibl][is] = blCtx.VTI[ibl][is] * qinv[i];
+      blCtx.UINV_A[ibl][is] = blCtx.VTI[ibl][is] * qinvA[i];
+    }
+  }
+}
+
+// Compute viscous edge speed array from BL variables (XFOIL QVFUE).
+// QVIS(I) = VTI * UEDG(IBL,IS).
+function qvfue(blCtx, qvis) {
+  for (let is = 1; is <= 2; is += 1) {
+    for (let ibl = 2; ibl <= blCtx.NBL[is]; ibl += 1) {
+      const i = blCtx.IPAN[ibl][is];
+      qvis[i] = blCtx.VTI[ibl][is] * blCtx.UEDG[ibl][is];
+    }
+  }
+}
+
+// Set inviscid panel tangential velocity for current alpha (XFOIL QISET).
+// QINV = cos(alpha) * QINVU0 + sin(alpha) * QINVU90.
+function qiset(ctxPanel, alphaRad) {
+  const total = ctxPanel.N + (ctxPanel.NW ?? 0);
+  const qinv = new Float64Array(total + 1);
+  const qinvA = new Float64Array(total + 1);
+  // Superimpose alpha=0 and alpha=90 distributions.
+  const alfa = Number.isFinite(alphaRad) ? alphaRad : (ctxPanel.ALFA ?? 0.0);
+  const cosA = Math.cos(alfa);
+  const sinA = Math.sin(alfa);
+  for (let i = 1; i <= total; i += 1) {
+    const q0 = ctxPanel.QINVU[i - 1][0];
+    const q90 = ctxPanel.QINVU[i - 1][1];
+    const qi = cosA * q0 + sinA * q90;
+    qinv[i] = Number.isFinite(qi) ? qi : 0.0;
+    const qAi = -sinA * q0 + cosA * q90;
+    qinvA[i] = Number.isFinite(qAi) ? qAi : 0.0;
+  }
+  if (ctxPanel.QINV) {
+    ctxPanel.QINV.set(qinv);
+  }
+  if (ctxPanel.QINV_A) {
+    ctxPanel.QINV_A.set(qinvA);
+  }
+  return { qinv, qinvA };
+}
+
+// Update panel circulation from viscous edge velocities (GAMQV).
+// GAM(I) = QVIS(I), GAM_A(I) = QINV_A(I).
+function gamqv(ctxPanel, qvis, qinvA) {
+  const nb = ctxPanel.N;
+  for (let i = 1; i <= nb; i += 1) {
+    ctxPanel.GAM[i - 1] = qvis[i];
+    if (ctxPanel.GAM_A) {
+      ctxPanel.GAM_A[i - 1] = qinvA[i];
+    }
+  }
+  if (ctxPanel.QVIS) {
+    ctxPanel.QVIS.set(qvis);
+  }
+}
+
+// Relocate stagnation point and update BL indices (XFOIL STMOVE).
+// Shifts BL arrays when IST changes so marching can resume consistently.
+function stmove(ctxPanel, blCtx, qinv, qinvA) {
+  // Fortran comments (STMOVE) highlight:
+  // - Reset BL pointers when stagnation point moves.
+  // - Shift BL arrays between top/bottom sides.
+  // - Clamp Ue to small positive value at stagnation.
+  const nb = ctxPanel.N;
+  const istOld = blCtx.IST;
+  const { ist, sst, sstGo, sstGp } = stfind(ctxPanel, nb);
+  const istNew = ist + 1;
+
+  blCtx.IST = istNew;
+  blCtx.SST = sst;
+  blCtx.SST_GO = sstGo;
+  blCtx.SST_GP = sstGp;
+
+  if (istNew === istOld) {
+    xicalc(blCtx, ctxPanel);
+    return;
+  }
+
+  // Reset BL pointers and Ue mapping for new stagnation point.
+  iblpan(blCtx, nb, ctxPanel.NW ?? 0);
+  uicalc(blCtx, qinv, qinvA);
+  xicalc(blCtx, ctxPanel);
+  iblsys(blCtx);
+
+  if (istNew > istOld) {
+    const idif = istNew - istOld;
+    blCtx.ITRAN[1] += idif;
+    blCtx.ITRAN[2] -= idif;
+
+    for (let ibl = blCtx.NBL[1]; ibl >= idif + 2; ibl -= 1) {
+      blCtx.CTAU[ibl][1] = blCtx.CTAU[ibl - idif][1];
+      blCtx.THET[ibl][1] = blCtx.THET[ibl - idif][1];
+      blCtx.DSTR[ibl][1] = blCtx.DSTR[ibl - idif][1];
+      blCtx.UEDG[ibl][1] = blCtx.UEDG[ibl - idif][1];
+    }
+
+    const dudx = blCtx.UEDG[idif + 2][1] / blCtx.XSSI[idif + 2][1];
+    for (let ibl = idif + 1; ibl >= 2; ibl -= 1) {
+      blCtx.CTAU[ibl][1] = blCtx.CTAU[idif + 2][1];
+      blCtx.THET[ibl][1] = blCtx.THET[idif + 2][1];
+      blCtx.DSTR[ibl][1] = blCtx.DSTR[idif + 2][1];
+      blCtx.UEDG[ibl][1] = dudx * blCtx.XSSI[ibl][1];
+    }
+
+    for (let ibl = 2; ibl <= blCtx.NBL[2]; ibl += 1) {
+      blCtx.CTAU[ibl][2] = blCtx.CTAU[ibl + idif][2];
+      blCtx.THET[ibl][2] = blCtx.THET[ibl + idif][2];
+      blCtx.DSTR[ibl][2] = blCtx.DSTR[ibl + idif][2];
+      blCtx.UEDG[ibl][2] = blCtx.UEDG[ibl + idif][2];
+    }
+  } else {
+    const idif = istOld - istNew;
+    blCtx.ITRAN[1] -= idif;
+    blCtx.ITRAN[2] += idif;
+
+    for (let ibl = blCtx.NBL[2]; ibl >= idif + 2; ibl -= 1) {
+      blCtx.CTAU[ibl][2] = blCtx.CTAU[ibl - idif][2];
+      blCtx.THET[ibl][2] = blCtx.THET[ibl - idif][2];
+      blCtx.DSTR[ibl][2] = blCtx.DSTR[ibl - idif][2];
+      blCtx.UEDG[ibl][2] = blCtx.UEDG[ibl - idif][2];
+    }
+
+    const dudx = blCtx.UEDG[idif + 2][2] / blCtx.XSSI[idif + 2][2];
+    for (let ibl = idif + 1; ibl >= 2; ibl -= 1) {
+      blCtx.CTAU[ibl][2] = blCtx.CTAU[idif + 2][2];
+      blCtx.THET[ibl][2] = blCtx.THET[idif + 2][2];
+      blCtx.DSTR[ibl][2] = blCtx.DSTR[idif + 2][2];
+      blCtx.UEDG[ibl][2] = dudx * blCtx.XSSI[ibl][2];
+    }
+
+    for (let ibl = 2; ibl <= blCtx.NBL[1]; ibl += 1) {
+      blCtx.CTAU[ibl][1] = blCtx.CTAU[ibl + idif][1];
+      blCtx.THET[ibl][1] = blCtx.THET[ibl + idif][1];
+      blCtx.DSTR[ibl][1] = blCtx.DSTR[ibl + idif][1];
+      blCtx.UEDG[ibl][1] = blCtx.UEDG[ibl + idif][1];
+    }
+  }
+
+  const ueps = 1.0e-7;
+  for (let is = 1; is <= 2; is += 1) {
+    for (let ibl = 2; ibl <= blCtx.NBL[is]; ibl += 1) {
+      if (blCtx.UEDG[ibl][is] <= ueps) {
+        blCtx.UEDG[ibl][is] = ueps;
+        const i = blCtx.IPAN[ibl][is];
+        if (ctxPanel.QVIS && i >= 1 && i <= ctxPanel.QVIS.length - 1) {
+          ctxPanel.QVIS[i] = blCtx.VTI[ibl][is] * ueps;
+        }
+        if (i >= 1 && i <= nb) {
+          ctxPanel.GAM[i - 1] = blCtx.VTI[ibl][is] * ueps;
+        }
+      }
+      blCtx.MASS[ibl][is] = blCtx.DSTR[ibl][is] * blCtx.UEDG[ibl][is];
+    }
+  }
+
+  const ist0 = blCtx.IST - 1;
+  const upperIdx = [];
+  for (let i = ist0; i >= 0; i -= 1) {
+    upperIdx.push(i);
+  }
+  const lowerIdx = [];
+  for (let i = ist0 + 1; i < nb; i += 1) {
+    lowerIdx.push(i);
+  }
+  blCtx.upperIdx = upperIdx;
+  blCtx.lowerIdx = lowerIdx;
+}
+
 export {
   apcalc,
-  tecalc,
   xywake,
   qwcalc,
   ncalc,
@@ -1227,4 +1567,12 @@ export {
   psilin,
   pswlin,
   qdcalc,
+  stfind,
+  iblpan,
+  xicalc,
+  uicalc,
+  qvfue,
+  qiset,
+  gamqv,
+  stmove,
 };

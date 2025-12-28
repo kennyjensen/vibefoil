@@ -27,6 +27,7 @@ const seriesRadios = Array.from(document.querySelectorAll('input[name="series"]'
 const sourceRadios = Array.from(document.querySelectorAll('input[name="source"]'));
 const nacaOptions = document.getElementById('nacaOptions');
 const customOptions = document.getElementById('customOptions');
+const databaseOptions = document.getElementById('databaseOptions');
 const controls4 = document.getElementById('controls4');
 const controls5 = document.getElementById('controls5');
 const controls6 = document.getElementById('controls6');
@@ -39,6 +40,24 @@ const dataLd = document.getElementById('dataLd');
 const dataNcr = document.getElementById('dataNcr');
 const dataConverged = document.getElementById('dataConverged');
 const DEFAULT_BL_ITER = 20;
+const UIUC_BASE_URL = 'https://raw.githubusercontent.com/kennyjensen/uiuc_airfoil_database/master/';
+const UIUC_INDEX_URL = window.UIUC_INDEX_URL || `${UIUC_BASE_URL}airfoils.json`;
+const UIUC_FALLBACK_LIST = [
+  'e387.dat',
+  'e423.dat',
+  'fx63-137.dat',
+  'fx63-137sm.dat',
+  'naca2412.dat',
+  'naca4412.dat',
+  'naca0012.dat',
+  'naca0015.dat',
+  'naca6409.dat',
+  'sd7003.dat',
+  'sd7037.dat',
+  's1223.dat',
+];
+let uiucListLoaded = false;
+let uiucListLoading = false;
 
 const mSlider = document.getElementById('m');
 const pSlider = document.getElementById('p');
@@ -62,9 +81,16 @@ const ncrInput = document.getElementById('ncr');
 const nIterInput = document.getElementById('nIter');
 const loadDatButton = document.getElementById('loadDat');
 const datFileInput = document.getElementById('datFile');
+const uiucNameInput = document.getElementById('uiucName');
+const uiucList = document.getElementById('uiucList');
+const fetchUiucButton = document.getElementById('fetchUiuc');
+const uiucStatus = document.getElementById('uiucStatus');
 const flapXInput = document.getElementById('flapX');
 const flapYInput = document.getElementById('flapY');
 const flapDefInput = document.getElementById('flapDef');
+const flapDefValue = document.getElementById('flapDefValue');
+const flapXValue = document.getElementById('flapXValue');
+const flapYValue = document.getElementById('flapYValue');
 const alphaSlider = document.getElementById('alpha');
 const alphaValue = document.getElementById('alphaValue');
 const alphaMinus = document.getElementById('alphaMinus');
@@ -180,6 +206,23 @@ function updateAlphaLabel(alpha) {
   alphaValue.textContent = `${alpha.toFixed(1)}°`;
 }
 
+function updateFlapDefLabel(value) {
+  if (!flapDefValue) return;
+  const num = Number.isFinite(value) ? value : 0.0;
+  flapDefValue.textContent = `${num.toFixed(1)}°`;
+}
+
+function updateFlapHingeLabels(xValue, yValue) {
+  if (flapXValue) {
+    const num = Number.isFinite(xValue) ? xValue : 0.0;
+    flapXValue.textContent = num.toFixed(2);
+  }
+  if (flapYValue) {
+    const num = Number.isFinite(yValue) ? yValue : 0.0;
+    flapYValue.textContent = num.toFixed(2);
+  }
+}
+
 // Subscript labeling to mimic textbook notation (C_L, C_D, etc.).
 function drawSubLabel(ctx2d, base, sub, x, y) {
   const baseFont = ctx2d.font;
@@ -207,9 +250,19 @@ function createRunCase() {
   const color = colors[(nextCaseId - 1) % colors.length];
   const id = nextCaseId;
   nextCaseId += 1;
+  const rawName = (currentAirfoilName || 'Foil').replace(/[^A-Za-z0-9]/g, '');
+  const foilLabel = rawName.length ? rawName.slice(0, 8) : 'Foil';
+  const reynolds = parseFloat(reynoldsInput?.value);
+  const reLabel = Number.isFinite(reynolds)
+    ? reynolds.toExponential(0).replace('+', '')
+    : '—';
+  const deflection = parseFloat(flapDefInput?.value);
+  const defLabel = Number.isFinite(deflection)
+    ? `${Math.abs(deflection - Math.round(deflection)) < 1.0e-6 ? Math.round(deflection) : deflection.toFixed(1)}°`
+    : '—';
   return {
     id,
-    name: `Case ${id}`,
+    name: `${foilLabel}, Re=${reLabel}, δ=${defLabel}`,
     color,
     history: [],
     sweep: null,
@@ -959,6 +1012,121 @@ function loadCustomAirfoil(data) {
   currentAirfoilName = data.name;
 }
 
+function setUiucStatus(message, isError = false) {
+  if (!uiucStatus) return;
+  uiucStatus.textContent = message;
+  uiucStatus.hidden = !message;
+  uiucStatus.classList.toggle('error', isError);
+}
+
+function normalizeUiucFilename(rawName) {
+  const trimmed = String(rawName || '').trim();
+  if (!trimmed) return null;
+  const base = trimmed.split('/').pop() || '';
+  if (!base) return null;
+  return base.toLowerCase().endsWith('.dat') ? base : `${base}.dat`;
+}
+
+function renderUiucList(items) {
+  if (!uiucList) return;
+  uiucList.innerHTML = '';
+  items.forEach((name) => {
+    const option = document.createElement('option');
+    option.value = name;
+    uiucList.appendChild(option);
+  });
+}
+
+function parseUiucIndex(text) {
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed.map((name) => String(name)).filter(Boolean);
+    }
+    if (Array.isArray(parsed?.names)) {
+      return parsed.names.map((name) => String(name)).filter(Boolean);
+    }
+  } catch (error) {
+    // Fall through to line parsing.
+  }
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'));
+}
+
+async function ensureUiucListLoaded() {
+  if (uiucListLoaded || uiucListLoading || !uiucList) return;
+  uiucListLoading = true;
+  if (!uiucListLoaded) {
+    renderUiucList(UIUC_FALLBACK_LIST);
+  }
+  try {
+    const response = await fetch(UIUC_INDEX_URL);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const text = await response.text();
+    const names = parseUiucIndex(text).filter((name) => name.toLowerCase().endsWith('.dat'));
+    if (names.length > 0) {
+      renderUiucList(names);
+    }
+    uiucListLoaded = true;
+  } catch (error) {
+    uiucListLoaded = true;
+    setUiucStatus('Autocomplete using starter list (index fetch failed).');
+  } finally {
+    uiucListLoading = false;
+  }
+}
+
+async function fetchUiucAirfoil() {
+  if (!fetchUiucButton || !uiucNameInput) return;
+  const filename = normalizeUiucFilename(uiucNameInput.value);
+  if (!filename) {
+    setUiucStatus('Enter a .dat filename to fetch.', true);
+    return;
+  }
+
+  const url = `${UIUC_BASE_URL}${encodeURIComponent(filename)}`;
+  fetchUiucButton.disabled = true;
+  setUiucStatus(`Fetching ${filename}...`);
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const text = await response.text();
+    const data = parseDatAirfoil(text);
+    if (!data) {
+      throw new Error('No coordinates parsed.');
+    }
+    if (!data.name || data.name === 'Loaded Airfoil') {
+      data.name = filename.replace(/\.dat$/i, '');
+    }
+    loadCustomAirfoil(data);
+    const dbRadio = sourceRadios.find((radio) => radio.value === 'database');
+    if (dbRadio) {
+      dbRadio.checked = true;
+    }
+    nacaOptions.hidden = true;
+    customOptions.hidden = true;
+    if (databaseOptions) {
+      databaseOptions.hidden = false;
+    }
+    controls4.hidden = true;
+    controls5.hidden = true;
+    controls6.hidden = true;
+    setUiucStatus(`Loaded ${data.name}.`);
+    update();
+  } catch (error) {
+    setUiucStatus(`Fetch failed: ${error.message}`, true);
+  } finally {
+    fetchUiucButton.disabled = false;
+  }
+}
+
 
 // Cp plot in XFOIL style: viscous Cp with optional inviscid overlay.
 function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpWake = []) {
@@ -1407,7 +1575,7 @@ function drawAirfoil(nb, bounds) {
   ctx.restore();
 
   const source = sourceRadios.find((radio) => radio.checked)?.value || 'naca';
-  const isCustom = source === 'custom' && customAirfoil;
+  const isCustom = (source === 'custom' || source === 'database') && customAirfoil;
 
   ctx.save();
   ctx.lineWidth = 2.5;
@@ -1454,6 +1622,28 @@ function drawAirfoil(nb, bounds) {
   ctx.restore();
 }
 
+function drawFlapHinge(bounds, hinge) {
+  if (!hinge || !Number.isFinite(hinge.x) || !Number.isFinite(hinge.y)) return;
+  const p = worldToCanvas(hinge.x, hinge.y, bounds);
+  const size = 6;
+
+  ctx.save();
+  ctx.strokeStyle = '#ffd166';
+  ctx.lineWidth = 2.0;
+  ctx.beginPath();
+  ctx.moveTo(p.x - size, p.y);
+  ctx.lineTo(p.x + size, p.y);
+  ctx.moveTo(p.x, p.y - size);
+  ctx.lineTo(p.x, p.y + size);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(255, 209, 102, 0.6)';
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 function applySolverResult(payload) {
   if (!payload?.ok) return;
   const {
@@ -1466,6 +1656,7 @@ function applySolverResult(payload) {
     coeffs,
     converged,
     blLines,
+    hinge,
     airfoilName,
     alphaDeg,
     alphaRad,
@@ -1508,6 +1699,7 @@ function applySolverResult(payload) {
   drawPolarPlot();
 
   drawAirfoil(nb, bounds);
+  drawFlapHinge(bounds, hinge);
   if (viscous && blLines) {
     drawBoundaryLayerLines(bounds, blLines);
   }
@@ -1560,10 +1752,15 @@ function update() {
   const alphaDeg = parseFloat(alphaSlider.value);
   const alphaRad = alphaDeg * (Math.PI / 180.0);
   updateAlphaLabel(alphaDeg);
+  updateFlapDefLabel(parseFloat(flapDefInput?.value));
+  updateFlapHingeLabels(
+    parseFloat(flapXInput?.value),
+    parseFloat(flapYInput?.value),
+  );
 
-  if (source === 'custom') {
+  if (source === 'custom' || source === 'database') {
     if (!customAirfoil) {
-      currentAirfoilName = 'Load .dat airfoil';
+      currentAirfoilName = source === 'database' ? 'Select database airfoil' : 'Load .dat airfoil';
       return Promise.resolve({ skipped: true });
     }
   } else if (mode === '4') {
@@ -1590,8 +1787,8 @@ function update() {
   }
 
   let geometryKey = '';
-  if (source === 'custom') {
-    geometryKey = `custom:${customAirfoil?.name || 'none'}:${customAirfoilVersion}`;
+  if (source === 'custom' || source === 'database') {
+    geometryKey = `${source}:${customAirfoil?.name || 'none'}:${customAirfoilVersion}`;
   } else if (mode === '4') {
     geometryKey = `naca4:${mSlider.value}:${pSlider.value}:${tSlider.value}`;
   } else if (mode === '5') {
@@ -1724,11 +1921,15 @@ sourceRadios.forEach((radio) => {
   radio.addEventListener('change', () => {
     const source = sourceRadios.find((item) => item.checked)?.value || 'naca';
     const isCustom = source === 'custom';
-    nacaOptions.hidden = isCustom;
+    const isDatabase = source === 'database';
+    nacaOptions.hidden = source !== 'naca';
     customOptions.hidden = !isCustom;
-    controls4.hidden = isCustom || (seriesRadios.find((item) => item.checked)?.value || '4') !== '4';
-    controls5.hidden = isCustom || (seriesRadios.find((item) => item.checked)?.value || '4') !== '5';
-    controls6.hidden = isCustom || (seriesRadios.find((item) => item.checked)?.value || '4') !== '6';
+    if (databaseOptions) {
+      databaseOptions.hidden = !isDatabase;
+    }
+    controls4.hidden = source !== 'naca' || (seriesRadios.find((item) => item.checked)?.value || '4') !== '4';
+    controls5.hidden = source !== 'naca' || (seriesRadios.find((item) => item.checked)?.value || '4') !== '5';
+    controls6.hidden = source !== 'naca' || (seriesRadios.find((item) => item.checked)?.value || '4') !== '6';
     update();
   });
 });
@@ -1761,6 +1962,9 @@ datFileInput.addEventListener('change', () => {
       customRadio.checked = true;
       nacaOptions.hidden = true;
       customOptions.hidden = false;
+      if (databaseOptions) {
+        databaseOptions.hidden = true;
+      }
       controls4.hidden = true;
       controls5.hidden = true;
     }
@@ -1769,18 +1973,47 @@ datFileInput.addEventListener('change', () => {
   reader.readAsText(file);
 });
 
+if (fetchUiucButton) {
+  fetchUiucButton.addEventListener('click', () => {
+    fetchUiucAirfoil();
+  });
+}
+
+if (uiucNameInput) {
+  uiucNameInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      fetchUiucAirfoil();
+    }
+  });
+  uiucNameInput.addEventListener('input', () => {
+    ensureUiucListLoaded();
+  });
+  uiucNameInput.addEventListener('focus', () => {
+    ensureUiucListLoaded();
+  });
+}
+
 window.addEventListener('resize', () => {
   resizeCanvas();
   update();
 });
 
 const initSource = sourceRadios.find((item) => item.checked)?.value || 'naca';
-nacaOptions.hidden = initSource === 'custom';
+nacaOptions.hidden = initSource !== 'naca';
 customOptions.hidden = initSource !== 'custom';
-controls4.hidden = initSource === 'custom' || (seriesRadios.find((item) => item.checked)?.value || '4') !== '4';
-controls5.hidden = initSource === 'custom' || (seriesRadios.find((item) => item.checked)?.value || '4') !== '5';
-controls6.hidden = initSource === 'custom' || (seriesRadios.find((item) => item.checked)?.value || '4') !== '6';
+if (databaseOptions) {
+  databaseOptions.hidden = initSource !== 'database';
+}
+controls4.hidden = initSource !== 'naca' || (seriesRadios.find((item) => item.checked)?.value || '4') !== '4';
+controls5.hidden = initSource !== 'naca' || (seriesRadios.find((item) => item.checked)?.value || '4') !== '5';
+controls6.hidden = initSource !== 'naca' || (seriesRadios.find((item) => item.checked)?.value || '4') !== '6';
 updateAlphaLabel(parseFloat(alphaSlider.value));
+updateFlapDefLabel(parseFloat(flapDefInput?.value));
+updateFlapHingeLabels(
+  parseFloat(flapXInput?.value),
+  parseFloat(flapYInput?.value),
+);
 renderRunCases();
 resizeCanvas();
 update();

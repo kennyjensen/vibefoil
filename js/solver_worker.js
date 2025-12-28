@@ -373,7 +373,7 @@ function generateGeometry(settings) {
   let nb = 0;
   let airfoilName = 'Airfoil';
 
-  if (source === 'custom') {
+  if (source === 'custom' || source === 'database') {
     if (!custom) {
       return { ok: false };
     }
@@ -385,7 +385,7 @@ function generateGeometry(settings) {
     xb.set(flapped.xb);
     yb.set(flapped.yb);
     airfoilName = custom.name || 'Custom Airfoil';
-    return { ok: true, nb, airfoilName };
+    return { ok: true, nb, airfoilName, hinge: flapped.hinge };
   }
 
   if (mode === '4') {
@@ -397,7 +397,7 @@ function generateGeometry(settings) {
     xb.set(panelRes.x);
     yb.set(panelRes.y);
     airfoilName = res.name;
-    return { ok: true, nb, airfoilName };
+    return { ok: true, nb, airfoilName, hinge: flapped.hinge };
   }
 
   if (mode === '5') {
@@ -413,7 +413,7 @@ function generateGeometry(settings) {
     xb.set(panelRes.x);
     yb.set(panelRes.y);
     airfoilName = result.name;
-    return { ok: true, nb, airfoilName };
+    return { ok: true, nb, airfoilName, hinge: flapped.hinge };
   }
 
   const result = globalThis.Naca.naca6(
@@ -438,7 +438,7 @@ function generateGeometry(settings) {
   xb.set(panelRes.x);
   yb.set(panelRes.y);
   airfoilName = result.name || airfoilName;
-  return { ok: true, nb, airfoilName };
+  return { ok: true, nb, airfoilName, hinge: flapped.hinge };
 }
 
 function computeCase(settings) {
@@ -597,6 +597,7 @@ function computeCase(settings) {
     ok: true,
     nb,
     airfoilName: geom.airfoilName,
+    hinge: geom.hinge,
     xb: xb.slice(0, nb),
     yb: yb.slice(0, nb),
     bounds,

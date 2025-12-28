@@ -123,6 +123,33 @@
       font-size: 14px;
     }
 
+    .airfoil-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .airfoil-row input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--input-border);
+      background: var(--input);
+      color: var(--ink);
+      font-family: inherit;
+    }
+
+    .status-text {
+      margin-top: 6px;
+      font-size: 12px;
+      color: rgba(230, 236, 244, 0.75);
+    }
+
+    .status-text.error {
+      color: #ff4a3d;
+    }
+
     .sweep-row {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -383,6 +410,7 @@
         <div class="mode-toggle">
           <label><input type="radio" name="source" value="naca" checked /> NACA</label>
           <label><input type="radio" name="source" value="custom" /> Custom</label>
+          <label><input type="radio" name="source" value="database" /> Database</label>
         </div>
 
         <div id="nacaOptions">
@@ -487,26 +515,23 @@
             <p class="subtitle">Loads XFOIL .dat airfoil coordinates.</p>
           </div>
         </div>
+
+        <div id="databaseOptions" hidden>
+          <div class="control-group">
+            <label for="uiucName">
+              <span>Database Airfoil</span>
+            </label>
+            <div class="airfoil-row">
+              <input id="uiucName" type="text" list="uiucList" placeholder="e.g. sd7003 or e387.dat" />
+              <datalist id="uiucList"></datalist>
+              <button id="fetchUiuc" type="button">Fetch .dat</button>
+            </div>
+            <p class="subtitle">Pulls Selig-format .dat files from uiuc_airfoil_database on GitHub.</p>
+            <p id="uiucStatus" class="subtitle status-text" hidden></p>
+          </div>
+        </div>
       </div>
 
-
-      <div class="control-group viscous-box">
-        <label>
-          <span>Flap</span>
-        </label>
-        <div class="viscous-row">
-          <label for="flapX">Flap x/c location</label>
-          <input id="flapX" type="number" min="0" max="1" step="0.01" value="0.75" />
-        </div>
-        <div class="viscous-row">
-          <label for="flapY">Hinge y/t location</label>
-          <input id="flapY" type="number" min="0" max="1" step="0.01" value="0.50" />
-        </div>
-        <div class="viscous-row">
-          <label for="flapDef">Deflection (+ down)</label>
-          <input id="flapDef" type="number" step="0.5" value="0.0" />
-        </div>
-      </div>
 
       <div class="control-group viscous-box">
         <label for="viscous">
@@ -557,6 +582,33 @@
         </div>
         <div class="sweep-actions">
           <button id="alphaSweep" type="button">Sweep</button>
+        </div>
+      </div>
+
+      <div class="control-group viscous-box">
+        <label>
+          <span>Flap</span>
+        </label>
+        <div class="control-group">
+          <label for="flapDef">
+            <span>Deflection (+ down)</span>
+            <span id="flapDefValue">0.0°</span>
+          </label>
+          <input id="flapDef" type="range" min="-20" max="20" step="0.5" value="0" />
+        </div>
+        <div class="control-group">
+          <label for="flapX">
+            <span>Hinge x/c</span>
+            <span id="flapXValue">0.75</span>
+          </label>
+          <input id="flapX" type="range" min="0" max="1" step="0.01" value="0.75" />
+        </div>
+        <div class="control-group">
+          <label for="flapY">
+            <span>Hinge y/t</span>
+            <span id="flapYValue">0.50</span>
+          </label>
+          <input id="flapY" type="range" min="0" max="1" step="0.01" value="0.50" />
         </div>
       </div>
 

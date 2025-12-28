@@ -144,11 +144,8 @@ function sss(ss, del, xbf, ybf, x, xp, y, yp, s, n, iside) {
 }
 
 function flap(xb, yb, flapParams) {
-  if (!flapParams || !Number.isFinite(flapParams.deflection)) {
-    return { xb, yb, nb: xb.length };
-  }
-  if (Math.abs(flapParams.deflection) < 1.0e-6) {
-    return { xb, yb, nb: xb.length };
+  if (!flapParams || !Number.isFinite(flapParams.x)) {
+    return { xb, yb, nb: xb.length, hinge: null };
   }
 
   const x = Array.from(xb);
@@ -169,7 +166,7 @@ function flap(xb, yb, flapParams) {
   const ddef = flapParams.deflection;
   const rdef = ddef * (Math.PI / 180.0);
   if (rdef === 0.0) {
-    return { xb: x, yb: y, nb };
+    return { xb: x, yb: y, nb, hinge: { x: xbf, y: ybf } };
   }
 
   let atop;
@@ -424,7 +421,7 @@ function flap(xb, yb, flapParams) {
     }
   }
 
-  return { xb: x, yb: y, nb };
+  return { xb: x, yb: y, nb, hinge: { x: xbf, y: ybf } };
 }
 
 export {

@@ -173,6 +173,244 @@ function baksub(n, a, indx, b) {
 // where A/B/Z are 3x3 blocks and d is the Newton delta for (Ctau, Theta, m).
 function blsolv(ctx) {
   const nsys = ctx.NSYS;
+  const VAF = ctx.VAF;
+  const VBF = ctx.VBF;
+  const VMF = ctx.VMF;
+  const VDELF = ctx.VDELF;
+  if (VAF && VBF && VMF && VDELF) {
+    const ISYS = ctx.ISYS;
+    const IBLTE = ctx.IBLTE;
+    const ivte1 = ISYS[IBLTE[1]][1];
+    const VZ = ctx.VZ;
+    const s1 = ctx.S[1];
+    const sN = ctx.S[ctx.N];
+    const vacc1 = ctx.VACCEL;
+    const vaccScale = ctx.VACCEL * 2.0 / (sN - s1);
+    const vacc2 = vaccScale;
+    const vacc3 = vaccScale;
+    const vStride3 = nsys + 1;
+    const vStride2 = 3 * vStride3;
+    const vmStride3 = vStride3;
+    const vmStride2 = (nsys + 1) * vmStride3;
+    const vaBase1 = vStride2;
+    const vaBase2 = 2 * vStride2;
+    const vaBase3 = 3 * vStride2;
+    const vbBase1 = vStride2;
+    const vbBase2 = 2 * vStride2;
+    const vbBase3 = 3 * vStride2;
+    const vdelBase1 = vStride2;
+    const vdelBase2 = 2 * vStride2;
+    const vdelBase3 = 3 * vStride2;
+    const vmBase1 = vmStride2;
+    const vmBase2 = 2 * vmStride2;
+    const vmBase3 = 3 * vmStride2;
+    const va11Base = vaBase1 + vStride3;
+    const va12Base = vaBase1 + 2 * vStride3;
+    const va21Base = vaBase2 + vStride3;
+    const va22Base = vaBase2 + 2 * vStride3;
+    const va31Base = vaBase3 + vStride3;
+    const va32Base = vaBase3 + 2 * vStride3;
+    const vb11Base = vbBase1 + vStride3;
+    const vb12Base = vbBase1 + 2 * vStride3;
+    const vb21Base = vbBase2 + vStride3;
+    const vb22Base = vbBase2 + 2 * vStride3;
+    const vb31Base = vbBase3 + vStride3;
+    const vb32Base = vbBase3 + 2 * vStride3;
+    const vdel11Base = vdelBase1 + vStride3;
+    const vdel12Base = vdelBase1 + 2 * vStride3;
+    const vdel21Base = vdelBase2 + vStride3;
+    const vdel22Base = vdelBase2 + 2 * vStride3;
+    const vdel31Base = vdelBase3 + vStride3;
+    const vdel32Base = vdelBase3 + 2 * vStride3;
+
+    for (let iv = 1; iv <= nsys; iv += 1) {
+      const ivp = iv + 1;
+
+      const va11 = VAF[va11Base + iv];
+      const va22 = VAF[va22Base + iv];
+      const vm33 = VMF[vmBase3 + iv * vmStride3 + iv];
+      if (!Number.isFinite(va11) || !Number.isFinite(va22) || !Number.isFinite(vm33)
+        || va11 === 0.0 || va22 === 0.0 || vm33 === 0.0) {
+        console.warn('BLSOLV: singular block', { iv, va11, va22, vm33 });
+        return false;
+      }
+
+      let pivot = 1.0 / va11;
+      VAF[va12Base + iv] *= pivot;
+      for (let l = iv; l <= nsys; l += 1) {
+        VMF[vmBase1 + l * vmStride3 + iv] *= pivot;
+      }
+      VDELF[vdel11Base + iv] *= pivot;
+      VDELF[vdel12Base + iv] *= pivot;
+
+      for (let k = 2; k <= 3; k += 1) {
+        const vaBase = k === 2 ? vaBase2 : vaBase3;
+        const vdelBase = k === 2 ? vdelBase2 : vdelBase3;
+        const vmBase = k === 2 ? vmBase2 : vmBase3;
+        const vtmp = VAF[vaBase + vStride3 + iv];
+        VAF[vaBase + 2 * vStride3 + iv] -= vtmp * VAF[va12Base + iv];
+        for (let l = iv; l <= nsys; l += 1) {
+          const vmkl = vmBase + l * vmStride3 + iv;
+          const vm1l = vmBase1 + l * vmStride3 + iv;
+          VMF[vmkl] -= vtmp * VMF[vm1l];
+        }
+        VDELF[vdelBase + vStride3 + iv] -= vtmp * VDELF[vdel11Base + iv];
+        VDELF[vdelBase + 2 * vStride3 + iv] -= vtmp * VDELF[vdel12Base + iv];
+      }
+
+      pivot = 1.0 / VAF[va22Base + iv];
+      for (let l = iv; l <= nsys; l += 1) {
+        VMF[vmBase2 + l * vmStride3 + iv] *= pivot;
+      }
+      VDELF[vdel21Base + iv] *= pivot;
+      VDELF[vdel22Base + iv] *= pivot;
+
+      {
+        const vtmp = VAF[va32Base + iv];
+        for (let l = iv; l <= nsys; l += 1) {
+          const vm3l = vmBase3 + l * vmStride3 + iv;
+          const vm2l = vmBase2 + l * vmStride3 + iv;
+          VMF[vm3l] -= vtmp * VMF[vm2l];
+        }
+        VDELF[vdel31Base + iv] -= vtmp * VDELF[vdel21Base + iv];
+        VDELF[vdel32Base + iv] -= vtmp * VDELF[vdel22Base + iv];
+      }
+
+      pivot = 1.0 / VMF[vmBase3 + iv * vmStride3 + iv];
+      for (let l = ivp; l <= nsys; l += 1) {
+        VMF[vmBase3 + l * vmStride3 + iv] *= pivot;
+      }
+      VDELF[vdel31Base + iv] *= pivot;
+      VDELF[vdel32Base + iv] *= pivot;
+
+      {
+        const vtmp1 = VMF[vmBase1 + iv * vmStride3 + iv];
+        const vtmp2 = VMF[vmBase2 + iv * vmStride3 + iv];
+        for (let l = ivp; l <= nsys; l += 1) {
+          const vm1l = vmBase1 + l * vmStride3 + iv;
+          const vm2l = vmBase2 + l * vmStride3 + iv;
+          const vm3l = vmBase3 + l * vmStride3 + iv;
+          VMF[vm1l] -= vtmp1 * VMF[vm3l];
+          VMF[vm2l] -= vtmp2 * VMF[vm3l];
+        }
+        VDELF[vdel11Base + iv] -= vtmp1 * VDELF[vdel31Base + iv];
+        VDELF[vdel21Base + iv] -= vtmp2 * VDELF[vdel31Base + iv];
+        VDELF[vdel12Base + iv] -= vtmp1 * VDELF[vdel32Base + iv];
+        VDELF[vdel22Base + iv] -= vtmp2 * VDELF[vdel32Base + iv];
+      }
+
+      {
+        const vtmp = VAF[va12Base + iv];
+        for (let l = ivp; l <= nsys; l += 1) {
+          const vm1l = vmBase1 + l * vmStride3 + iv;
+          const vm2l = vmBase2 + l * vmStride3 + iv;
+          VMF[vm1l] -= vtmp * VMF[vm2l];
+        }
+        VDELF[vdel11Base + iv] -= vtmp * VDELF[vdel21Base + iv];
+        VDELF[vdel12Base + iv] -= vtmp * VDELF[vdel22Base + iv];
+      }
+
+      if (iv === nsys) continue;
+
+      for (let k = 1; k <= 3; k += 1) {
+        const vbBase = k === 1 ? vbBase1 : (k === 2 ? vbBase2 : vbBase3);
+        const vdelBase = k === 1 ? vdelBase1 : (k === 2 ? vdelBase2 : vdelBase3);
+        const vmBase = k === 1 ? vmBase1 : (k === 2 ? vmBase2 : vmBase3);
+        const vtmp1 = VBF[vbBase + vStride3 + ivp];
+        const vtmp2 = VBF[vbBase + 2 * vStride3 + ivp];
+        const vtmp3 = VMF[vmBase + iv * vmStride3 + ivp];
+        for (let l = ivp; l <= nsys; l += 1) {
+          const vmkl = vmBase + l * vmStride3 + ivp;
+          const vm1l = vmBase1 + l * vmStride3 + iv;
+          const vm2l = vmBase2 + l * vmStride3 + iv;
+          const vm3l = vmBase3 + l * vmStride3 + iv;
+          VMF[vmkl] -= vtmp1 * VMF[vm1l]
+            + vtmp2 * VMF[vm2l]
+            + vtmp3 * VMF[vm3l];
+        }
+        VDELF[vdelBase + vStride3 + ivp] -= vtmp1 * VDELF[vdel11Base + iv]
+          + vtmp2 * VDELF[vdel21Base + iv]
+          + vtmp3 * VDELF[vdel31Base + iv];
+        VDELF[vdelBase + 2 * vStride3 + ivp] -= vtmp1 * VDELF[vdel12Base + iv]
+          + vtmp2 * VDELF[vdel22Base + iv]
+          + vtmp3 * VDELF[vdel32Base + iv];
+      }
+
+      if (iv === ivte1) {
+        const ivz = ISYS[IBLTE[2] + 1][2];
+        for (let k = 1; k <= 3; k += 1) {
+          const vtmp1 = VZ[k][1];
+          const vtmp2 = VZ[k][2];
+          const vdelBase = k === 1 ? vdelBase1 : (k === 2 ? vdelBase2 : vdelBase3);
+          const vmBase = k === 1 ? vmBase1 : (k === 2 ? vmBase2 : vmBase3);
+          for (let l = ivp; l <= nsys; l += 1) {
+            const vmkl = vmBase + l * vmStride3 + ivz;
+            const vm1l = vmBase1 + l * vmStride3 + iv;
+            const vm2l = vmBase2 + l * vmStride3 + iv;
+            VMF[vmkl] -= vtmp1 * VMF[vm1l]
+              + vtmp2 * VMF[vm2l];
+          }
+          VDELF[vdelBase + vStride3 + ivz] -= vtmp1 * VDELF[vdel11Base + iv]
+            + vtmp2 * VDELF[vdel21Base + iv];
+          VDELF[vdelBase + 2 * vStride3 + ivz] -= vtmp1 * VDELF[vdel12Base + iv]
+            + vtmp2 * VDELF[vdel22Base + iv];
+        }
+      }
+
+      if (ivp === nsys) continue;
+
+      for (let kv = iv + 2; kv <= nsys; kv += 1) {
+        const vtmp1 = VMF[vmBase1 + iv * vmStride3 + kv];
+        const vtmp2 = VMF[vmBase2 + iv * vmStride3 + kv];
+        const vtmp3 = VMF[vmBase3 + iv * vmStride3 + kv];
+
+        if (Math.abs(vtmp1) > vacc1) {
+          for (let l = ivp; l <= nsys; l += 1) {
+            const vm1l = vmBase1 + l * vmStride3 + kv;
+            const vm3l = vmBase3 + l * vmStride3 + iv;
+            VMF[vm1l] -= vtmp1 * VMF[vm3l];
+          }
+          VDELF[vdel11Base + kv] -= vtmp1 * VDELF[vdel31Base + iv];
+          VDELF[vdel12Base + kv] -= vtmp1 * VDELF[vdel32Base + iv];
+        }
+        if (Math.abs(vtmp2) > vacc2) {
+          for (let l = ivp; l <= nsys; l += 1) {
+            const vm2l = vmBase2 + l * vmStride3 + kv;
+            const vm3l = vmBase3 + l * vmStride3 + iv;
+            VMF[vm2l] -= vtmp2 * VMF[vm3l];
+          }
+          VDELF[vdel21Base + kv] -= vtmp2 * VDELF[vdel31Base + iv];
+          VDELF[vdel22Base + kv] -= vtmp2 * VDELF[vdel32Base + iv];
+        }
+        if (Math.abs(vtmp3) > vacc3) {
+          for (let l = ivp; l <= nsys; l += 1) {
+            const vm3l = vmBase3 + l * vmStride3 + kv;
+            const vm3lIv = vmBase3 + l * vmStride3 + iv;
+            VMF[vm3l] -= vtmp3 * VMF[vm3lIv];
+          }
+          VDELF[vdel31Base + kv] -= vtmp3 * VDELF[vdel31Base + iv];
+          VDELF[vdel32Base + kv] -= vtmp3 * VDELF[vdel32Base + iv];
+        }
+      }
+    }
+
+    for (let iv = nsys; iv >= 2; iv -= 1) {
+      let vtmp = VDELF[vdel31Base + iv];
+      for (let kv = iv - 1; kv >= 1; kv -= 1) {
+        VDELF[vdel11Base + kv] -= VMF[vmBase1 + iv * vmStride3 + kv] * vtmp;
+        VDELF[vdel21Base + kv] -= VMF[vmBase2 + iv * vmStride3 + kv] * vtmp;
+        VDELF[vdel31Base + kv] -= VMF[vmBase3 + iv * vmStride3 + kv] * vtmp;
+      }
+      vtmp = VDELF[vdel32Base + iv];
+      for (let kv = iv - 1; kv >= 1; kv -= 1) {
+        VDELF[vdel12Base + kv] -= VMF[vmBase1 + iv * vmStride3 + kv] * vtmp;
+        VDELF[vdel22Base + kv] -= VMF[vmBase2 + iv * vmStride3 + kv] * vtmp;
+        VDELF[vdel32Base + kv] -= VMF[vmBase3 + iv * vmStride3 + kv] * vtmp;
+      }
+    }
+
+    return true;
+  }
   const ISYS = ctx.ISYS;
   const IBLTE = ctx.IBLTE;
   const ivte1 = ISYS[IBLTE[1]][1];

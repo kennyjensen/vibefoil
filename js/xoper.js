@@ -40,7 +40,7 @@ import {
   blsys,
   hkin,
 } from './xblsys.js';
-import { createMatrix1, createTensor3 } from './arrays.js';
+import { createMatrix1, createTensor3Flat } from './arrays.js';
 
 // Initialize BL operating point (alpha, Mach, Re) to match XFOIL's OPER init.
 // Mirrors OPER/SPECAL setup in xoper.f.
@@ -87,22 +87,36 @@ function ensureViscousArrays(blCtx) {
   const nsys = blCtx.NSYS;
   if (!Number.isFinite(nsys) || nsys <= 0) return;
 
-  const needsTensor = !blCtx.VA
+  const tensorSize = (3 + 1) * (2 + 1) * (nsys + 1);
+  const vmSize = (3 + 1) * (nsys + 1) * (nsys + 1);
+  const needsTensor = !blCtx.VAF
+    || blCtx.VAF.length < tensorSize
+    || !blCtx.VA
     || blCtx.VA.length <= 3
     || blCtx.VA[1]?.length <= 2
     || blCtx.VA[1]?.[1]?.length <= nsys;
-  const needsVm = !blCtx.VM
+  const needsVm = !blCtx.VMF
+    || blCtx.VMF.length < vmSize
+    || !blCtx.VM
     || blCtx.VM.length <= 3
     || blCtx.VM[1]?.length <= nsys
     || blCtx.VM[1]?.[1]?.length <= nsys;
 
   if (needsTensor) {
-    blCtx.VA = createTensor3(3, 2, nsys);
-    blCtx.VB = createTensor3(3, 2, nsys);
-    blCtx.VDEL = createTensor3(3, 2, nsys);
+    const va = createTensor3Flat(3, 2, nsys);
+    const vb = createTensor3Flat(3, 2, nsys);
+    const vdel = createTensor3Flat(3, 2, nsys);
+    blCtx.VAF = va.flat;
+    blCtx.VBF = vb.flat;
+    blCtx.VDELF = vdel.flat;
+    blCtx.VA = va.view;
+    blCtx.VB = vb.view;
+    blCtx.VDEL = vdel.view;
   }
   if (needsVm) {
-    blCtx.VM = createTensor3(3, nsys, nsys);
+    const vm = createTensor3Flat(3, nsys, nsys);
+    blCtx.VMF = vm.flat;
+    blCtx.VM = vm.view;
   }
   if (!blCtx.VZ || blCtx.VZ.length <= 3) {
     blCtx.VZ = createMatrix1(3, 2);

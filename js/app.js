@@ -101,6 +101,11 @@ let nextCaseId = 1;
 let sweeping = false;
 const panelCache = { ctx: null, key: null };
 const blCache = { ctx: null, key: null };
+let solverWorker = null;
+let solverRequestId = 0;
+let latestSolverId = 0;
+let solverInFlight = false;
+const pendingSolves = new Map();
 
 // NACA 4-digit designation formatting for UI/overlay.
 function updateLabels(m, p, t) {
@@ -191,7 +196,7 @@ function setAlphaValue(alphaDeg) {
   const max = parseFloat(alphaSlider.max);
   const clamped = Math.max(min, Math.min(max, alphaDeg));
   alphaSlider.value = `${clamped}`;
-  update();
+  return update();
 }
 
 // Run-case structure for multi-sweep overlays and color separation.
@@ -305,8 +310,7 @@ async function sweepAlpha() {
   }
 
   for (let a = start; direction > 0 ? a <= end : a >= end; a += direction * inc) {
-    setAlphaValue(a);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await setAlphaValue(a);
   }
   sweeping = false;
   activeCaseId = null;
@@ -1222,39 +1226,10 @@ function drawContours(bounds, grid, nx, ny, isoValues) {
 }
 
 // Streamline sketch from inviscid flow field, clipped to avoid airfoil interior.
-function drawStreamlines(bounds, nb, ctxPanel) {
-  const gridX = 60;
-  const gridY = 32;
-  const xSpan = bounds.xmax - bounds.xmin;
-  const ySpan = bounds.ymax - bounds.ymin;
-  const dx = xSpan / (gridX - 1);
-  const dy = ySpan / (gridY - 1);
-  const grid = new Float64Array(gridX * gridY);
-
-  let psiMin = Infinity;
-  let psiMax = -Infinity;
-
-  for (let j = 0; j < gridY; j += 1) {
-    for (let i = 0; i < gridX; i += 1) {
-      const x = bounds.xmin + i * dx;
-      const y = bounds.ymin + j * dy;
-      const idx = j * gridX + i;
-
-      if (pointInPolygon(x, y, panelX, panelY, nb)) {
-        grid[idx] = NaN;
-        continue;
-      }
-
-      const { psi } = psilin(nb, x, y, 0.0, 0.0, false, false, ctxPanel);
-      grid[idx] = psi;
-      if (psi < psiMin) psiMin = psi;
-      if (psi > psiMax) psiMax = psi;
-    }
-  }
-
-  if (!Number.isFinite(psiMin) || !Number.isFinite(psiMax)) {
-    return;
-  }
+function drawStreamlines(bounds, nb, streamlines) {
+  if (!streamlines || !streamlines.grid) return;
+  const { grid, gridX, gridY, psiMin, psiMax } = streamlines;
+  if (!Number.isFinite(psiMin) || !Number.isFinite(psiMax)) return;
 
   const levels = 14;
   const isoValues = [];
@@ -1268,10 +1243,10 @@ function drawStreamlines(bounds, nb, ctxPanel) {
   ctx.lineWidth = 1.0;
   ctx.beginPath();
   ctx.rect(0, 0, canvas.width, canvas.height);
-  const start = worldToCanvas(panelX[0], panelY[0], bounds);
+  const start = worldToCanvas(xb[0], yb[0], bounds);
   ctx.moveTo(start.x, start.y);
   for (let i = 1; i < nb; i += 1) {
-    const p = worldToCanvas(panelX[i], panelY[i], bounds);
+    const p = worldToCanvas(xb[i], yb[i], bounds);
     ctx.lineTo(p.x, p.y);
   }
   ctx.closePath();
@@ -1379,6 +1354,33 @@ function drawBoundaryLayer(bounds, blCtx, ctxPanel, userScale) {
   ctx.restore();
 }
 
+function drawBoundaryLayerLines(bounds, lines) {
+  if (!lines) return;
+  const { upper = [], lower = [], wakeUpper = [], wakeLower = [] } = lines;
+  const drawLine = (pts, strokeStyle, lineWidth) => {
+    if (!pts.length) return;
+    ctx.save();
+    ctx.lineWidth = lineWidth;
+    ctx.strokeStyle = strokeStyle;
+    ctx.beginPath();
+    pts.forEach((pt, idx) => {
+      const p = worldToCanvas(pt.x, pt.y, bounds);
+      if (idx === 0) {
+        ctx.moveTo(p.x, p.y);
+      } else {
+        ctx.lineTo(p.x, p.y);
+      }
+    });
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  drawLine(upper, 'rgba(47, 123, 255, 0.85)', 3.0);
+  drawLine(lower, 'rgba(255, 74, 61, 0.85)', 3.0);
+  drawLine(wakeUpper, 'rgba(47, 123, 255, 0.6)', 2.4);
+  drawLine(wakeLower, 'rgba(255, 74, 61, 0.6)', 2.4);
+}
+
 // Airfoil outline and chord line rendering, with custom airfoil handling.
 function drawAirfoil(nb, bounds) {
   ctx.save();
@@ -1441,69 +1443,132 @@ function drawAirfoil(nb, bounds) {
   ctx.restore();
 }
 
+function applySolverResult(payload) {
+  if (!payload?.ok) return;
+  const {
+    nb,
+    xb: xbResult,
+    yb: ybResult,
+    bounds,
+    streamlines,
+    cpData,
+    coeffs,
+    converged,
+    blLines,
+    airfoilName,
+    alphaDeg,
+    alphaRad,
+    viscous,
+  } = payload;
+
+  if (!nb || !bounds) return;
+  if (xbResult && ybResult) {
+    xb.set(xbResult);
+    yb.set(ybResult);
+  }
+  if (airfoilName) {
+    currentAirfoilName = airfoilName;
+  }
+
+  ctx.clearRect(0, 0, bounds.width, bounds.height);
+
+  if (streamlines) {
+    drawStreamlines(bounds, nb, streamlines);
+  }
+
+  if (cpData?.upper?.length || cpData?.lower?.length) {
+    drawCpPlot(
+      nb,
+      cpData.upper,
+      cpData.lower,
+      cpData.le,
+      cpData.te,
+      bounds,
+      cpData.invAll || [],
+      cpData.wake || [],
+    );
+  } else if (cpCtx) {
+    cpCtx.clearRect(0, 0, cpCanvas.width, cpCanvas.height);
+  }
+
+  updateDataBox(alphaRad, coeffs, converged);
+  if (converged) {
+    upsertSweepPoint(alphaDeg, coeffs);
+  }
+  drawAlphaSweepPlot();
+  drawPolarPlot();
+
+  drawAirfoil(nb, bounds);
+  if (viscous && blLines) {
+    drawBoundaryLayerLines(bounds, blLines);
+  }
+}
+
+function resolvePendingSolve(id, payload) {
+  const resolve = pendingSolves.get(id);
+  if (resolve) {
+    resolve(payload);
+    pendingSolves.delete(id);
+  }
+}
+
+function cancelPendingSolves() {
+  pendingSolves.forEach((resolve) => resolve({ canceled: true }));
+  pendingSolves.clear();
+}
+
+function spawnSolverWorker() {
+  solverWorker = new Worker(new URL('./solver_worker.js', import.meta.url), { type: 'module' });
+  solverWorker.onmessage = (event) => {
+    const payload = event.data;
+    resolvePendingSolve(payload.requestId, payload);
+    if (payload.requestId !== latestSolverId) return;
+    solverInFlight = false;
+    if (!payload.ok) {
+      if (payload.error) {
+        console.warn(`Solver worker error: ${payload.error}`);
+      }
+      return;
+    }
+    applySolverResult(payload);
+  };
+  solverWorker.onerror = (event) => {
+    solverInFlight = false;
+    cancelPendingSolves();
+    console.warn('Solver worker error:', event);
+  };
+  solverWorker.onmessageerror = (event) => {
+    solverInFlight = false;
+    cancelPendingSolves();
+    console.warn('Solver worker message error:', event);
+  };
+}
+
 // Main compute/render pipeline: geometry -> panel -> BL -> coefficients -> plots.
 function update() {
   const mode = seriesRadios.find((radio) => radio.checked)?.value || '4';
   const source = sourceRadios.find((radio) => radio.checked)?.value || 'naca';
   const alphaDeg = parseFloat(alphaSlider.value);
   const alphaRad = alphaDeg * (Math.PI / 180.0);
-  const displayAngle = -alphaRad;
   updateAlphaLabel(alphaDeg);
 
-  let nb = 0;
-  let bufferX = null;
-  let bufferY = null;
-  let bufferN = 0;
   if (source === 'custom') {
     if (!customAirfoil) {
       currentAirfoilName = 'Load .dat airfoil';
-      return;
+      return Promise.resolve({ skipped: true });
     }
-    nb = customAirfoil.nb;
-    bufferX = xbCustom;
-    bufferY = ybCustom;
-    bufferN = nb;
-    xb.set(xbCustom);
-    yb.set(ybCustom);
   } else if (mode === '4') {
     const m = parseInt(mSlider.value, 10);
     const p = parseInt(pSlider.value, 10);
     const t = parseInt(tSlider.value, 10);
 
     updateLabels(m, p, t);
-
-    const ides = m * 1000 + p * 100 + t;
-    ({ nb } = globalThis.Naca.naca4(ides, xx, yt, yc, nside, xbBuffer, ybBuffer));
-    bufferX = xbBuffer;
-    bufferY = ybBuffer;
-    bufferN = nb;
-    const panelRes = pangen(xbBuffer, ybBuffer, nb);
-    nb = panelRes.n;
-    xb.set(panelRes.x);
-    yb.set(panelRes.y);
   } else {
     if (mode === '5') {
       const series = series5Select.value;
       const t = parseInt(t5Slider.value, 10);
-      const n5 = parseInt(series.charAt(0), 10);
-      const n4 = parseInt(series.charAt(1), 10);
-      const n3 = parseInt(series.charAt(2), 10);
-      const ides = n5 * 10000 + n4 * 1000 + n3 * 100 + t;
 
       updateLabels5(series, t);
-
-      const result = globalThis.Naca.naca5(ides, xx, yt, yc, nside, xbBuffer, ybBuffer);
-      if (result.ok) {
-        bufferX = xbBuffer;
-        bufferY = ybBuffer;
-        bufferN = result.nb;
-        const panelRes = pangen(xbBuffer, ybBuffer, result.nb);
-        nb = panelRes.n;
-        xb.set(panelRes.x);
-        yb.set(panelRes.y);
-      } else {
-        return;
-      }
     } else {
       const profile = series6Profile.value;
       const t = parseInt(t6Slider.value, 10);
@@ -1512,184 +1577,78 @@ function update() {
       const fallbackA = defaultSixSeriesA(profile);
 
       updateLabels6(profile, t, camber, cl);
-
-      const result = globalThis.Naca.naca6(
-        {
-          profile,
-          toc: t / 100,
-          camber,
-          cl: Number.isFinite(cl) ? cl : 0.0,
-          a: fallbackA,
-        },
-        xx,
-        yt,
-        yc,
-        nside,
-        xbBuffer,
-        ybBuffer,
-      );
-      if (result.ok) {
-        bufferX = xbBuffer;
-        bufferY = ybBuffer;
-        bufferN = result.nb;
-        const panelRes = pangen(xbBuffer, ybBuffer, result.nb);
-        nb = panelRes.n;
-        xb.set(panelRes.x);
-        yb.set(panelRes.y);
-        currentAirfoilName = result.name || currentAirfoilName;
-      } else {
-        return;
-      }
     }
   }
 
   let geometryKey = '';
   if (source === 'custom') {
-    geometryKey = `custom:${customAirfoil?.name || 'none'}:${customAirfoilVersion}:${nb}`;
+    geometryKey = `custom:${customAirfoil?.name || 'none'}:${customAirfoilVersion}`;
   } else if (mode === '4') {
-    geometryKey = `naca4:${mSlider.value}:${pSlider.value}:${tSlider.value}:${nb}`;
+    geometryKey = `naca4:${mSlider.value}:${pSlider.value}:${tSlider.value}`;
   } else if (mode === '5') {
-    geometryKey = `naca5:${series5Select.value}:${t5Slider.value}:${nb}`;
+    geometryKey = `naca5:${series5Select.value}:${t5Slider.value}`;
   } else {
-    geometryKey = `naca6:${series6Profile.value}:${t6Slider.value}:${cl6Input.value}:${nb}`;
+    geometryKey = `naca6:${series6Profile.value}:${t6Slider.value}:${cl6Input.value}`;
   }
 
-  const bounds = computeBounds(nb, displayAngle);
+  const profile = series6Profile.value;
+  const cl = parseFloat(cl6Input.value);
+  const camber = inferSixSeriesCamber(profile, cl);
+  const fallbackA = defaultSixSeriesA(profile);
 
-  ctx.clearRect(0, 0, bounds.width, bounds.height);
-
-  const reusePanel = reuseBlInput?.checked === true && viscousToggle.checked;
-  const ctxPanel = buildPanelContext(nb, alphaRad, { reusePanel, geometryKey });
-  let blCtx = null;
-  let qinv = null;
-  let qinvA = null;
-  if (viscousToggle.checked && ctxPanel) {
-    const ncr = parseFloat(ncrInput.value);
-    const reuseSolution = reuseBlInput?.checked && blCache.ctx && blCache.key === geometryKey;
-    if (reuseSolution) {
-      blCtx = blCache.ctx;
-      const acrit = Number.isFinite(ncr) ? ncr : 9.0;
-      blCtx.ACRIT[1] = acrit;
-      blCtx.ACRIT[2] = acrit;
-    } else {
-      blCtx = buildBlContext(nb, ctxPanel, ncr);
-      blCache.ctx = blCtx;
-      blCache.key = geometryKey;
-    }
-    const mach = parseFloat(machInput.value);
-    const reinf = parseFloat(reynoldsInput.value);
-    const nIter = parseInt(nIterInput.value, 10);
-    const maxIter = Number.isFinite(nIter) && nIter > 0 ? nIter : DEFAULT_BL_ITER;
-    blCtx.MINF = Number.isFinite(mach) ? mach : 0.0;
-    blCtx.MINF1 = blCtx.MINF;
-
-    ({ qinv, qinvA } = viscal(
-      blCtx,
-      ctxPanel,
-      alphaRad,
-      reinf,
-      {
-        maxIter,
-        logSurface: true,
-        reuseSolution,
-      },
-    ));
-  } else if (ctxPanel) {
-    ({ qinv, qinvA } = specal(ctxPanel, alphaRad));
-  }
-
-  if (ctxPanel) {
-    drawStreamlines(bounds, nb, ctxPanel);
-  }
-
-  if (ctxPanel && qinv) {
-    const qinf = ctxPanel.QINF ?? 1.0;
-    const minf = viscousToggle.checked && blCtx ? blCtx.MINF ?? 0.0 : (parseFloat(machInput.value) || 0.0);
-    const total = ctxPanel.N + (ctxPanel.NW ?? 0);
-    const qvis = (ctxPanel.QVIS && ctxPanel.QVIS.length === total + 1)
-      ? ctxPanel.QVIS
-      : computeQvisFromUedg(blCtx, nb, qinv);
-    const cpInv = cpcalc(qinv, qinf, minf);
-    const cpVis = cpcalc(qvis, qinf, minf);
-
-    let cpUpper = [];
-    let cpLower = [];
-    let cpWake = [];
-    if (viscousToggle.checked && blCtx) {
-      const ile1 = blCtx.IPAN[2][1] || 0;
-      const ile2 = blCtx.IPAN[2][2] || 0;
-      for (let i = 1; i <= ile1; i += 1) {
-        cpUpper.push({ x: ctxPanel.X[i - 1], y: ctxPanel.Y[i - 1], cp: cpVis[i] });
+  const rect = canvas.getBoundingClientRect();
+  const settings = {
+    mode,
+    source,
+    m: parseInt(mSlider.value, 10),
+    p: parseInt(pSlider.value, 10),
+    t: parseInt(tSlider.value, 10),
+    series5: series5Select.value,
+    t5: parseInt(t5Slider.value, 10),
+    profile6: profile,
+    t6: parseInt(t6Slider.value, 10),
+    cl6: Number.isFinite(cl) ? cl : 0.0,
+    camber6: camber,
+    fallbackA6: fallbackA,
+    custom: customAirfoil
+      ? {
+        name: customAirfoil.name,
+        nb: customAirfoil.nb,
+        x: xbCustom,
+        y: ybCustom,
       }
-      for (let i = ile2; i <= nb; i += 1) {
-        cpLower.push({ x: ctxPanel.X[i - 1], y: ctxPanel.Y[i - 1], cp: cpVis[i] });
-      }
-      for (let i = nb + 1; i <= total; i += 1) {
-        cpWake.push({ x: ctxPanel.X[i - 1], y: ctxPanel.Y[i - 1], cp: cpVis[i] });
-      }
-    } else {
-      const { upperIdx, lowerIdx } = getSurfaceIndices(nb, ctxPanel);
-      for (let k = 0; k < upperIdx.length; k += 1) {
-        const i = upperIdx[k] + 1;
-        cpUpper.push({ x: ctxPanel.X[i - 1], y: ctxPanel.Y[i - 1], cp: cpInv[i] });
-      }
-      for (let k = 0; k < lowerIdx.length; k += 1) {
-        const i = lowerIdx[k] + 1;
-        cpLower.push({ x: ctxPanel.X[i - 1], y: ctxPanel.Y[i - 1], cp: cpInv[i] });
-      }
-    }
-
-    const cpInvAll = [];
-    if (viscousToggle.checked && blCtx) {
-      for (let i = 1; i <= total; i += 1) {
-        cpInvAll.push({ x: ctxPanel.X[i - 1], y: ctxPanel.Y[i - 1], cp: cpInv[i] });
-      }
-    }
-
-    let lePt = { x: ctxPanel.XLE, y: ctxPanel.YLE };
-    let tePt = { x: ctxPanel.XTE, y: ctxPanel.YTE };
-    if (!Number.isFinite(lePt.x) || !Number.isFinite(lePt.y)
-      || !Number.isFinite(tePt.x) || !Number.isFinite(tePt.y)) {
-      const chordPts = getChordPoints(nb);
-      lePt = chordPts.le;
-      tePt = chordPts.te;
-    }
-    drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll, cpWake);
-  } else if (cpCtx) {
-    cpCtx.clearRect(0, 0, cpCanvas.width, cpCanvas.height);
-  }
-
-  const coeffs = computeCoefficients(nb, ctxPanel, blCtx, alphaRad, qinvA, viscousToggle.checked);
-  let displayCoeffs = {
-    CL: coeffs.cl,
-    CM: coeffs.cm,
-    CD: coeffs.cd,
-    CDF: coeffs.cdf,
-    CDP: coeffs.cdp,
+      : null,
+    alphaDeg,
+    alphaRad,
+    geometryKey,
+    reusePanel: reuseBlInput?.checked === true && viscousToggle.checked,
+    reuseSolution: reuseBlInput?.checked === true,
+    viscous: viscousToggle.checked,
+    mach: parseFloat(machInput.value),
+    reynolds: parseFloat(reynoldsInput.value),
+    ncr: parseFloat(ncrInput.value),
+    nIter: parseInt(nIterInput.value, 10),
+    canvasWidth: rect.width,
+    canvasHeight: rect.height,
   };
-  if (!viscousToggle.checked) {
-    displayCoeffs.CD = coeffs.cdp;
-  }
-  if (blCtx) {
-    blCtx.CL = coeffs.cl;
-    blCtx.CM = coeffs.cm;
-    blCtx.CD = coeffs.cd;
-    blCtx.CDF = coeffs.cdf;
-    blCtx.CDP = coeffs.cdp;
-    displayCoeffs = blCtx;
-  }
-  const converged = !viscousToggle.checked || (blCtx ? blCtx.LVCONV === true : true);
-  updateDataBox(alphaRad, displayCoeffs, converged);
-  if (converged) {
-    upsertSweepPoint(alphaDeg, displayCoeffs);
-  }
-  drawAlphaSweepPlot();
-  drawPolarPlot();
 
-  drawAirfoil(nb, bounds);
-  if (viscous && blCtx) {
-    drawBoundaryLayer(bounds, blCtx, ctxPanel, 1.0);
+  if (!solverWorker) {
+    spawnSolverWorker();
   }
+  if (solverInFlight && solverWorker) {
+    solverWorker.terminate();
+    cancelPendingSolves();
+    spawnSolverWorker();
+    solverInFlight = false;
+  }
+
+  solverRequestId += 1;
+  latestSolverId = solverRequestId;
+  solverInFlight = true;
+  solverWorker.postMessage({ requestId: solverRequestId, settings });
+  return new Promise((resolve) => {
+    pendingSolves.set(solverRequestId, resolve);
+  });
 }
 
 [mSlider, pSlider, tSlider, t5Slider].forEach((slider) => {

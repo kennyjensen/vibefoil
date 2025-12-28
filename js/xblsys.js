@@ -39,27 +39,62 @@ const COM2_NAMES = [
 ];
 
 // Allocate Fortran-style 1-based 2D arrays for BL state.
-function create2d(rows, cols) {
+function create2d(rows, cols, fill = 0.0) {
   const arr = new Array(rows + 1);
   for (let i = 0; i <= rows; i += 1) {
-    arr[i] = new Array(cols + 1).fill(0.0);
+    const row = new Float64Array(cols + 1);
+    if (fill !== 0.0) row.fill(fill);
+    arr[i] = row;
   }
   return arr;
 }
 
 // Ensure BL context has all arrays; used to reuse or initialize state.
 function ensureCtx(ctx) {
+  if (ctx._ENSURED) return;
   if (ctx.NCOM == null) ctx.NCOM = NCOM;
-  if (!ctx.COM1) ctx.COM1 = new Array(NCOM + 1).fill(0.0);
-  if (!ctx.COM2) ctx.COM2 = new Array(NCOM + 1).fill(0.0);
-  if (!ctx.C1SAV) ctx.C1SAV = new Array(NCOM + 1).fill(0.0);
-  if (!ctx.C2SAV) ctx.C2SAV = new Array(NCOM + 1).fill(0.0);
-  if (!ctx.VS1) ctx.VS1 = create2d(4, 5);
-  if (!ctx.VS2) ctx.VS2 = create2d(4, 5);
-  if (!ctx.VSREZ) ctx.VSREZ = new Array(5).fill(0.0);
-  if (!ctx.VSR) ctx.VSR = new Array(5).fill(0.0);
-  if (!ctx.VSM) ctx.VSM = new Array(5).fill(0.0);
-  if (!ctx.VSX) ctx.VSX = new Array(5).fill(0.0);
+  if (!ctx.COM1) ctx.COM1 = new Float64Array(NCOM + 1);
+  if (!ctx.COM2) ctx.COM2 = new Float64Array(NCOM + 1);
+  if (!ctx.C1SAV) ctx.C1SAV = new Float64Array(NCOM + 1);
+  if (!ctx.C2SAV) ctx.C2SAV = new Float64Array(NCOM + 1);
+  if (!ctx.VS1) {
+    ctx.VS1 = create2d(4, 5);
+  } else {
+    for (let i = 0; i < ctx.VS1.length; i += 1) {
+      const row = ctx.VS1[i];
+      if (row && !(row instanceof Float64Array)) {
+        const next = new Float64Array(row.length);
+        for (let j = 0; j < row.length; j += 1) next[j] = row[j];
+        ctx.VS1[i] = next;
+      }
+    }
+  }
+  if (!ctx.VS2) {
+    ctx.VS2 = create2d(4, 5);
+  } else {
+    for (let i = 0; i < ctx.VS2.length; i += 1) {
+      const row = ctx.VS2[i];
+      if (row && !(row instanceof Float64Array)) {
+        const next = new Float64Array(row.length);
+        for (let j = 0; j < row.length; j += 1) next[j] = row[j];
+        ctx.VS2[i] = next;
+      }
+    }
+  }
+  if (!ctx.VSREZ) ctx.VSREZ = new Float64Array(5);
+  if (!ctx.VSR) ctx.VSR = new Float64Array(5);
+  if (!ctx.VSM) ctx.VSM = new Float64Array(5);
+  if (!ctx.VSX) ctx.VSX = new Float64Array(5);
+  if (!ctx._COM_INIT) {
+    for (let i = 1; i <= NCOM; i += 1) {
+      const name1 = COM1_NAMES[i];
+      if (ctx[name1] == null) ctx[name1] = 0.0;
+      const name2 = COM2_NAMES[i];
+      if (ctx[name2] == null) ctx[name2] = 0.0;
+    }
+    ctx._COM_INIT = true;
+  }
+  ctx._ENSURED = true;
 }
 
 // Copy COM common-block data into local variables for computations.
@@ -78,7 +113,7 @@ function syncVarsToCom(ctx, which) {
   const names = which === 1 ? COM1_NAMES : COM2_NAMES;
   const dst = which === 1 ? ctx.COM1 : ctx.COM2;
   for (let i = 1; i <= NCOM; i += 1) {
-    dst[i] = ctx[names[i]] ?? 0.0;
+    dst[i] = ctx[names[i]];
   }
 }
 
@@ -500,6 +535,10 @@ function blsys(ctxIn) {
   // - Apply transition differences and similarity station handling.
   const ctx = ctxIn || this;
   ensureCtx(ctx);
+  const simi = ctx.SIMI;
+  const tran = ctx.TRAN;
+  const turb = ctx.TURB;
+  const wake = ctx.WAKE;
 
   const COM1 = ctx.COM1;
   const COM2 = ctx.COM2;
@@ -513,10 +552,10 @@ function blsys(ctxIn) {
   const u2Ms = ctx.U2_MS;
 
   // Select appropriate BL branch: wake / turbulent / laminar.
-  if (ctx.WAKE) {
+  if (wake) {
     blvar(3, ctx);
     blmid(3, ctx);
-  } else if (ctx.TURB || ctx.TRAN) {
+  } else if (turb || tran) {
     blvar(2, ctx);
     blmid(2, ctx);
   } else {
@@ -527,7 +566,7 @@ function blsys(ctxIn) {
   syncVarsToCom(ctx, 2);
 
   // Similarity station: copy COM2 into COM1.
-  if (ctx.SIMI) {
+  if (simi) {
     for (let icom = 1; icom <= NCOM; icom += 1) {
       COM1[icom] = COM2[icom];
     }
@@ -535,13 +574,13 @@ function blsys(ctxIn) {
   }
 
   // Assemble residuals for transition or marching equations.
-  if (ctx.TRAN) {
+  if (tran) {
     trdif(ctx);
-  } else if (ctx.SIMI) {
+  } else if (simi) {
     bldif(0, ctx);
-  } else if (!ctx.TURB) {
+  } else if (!turb) {
     bldif(1, ctx);
-  } else if (ctx.WAKE) {
+  } else if (wake) {
     bldif(3, ctx);
   } else {
     bldif(2, ctx);
@@ -549,7 +588,7 @@ function blsys(ctxIn) {
 
   // No extra diagnostics.
 
-  if (ctx.SIMI) {
+  if (simi) {
     for (let k = 1; k <= 4; k += 1) {
       const vs1k = VS1[k];
       const vs2k = VS2[k];
@@ -638,25 +677,31 @@ function blkin(ctxIn) {
   // - Initialize laminar BL quantities at the leading edge.
   const ctx = ctxIn || this;
   ensureCtx(ctx);
+  const u2 = ctx.U2;
+  const gm1bl = ctx.GM1BL;
+  const hstinv = ctx.HSTINV;
+  const hstinvMs = ctx.HSTINV_MS;
+  const rstbl = ctx.RSTBL;
+  const rstblMs = ctx.RSTBL_MS;
 
   // Initialize compressibility and density ratios at station 2.
-  ctx.M2 = ctx.U2 * ctx.U2 * ctx.HSTINV / (ctx.GM1BL * (1.0 - 0.5 * ctx.U2 * ctx.U2 * ctx.HSTINV));
-  const tr2 = 1.0 + 0.5 * ctx.GM1BL * ctx.M2;
-  ctx.M2_U2 = 2.0 * ctx.M2 * tr2 / ctx.U2;
-  ctx.M2_MS = ctx.U2 * ctx.U2 * tr2 / (ctx.GM1BL * (1.0 - 0.5 * ctx.U2 * ctx.U2 * ctx.HSTINV))
-    * ctx.HSTINV_MS;
+  ctx.M2 = u2 * u2 * hstinv / (gm1bl * (1.0 - 0.5 * u2 * u2 * hstinv));
+  const tr2 = 1.0 + 0.5 * gm1bl * ctx.M2;
+  ctx.M2_U2 = 2.0 * ctx.M2 * tr2 / u2;
+  ctx.M2_MS = u2 * u2 * tr2 / (gm1bl * (1.0 - 0.5 * u2 * u2 * hstinv))
+    * hstinvMs;
 
-  ctx.R2 = ctx.RSTBL * tr2 ** (-1.0 / ctx.GM1BL);
+  ctx.R2 = rstbl * tr2 ** (-1.0 / gm1bl);
   ctx.R2_U2 = -ctx.R2 / tr2 * 0.5 * ctx.M2_U2;
-  ctx.R2_MS = -ctx.R2 / tr2 * 0.5 * ctx.M2_MS + ctx.RSTBL_MS * tr2 ** (-1.0 / ctx.GM1BL);
+  ctx.R2_MS = -ctx.R2 / tr2 * 0.5 * ctx.M2_MS + rstblMs * tr2 ** (-1.0 / gm1bl);
 
   ctx.H2 = ctx.D2 / ctx.T2;
   ctx.H2_D2 = 1.0 / ctx.T2;
   ctx.H2_T2 = -ctx.H2 / ctx.T2;
 
-  const herat = 1.0 - 0.5 * ctx.U2 * ctx.U2 * ctx.HSTINV;
-  const heU2 = -ctx.U2 * ctx.HSTINV;
-  const heMs = -0.5 * ctx.U2 * ctx.U2 * ctx.HSTINV_MS;
+  const herat = 1.0 - 0.5 * u2 * u2 * hstinv;
+  const heU2 = -u2 * hstinv;
+  const heMs = -0.5 * u2 * u2 * hstinvMs;
 
   ctx.V2 = Math.sqrt(herat ** 3) * (1.0 + ctx.HVRAT) / (herat + ctx.HVRAT) / ctx.REYBL;
   const v2He = ctx.V2 * (1.5 / herat - 1.0 / (herat + ctx.HVRAT));
@@ -690,45 +735,65 @@ function blvar(ityp, ctxIn) {
   // - Compute HK/HS/CF/DI/DE for laminar or turbulent branch.
   const ctx = ctxIn || this;
   ensureCtx(ctx);
+  const gbcon = ctx.GBCON;
+  const ctcon = ctx.CTCON;
+  const gccon = ctx.GCCON;
+  const h2 = ctx.H2;
+  const h2U2 = ctx.H2_U2;
+  const h2T2 = ctx.H2_T2;
+  const h2D2 = ctx.H2_D2;
+  const m2 = ctx.M2;
+  const m2U2 = ctx.M2_U2;
+  const m2Ms = ctx.M2_MS;
+  const rt2 = ctx.RT2;
+  const hk2U2 = ctx.HK2_U2;
+  const hk2T2 = ctx.HK2_T2;
+  const hk2D2 = ctx.HK2_D2;
+  const hk2Ms = ctx.HK2_MS;
+  const rt2U2 = ctx.RT2_U2;
+  const rt2T2 = ctx.RT2_T2;
+  const rt2Ms = ctx.RT2_MS;
+  const rt2Re = ctx.RT2_RE;
 
   if (ityp === 3) ctx.HK2 = Math.max(ctx.HK2, 1.00005);
   if (ityp !== 3) ctx.HK2 = Math.max(ctx.HK2, 1.05000);
+  const hk2 = ctx.HK2;
 
-  const hcOut = hct(ctx.HK2, ctx.M2);
+  const hcOut = hct(hk2, m2);
   ctx.HC2 = hcOut.hc;
   const hc2Hk2 = hcOut.hcHk;
   const hc2M2 = hcOut.hcMsq;
-  ctx.HC2_U2 = hc2Hk2 * ctx.HK2_U2 + hc2M2 * ctx.M2_U2;
-  ctx.HC2_T2 = hc2Hk2 * ctx.HK2_T2;
-  ctx.HC2_D2 = hc2Hk2 * ctx.HK2_D2;
-  ctx.HC2_MS = hc2Hk2 * ctx.HK2_MS + hc2M2 * ctx.M2_MS;
+  ctx.HC2_U2 = hc2Hk2 * hk2U2 + hc2M2 * m2U2;
+  ctx.HC2_T2 = hc2Hk2 * hk2T2;
+  ctx.HC2_D2 = hc2Hk2 * hk2D2;
+  ctx.HC2_MS = hc2Hk2 * hk2Ms + hc2M2 * m2Ms;
 
   let hsOut;
   if (ityp === 1) {
-    hsOut = hsl(ctx.HK2, ctx.RT2, ctx.M2);
+    hsOut = hsl(hk2, rt2, m2);
   } else {
-    hsOut = hst(ctx.HK2, ctx.RT2, ctx.M2);
+    hsOut = hst(hk2, rt2, m2);
   }
   ctx.HS2 = hsOut.hs;
   const hs2Hk2 = hsOut.hsHk;
   const hs2Rt2 = hsOut.hsRt;
   const hs2M2 = hsOut.hsMsq;
 
-  ctx.HS2_U2 = hs2Hk2 * ctx.HK2_U2 + hs2Rt2 * ctx.RT2_U2 + hs2M2 * ctx.M2_U2;
-  ctx.HS2_T2 = hs2Hk2 * ctx.HK2_T2 + hs2Rt2 * ctx.RT2_T2;
-  ctx.HS2_D2 = hs2Hk2 * ctx.HK2_D2;
-  ctx.HS2_MS = hs2Hk2 * ctx.HK2_MS + hs2Rt2 * ctx.RT2_MS + hs2M2 * ctx.M2_MS;
-  ctx.HS2_RE = hs2Rt2 * ctx.RT2_RE;
+  ctx.HS2_U2 = hs2Hk2 * hk2U2 + hs2Rt2 * rt2U2 + hs2M2 * m2U2;
+  ctx.HS2_T2 = hs2Hk2 * hk2T2 + hs2Rt2 * rt2T2;
+  ctx.HS2_D2 = hs2Hk2 * hk2D2;
+  ctx.HS2_MS = hs2Hk2 * hk2Ms + hs2Rt2 * rt2Ms + hs2M2 * m2Ms;
+  ctx.HS2_RE = hs2Rt2 * rt2Re;
 
-  ctx.US2 = 0.5 * ctx.HS2 * (1.0 - (ctx.HK2 - 1.0) / (ctx.GBCON * ctx.H2));
-  const us2Hs2 = 0.5 * (1.0 - (ctx.HK2 - 1.0) / (ctx.GBCON * ctx.H2));
-  const us2Hk2 = 0.5 * ctx.HS2 * (-1.0 / (ctx.GBCON * ctx.H2));
-  const us2H2 = 0.5 * ctx.HS2 * (ctx.HK2 - 1.0) / (ctx.GBCON * ctx.H2 ** 2);
+  ctx.US2 = 0.5 * ctx.HS2 * (1.0 - (hk2 - 1.0) / (gbcon * h2));
+  const us2Hs2 = 0.5 * (1.0 - (hk2 - 1.0) / (gbcon * h2));
+  const us2Hk2 = 0.5 * ctx.HS2 * (-1.0 / (gbcon * h2));
+  const us2H2 = 0.5 * ctx.HS2 * (hk2 - 1.0) / (gbcon * h2 ** 2);
 
-  ctx.US2_U2 = us2Hs2 * ctx.HS2_U2 + us2Hk2 * ctx.HK2_U2;
-  ctx.US2_T2 = us2Hs2 * ctx.HS2_T2 + us2Hk2 * ctx.HK2_T2 + us2H2 * ctx.H2_T2;
-  ctx.US2_D2 = us2Hs2 * ctx.HS2_D2 + us2Hk2 * ctx.HK2_D2 + us2H2 * ctx.H2_D2;
-  ctx.US2_MS = us2Hs2 * ctx.HS2_MS + us2Hk2 * ctx.HK2_MS;
+  ctx.US2_U2 = us2Hs2 * ctx.HS2_U2 + us2Hk2 * hk2U2;
+  ctx.US2_T2 = us2Hs2 * ctx.HS2_T2 + us2Hk2 * hk2T2 + us2H2 * h2T2;
+  ctx.US2_D2 = us2Hs2 * ctx.HS2_D2 + us2Hk2 * hk2D2 + us2H2 * h2D2;
+  ctx.US2_MS = us2Hs2 * ctx.HS2_MS + us2Hk2 * hk2Ms;
   ctx.US2_RE = us2Hs2 * ctx.HS2_RE;
 
   if (ityp <= 2 && ctx.US2 > 0.95) {
@@ -749,12 +814,12 @@ function blvar(ityp, ctxIn) {
   }
 
   let gcc = 0.0;
-  let hkc = ctx.HK2 - 1.0;
+  let hkc = hk2 - 1.0;
   let hkcHk2 = 1.0;
   let hkcRt2 = 0.0;
   if (ityp === 2) {
-    gcc = ctx.GCCON;
-    hkc = ctx.HK2 - 1.0 - gcc / ctx.RT2;
+    gcc = gccon;
+    hkc = hk2 - 1.0 - gcc / ctx.RT2;
     hkcHk2 = 1.0;
     hkcRt2 = gcc / ctx.RT2 ** 2;
     if (hkc < 0.01) {
@@ -764,28 +829,28 @@ function blvar(ityp, ctxIn) {
     }
   }
 
-  const hkb = ctx.HK2 - 1.0;
+  const hkb = hk2 - 1.0;
   const usb = 1.0 - ctx.US2;
-  ctx.CQ2 = Math.sqrt(ctx.CTCON * ctx.HS2 * hkb * hkc ** 2 / (usb * ctx.H2 * ctx.HK2 ** 2));
-  const cq2Hs2 = ctx.CTCON * hkb * hkc ** 2 / (usb * ctx.H2 * ctx.HK2 ** 2) * 0.5 / ctx.CQ2;
-  const cq2Us2 = ctx.CTCON * ctx.HS2 * hkb * hkc ** 2 / (usb * ctx.H2 * ctx.HK2 ** 2) / usb * 0.5 / ctx.CQ2;
-  const cq2Hk2 = ctx.CTCON * ctx.HS2 * hkc ** 2 / (usb * ctx.H2 * ctx.HK2 ** 2) * 0.5 / ctx.CQ2
-    - ctx.CTCON * ctx.HS2 * hkb * hkc ** 2 / (usb * ctx.H2 * ctx.HK2 ** 3) * 2.0 * 0.5 / ctx.CQ2
-    + ctx.CTCON * ctx.HS2 * hkb * hkc / (usb * ctx.H2 * ctx.HK2 ** 2) * 2.0 * 0.5 / ctx.CQ2 * hkcHk2;
-  const cq2Rt2 = ctx.CTCON * ctx.HS2 * hkb * hkc / (usb * ctx.H2 * ctx.HK2 ** 2) * 2.0 * 0.5 / ctx.CQ2 * hkcRt2;
-  const cq2H2 = -ctx.CTCON * ctx.HS2 * hkb * hkc ** 2 / (usb * ctx.H2 * ctx.HK2 ** 2) / ctx.H2 * 0.5 / ctx.CQ2;
+  ctx.CQ2 = Math.sqrt(ctcon * ctx.HS2 * hkb * hkc ** 2 / (usb * h2 * hk2 ** 2));
+  const cq2Hs2 = ctcon * hkb * hkc ** 2 / (usb * h2 * hk2 ** 2) * 0.5 / ctx.CQ2;
+  const cq2Us2 = ctcon * ctx.HS2 * hkb * hkc ** 2 / (usb * h2 * hk2 ** 2) / usb * 0.5 / ctx.CQ2;
+  const cq2Hk2 = ctcon * ctx.HS2 * hkc ** 2 / (usb * h2 * hk2 ** 2) * 0.5 / ctx.CQ2
+    - ctcon * ctx.HS2 * hkb * hkc ** 2 / (usb * h2 * hk2 ** 3) * 2.0 * 0.5 / ctx.CQ2
+    + ctcon * ctx.HS2 * hkb * hkc / (usb * h2 * hk2 ** 2) * 2.0 * 0.5 / ctx.CQ2 * hkcHk2;
+  const cq2Rt2 = ctcon * ctx.HS2 * hkb * hkc / (usb * h2 * hk2 ** 2) * 2.0 * 0.5 / ctx.CQ2 * hkcRt2;
+  const cq2H2 = -ctcon * ctx.HS2 * hkb * hkc ** 2 / (usb * h2 * hk2 ** 2) / h2 * 0.5 / ctx.CQ2;
 
-  ctx.CQ2_U2 = cq2Hs2 * ctx.HS2_U2 + cq2Us2 * ctx.US2_U2 + cq2Hk2 * ctx.HK2_U2;
-  ctx.CQ2_T2 = cq2Hs2 * ctx.HS2_T2 + cq2Us2 * ctx.US2_T2 + cq2Hk2 * ctx.HK2_T2;
-  ctx.CQ2_D2 = cq2Hs2 * ctx.HS2_D2 + cq2Us2 * ctx.US2_D2 + cq2Hk2 * ctx.HK2_D2;
-  ctx.CQ2_MS = cq2Hs2 * ctx.HS2_MS + cq2Us2 * ctx.US2_MS + cq2Hk2 * ctx.HK2_MS;
+  ctx.CQ2_U2 = cq2Hs2 * ctx.HS2_U2 + cq2Us2 * ctx.US2_U2 + cq2Hk2 * hk2U2;
+  ctx.CQ2_T2 = cq2Hs2 * ctx.HS2_T2 + cq2Us2 * ctx.US2_T2 + cq2Hk2 * hk2T2;
+  ctx.CQ2_D2 = cq2Hs2 * ctx.HS2_D2 + cq2Us2 * ctx.US2_D2 + cq2Hk2 * hk2D2;
+  ctx.CQ2_MS = cq2Hs2 * ctx.HS2_MS + cq2Us2 * ctx.US2_MS + cq2Hk2 * hk2Ms;
   ctx.CQ2_RE = cq2Hs2 * ctx.HS2_RE + cq2Us2 * ctx.US2_RE;
 
-  ctx.CQ2_U2 += cq2Rt2 * ctx.RT2_U2;
-  ctx.CQ2_T2 += cq2H2 * ctx.H2_T2 + cq2Rt2 * ctx.RT2_T2;
-  ctx.CQ2_D2 += cq2H2 * ctx.H2_D2;
-  ctx.CQ2_MS += cq2Rt2 * ctx.RT2_MS;
-  ctx.CQ2_RE += cq2Rt2 * ctx.RT2_RE;
+  ctx.CQ2_U2 += cq2Rt2 * rt2U2;
+  ctx.CQ2_T2 += cq2H2 * h2T2 + cq2Rt2 * rt2T2;
+  ctx.CQ2_D2 += cq2H2 * h2D2;
+  ctx.CQ2_MS += cq2Rt2 * rt2Ms;
+  ctx.CQ2_RE += cq2Rt2 * rt2Re;
 
   let cfOut;
   if (ityp === 3) {
@@ -794,18 +859,18 @@ function blvar(ityp, ctxIn) {
     ctx.CF2_RT2 = 0.0;
     ctx.CF2_M2 = 0.0;
   } else if (ityp === 1) {
-    cfOut = cfl(ctx.HK2, ctx.RT2, ctx.M2);
+    cfOut = cfl(hk2, ctx.RT2, ctx.M2);
     ctx.CF2 = cfOut.cf;
     ctx.CF2_HK2 = cfOut.cfHk;
     ctx.CF2_RT2 = cfOut.cfRt;
     ctx.CF2_M2 = cfOut.cfMsq;
   } else {
-    cfOut = cft(ctx.HK2, ctx.RT2, ctx.M2, ctx.CFFAC ?? 1.0);
+    cfOut = cft(hk2, ctx.RT2, ctx.M2, ctx.CFFAC ?? 1.0);
     ctx.CF2 = cfOut.cf;
     ctx.CF2_HK2 = cfOut.cfHk;
     ctx.CF2_RT2 = cfOut.cfRt;
     ctx.CF2_M2 = cfOut.cfMsq;
-    const cfL = cfl(ctx.HK2, ctx.RT2, ctx.M2);
+    const cfL = cfl(hk2, ctx.RT2, ctx.M2);
     if (cfL.cf > ctx.CF2) {
       ctx.CF2 = cfL.cf;
       ctx.CF2_HK2 = cfL.cfHk;
@@ -814,31 +879,31 @@ function blvar(ityp, ctxIn) {
     }
   }
 
-  ctx.CF2_U2 = ctx.CF2_HK2 * ctx.HK2_U2 + ctx.CF2_RT2 * ctx.RT2_U2 + ctx.CF2_M2 * ctx.M2_U2;
-  ctx.CF2_T2 = ctx.CF2_HK2 * ctx.HK2_T2 + ctx.CF2_RT2 * ctx.RT2_T2;
-  ctx.CF2_D2 = ctx.CF2_HK2 * ctx.HK2_D2;
-  ctx.CF2_MS = ctx.CF2_HK2 * ctx.HK2_MS + ctx.CF2_RT2 * ctx.RT2_MS + ctx.CF2_M2 * ctx.M2_MS;
-  ctx.CF2_RE = ctx.CF2_RT2 * ctx.RT2_RE;
+  ctx.CF2_U2 = ctx.CF2_HK2 * hk2U2 + ctx.CF2_RT2 * rt2U2 + ctx.CF2_M2 * ctx.M2_U2;
+  ctx.CF2_T2 = ctx.CF2_HK2 * hk2T2 + ctx.CF2_RT2 * rt2T2;
+  ctx.CF2_D2 = ctx.CF2_HK2 * hk2D2;
+  ctx.CF2_MS = ctx.CF2_HK2 * hk2Ms + ctx.CF2_RT2 * rt2Ms + ctx.CF2_M2 * ctx.M2_MS;
+  ctx.CF2_RE = ctx.CF2_RT2 * rt2Re;
 
   if (ityp === 1) {
-    const diOut = dil(ctx.HK2, ctx.RT2);
+    const diOut = dil(hk2, ctx.RT2);
     ctx.DI2 = diOut.di;
     const di2Hk2 = diOut.diHk;
     const di2Rt2 = diOut.diRt;
 
-    ctx.DI2_U2 = di2Hk2 * ctx.HK2_U2 + di2Rt2 * ctx.RT2_U2;
-    ctx.DI2_T2 = di2Hk2 * ctx.HK2_T2 + di2Rt2 * ctx.RT2_T2;
-    ctx.DI2_D2 = di2Hk2 * ctx.HK2_D2;
+    ctx.DI2_U2 = di2Hk2 * hk2U2 + di2Rt2 * rt2U2;
+    ctx.DI2_T2 = di2Hk2 * hk2T2 + di2Rt2 * rt2T2;
+    ctx.DI2_D2 = di2Hk2 * hk2D2;
     ctx.DI2_S2 = 0.0;
-    ctx.DI2_MS = di2Hk2 * ctx.HK2_MS + di2Rt2 * ctx.RT2_MS;
-    ctx.DI2_RE = di2Rt2 * ctx.RT2_RE;
+    ctx.DI2_MS = di2Hk2 * hk2Ms + di2Rt2 * rt2Ms;
+    ctx.DI2_RE = di2Rt2 * rt2Re;
   } else if (ityp === 2) {
-    const cf2t = cft(ctx.HK2, ctx.RT2, ctx.M2, ctx.CFFAC ?? 1.0);
-    const cf2tU2 = cf2t.cfHk * ctx.HK2_U2 + cf2t.cfRt * ctx.RT2_U2 + cf2t.cfMsq * ctx.M2_U2;
-    const cf2tT2 = cf2t.cfHk * ctx.HK2_T2 + cf2t.cfRt * ctx.RT2_T2;
-    const cf2tD2 = cf2t.cfHk * ctx.HK2_D2;
-    const cf2tMs = cf2t.cfHk * ctx.HK2_MS + cf2t.cfRt * ctx.RT2_MS + cf2t.cfMsq * ctx.M2_MS;
-    const cf2tRe = cf2t.cfRt * ctx.RT2_RE;
+    const cf2t = cft(hk2, ctx.RT2, ctx.M2, ctx.CFFAC ?? 1.0);
+    const cf2tU2 = cf2t.cfHk * hk2U2 + cf2t.cfRt * rt2U2 + cf2t.cfMsq * ctx.M2_U2;
+    const cf2tT2 = cf2t.cfHk * hk2T2 + cf2t.cfRt * rt2T2;
+    const cf2tD2 = cf2t.cfHk * hk2D2;
+    const cf2tMs = cf2t.cfHk * hk2Ms + cf2t.cfRt * rt2Ms + cf2t.cfMsq * ctx.M2_MS;
+    const cf2tRe = cf2t.cfRt * rt2Re;
 
     ctx.DI2 = (0.5 * cf2t.cf * ctx.US2) * 2.0 / ctx.HS2;
     const di2Hs2 = -(0.5 * cf2t.cf * ctx.US2) * 2.0 / ctx.HS2 ** 2;
@@ -868,11 +933,11 @@ function blvar(ityp, ctxIn) {
     const dfRt2 = dfFl * flRt2;
 
     ctx.DI2_S2 = ctx.DI2_S2 * dfac;
-    ctx.DI2_U2 = ctx.DI2_U2 * dfac + ctx.DI2 * (dfHk2 * ctx.HK2_U2 + dfRt2 * ctx.RT2_U2);
-    ctx.DI2_T2 = ctx.DI2_T2 * dfac + ctx.DI2 * (dfHk2 * ctx.HK2_T2 + dfRt2 * ctx.RT2_T2);
-    ctx.DI2_D2 = ctx.DI2_D2 * dfac + ctx.DI2 * (dfHk2 * ctx.HK2_D2);
-    ctx.DI2_MS = ctx.DI2_MS * dfac + ctx.DI2 * (dfHk2 * ctx.HK2_MS + dfRt2 * ctx.RT2_MS);
-    ctx.DI2_RE = ctx.DI2_RE * dfac + ctx.DI2 * (dfRt2 * ctx.RT2_RE);
+    ctx.DI2_U2 = ctx.DI2_U2 * dfac + ctx.DI2 * (dfHk2 * hk2U2 + dfRt2 * rt2U2);
+    ctx.DI2_T2 = ctx.DI2_T2 * dfac + ctx.DI2 * (dfHk2 * hk2T2 + dfRt2 * rt2T2);
+    ctx.DI2_D2 = ctx.DI2_D2 * dfac + ctx.DI2 * (dfHk2 * hk2D2);
+    ctx.DI2_MS = ctx.DI2_MS * dfac + ctx.DI2 * (dfHk2 * hk2Ms + dfRt2 * rt2Ms);
+    ctx.DI2_RE = ctx.DI2_RE * dfac + ctx.DI2 * (dfRt2 * rt2Re);
     ctx.DI2 = ctx.DI2 * dfac;
   } else {
     ctx.DI2 = 0.0;
@@ -912,15 +977,15 @@ function blvar(ityp, ctxIn) {
   }
 
   if (ityp === 2) {
-    const di2l = dil(ctx.HK2, ctx.RT2);
+    const di2l = dil(hk2, ctx.RT2);
     if (di2l.di > ctx.DI2) {
       ctx.DI2 = di2l.di;
       ctx.DI2_S2 = 0.0;
-      ctx.DI2_U2 = di2l.diHk * ctx.HK2_U2 + di2l.diRt * ctx.RT2_U2;
-      ctx.DI2_T2 = di2l.diHk * ctx.HK2_T2 + di2l.diRt * ctx.RT2_T2;
-      ctx.DI2_D2 = di2l.diHk * ctx.HK2_D2;
-      ctx.DI2_MS = di2l.diHk * ctx.HK2_MS + di2l.diRt * ctx.RT2_MS;
-      ctx.DI2_RE = di2l.diRt * ctx.RT2_RE;
+      ctx.DI2_U2 = di2l.diHk * hk2U2 + di2l.diRt * rt2U2;
+      ctx.DI2_T2 = di2l.diHk * hk2T2 + di2l.diRt * rt2T2;
+      ctx.DI2_D2 = di2l.diHk * hk2D2;
+      ctx.DI2_MS = di2l.diHk * hk2Ms + di2l.diRt * rt2Ms;
+      ctx.DI2_RE = di2l.diRt * rt2Re;
     }
   }
 
@@ -1353,6 +1418,54 @@ function bldif(ityp, ctxIn) {
   // - Log/linear forms for BL integrals.
   const ctx = ctxIn || this;
   ensureCtx(ctx);
+  const VS1 = ctx.VS1;
+  const VS2 = ctx.VS2;
+  const VSREZ = ctx.VSREZ;
+  const VSM = ctx.VSM;
+  const VSR = ctx.VSR;
+  const VSX = ctx.VSX;
+  const hk1 = ctx.HK1;
+  const hk2 = ctx.HK2;
+  const s1 = ctx.S1;
+  const s2 = ctx.S2;
+  const cq1 = ctx.CQ1;
+  const cq2 = ctx.CQ2;
+  const cf1 = ctx.CF1;
+  const cf2 = ctx.CF2;
+  const us1 = ctx.US1;
+  const us2 = ctx.US2;
+  const rt1 = ctx.RT1;
+  const rt2 = ctx.RT2;
+  const de1 = ctx.DE1;
+  const de2 = ctx.DE2;
+  const d1 = ctx.D1;
+  const d2 = ctx.D2;
+  const dlcon = ctx.DLCON;
+  const gacon = ctx.GACON;
+  const gbcon = ctx.GBCON;
+  const gccon = ctx.GCCON;
+  const hk1U1 = ctx.HK1_U1;
+  const hk1T1 = ctx.HK1_T1;
+  const hk1D1 = ctx.HK1_D1;
+  const hk1Ms = ctx.HK1_MS;
+  const hk2U2 = ctx.HK2_U2;
+  const hk2T2 = ctx.HK2_T2;
+  const hk2D2 = ctx.HK2_D2;
+  const hk2Ms = ctx.HK2_MS;
+  const rt1T1 = ctx.RT1_T1;
+  const rt1U1 = ctx.RT1_U1;
+  const rt1Ms = ctx.RT1_MS;
+  const rt1Re = ctx.RT1_RE;
+  const rt2T2 = ctx.RT2_T2;
+  const rt2U2 = ctx.RT2_U2;
+  const rt2Ms = ctx.RT2_MS;
+  const rt2Re = ctx.RT2_RE;
+  const x1 = ctx.X1;
+  const x2 = ctx.X2;
+  const t1 = ctx.T1;
+  const t2 = ctx.T2;
+  const u1 = ctx.U1;
+  const u2 = ctx.U2;
 
   let xlog;
   let ulog;
@@ -1368,39 +1481,39 @@ function bldif(ityp, ctxIn) {
     hlog = 0.0;
     ddlog = 0.0;
   } else {
-    xlog = Math.log(ctx.X2 / ctx.X1);
-    ulog = Math.log(ctx.U2 / ctx.U1);
-    tlog = Math.log(ctx.T2 / ctx.T1);
+    xlog = Math.log(x2 / x1);
+    ulog = Math.log(u2 / u1);
+    tlog = Math.log(t2 / t1);
     hlog = Math.log(ctx.HS2 / ctx.HS1);
     ddlog = 1.0;
   }
 
   for (let k = 1; k <= 4; k += 1) {
-    ctx.VSREZ[k] = 0.0;
-    ctx.VSM[k] = 0.0;
-    ctx.VSR[k] = 0.0;
-    ctx.VSX[k] = 0.0;
+    VSREZ[k] = 0.0;
+    VSM[k] = 0.0;
+    VSR[k] = 0.0;
+    VSX[k] = 0.0;
     for (let l = 1; l <= 5; l += 1) {
-      ctx.VS1[k][l] = 0.0;
-      ctx.VS2[k][l] = 0.0;
+      VS1[k][l] = 0.0;
+      VS2[k][l] = 0.0;
     }
   }
 
   const hupwt = 1.0;
-  let hdcon = 5.0 * hupwt / ctx.HK2 ** 2;
+  let hdcon = 5.0 * hupwt / hk2 ** 2;
   let hdHk1 = 0.0;
-  let hdHk2 = -hdcon * 2.0 / ctx.HK2;
+  let hdHk2 = -hdcon * 2.0 / hk2;
 
   if (ityp === 3) {
-    hdcon = hupwt / ctx.HK2 ** 2;
+    hdcon = hupwt / hk2 ** 2;
     hdHk1 = 0.0;
-    hdHk2 = -hdcon * 2.0 / ctx.HK2;
+    hdHk2 = -hdcon * 2.0 / hk2;
   }
 
-  const arg = Math.abs((ctx.HK2 - 1.0) / (ctx.HK1 - 1.0));
+  const arg = Math.abs((hk2 - 1.0) / (hk1 - 1.0));
   const hl = Math.log(arg);
-  const hlHk1 = -1.0 / (ctx.HK1 - 1.0);
-  const hlHk2 = 1.0 / (ctx.HK2 - 1.0);
+  const hlHk1 = -1.0 / (hk1 - 1.0);
+  const hlHk2 = 1.0 / (hk2 - 1.0);
 
   const hlsq = Math.min(hl ** 2, 15.0);
   const ehh = Math.exp(-hlsq * hdcon);
@@ -1411,59 +1524,59 @@ function bldif(ityp, ctxIn) {
   const upwHk1 = upwHl * hlHk1 + upwHd * hdHk1;
   const upwHk2 = upwHl * hlHk2 + upwHd * hdHk2;
 
-  const upwU1 = upwHk1 * ctx.HK1_U1;
-  const upwT1 = upwHk1 * ctx.HK1_T1;
-  const upwD1 = upwHk1 * ctx.HK1_D1;
-  const upwU2 = upwHk2 * ctx.HK2_U2;
-  const upwT2 = upwHk2 * ctx.HK2_T2;
-  const upwD2 = upwHk2 * ctx.HK2_D2;
-  const upwMs = upwHk1 * ctx.HK1_MS + upwHk2 * ctx.HK2_MS;
+  const upwU1 = upwHk1 * hk1U1;
+  const upwT1 = upwHk1 * hk1T1;
+  const upwD1 = upwHk1 * hk1D1;
+  const upwU2 = upwHk2 * hk2U2;
+  const upwT2 = upwHk2 * hk2T2;
+  const upwD2 = upwHk2 * hk2D2;
+  const upwMs = upwHk1 * hk1Ms + upwHk2 * hk2Ms;
 
   if (ityp === 0) {
-    ctx.VS2[1][1] = 1.0;
-    ctx.VSR[1] = 0.0;
-    ctx.VSREZ[1] = -ctx.AMPL2;
+    VS2[1][1] = 1.0;
+    VSR[1] = 0.0;
+    VSREZ[1] = -ctx.AMPL2;
   } else if (ityp === 1) {
-    const axOut = axset(ctx.HK1, ctx.T1, ctx.RT1, ctx.AMPL1,
-      ctx.HK2, ctx.T2, ctx.RT2, ctx.AMPL2, ctx.AMCRIT, ctx.IDAMPV);
+    const axOut = axset(hk1, t1, rt1, ctx.AMPL1,
+      hk2, t2, rt2, ctx.AMPL2, ctx.AMCRIT, ctx.IDAMPV);
     const ax = axOut.ax;
-    const rezc = ctx.AMPL2 - ctx.AMPL1 - ax * (ctx.X2 - ctx.X1);
-    const zAx = -(ctx.X2 - ctx.X1);
+    const rezc = ctx.AMPL2 - ctx.AMPL1 - ax * (x2 - x1);
+    const zAx = -(x2 - x1);
 
-    ctx.VS1[1][1] = zAx * axOut.axA1 - 1.0;
-    ctx.VS1[1][2] = zAx * (axOut.axHk1 * ctx.HK1_T1 + axOut.axT1 + axOut.axRt1 * ctx.RT1_T1);
-    ctx.VS1[1][3] = zAx * (axOut.axHk1 * ctx.HK1_D1);
-    ctx.VS1[1][4] = zAx * (axOut.axHk1 * ctx.HK1_U1 + axOut.axRt1 * ctx.RT1_U1);
-    ctx.VS1[1][5] = ax;
-    ctx.VS2[1][1] = zAx * axOut.axA2 + 1.0;
-    ctx.VS2[1][2] = zAx * (axOut.axHk2 * ctx.HK2_T2 + axOut.axT2 + axOut.axRt2 * ctx.RT2_T2);
-    ctx.VS2[1][3] = zAx * (axOut.axHk2 * ctx.HK2_D2);
-    ctx.VS2[1][4] = zAx * (axOut.axHk2 * ctx.HK2_U2 + axOut.axRt2 * ctx.RT2_U2);
-    ctx.VS2[1][5] = -ax;
-    ctx.VSM[1] = zAx * (axOut.axHk1 * ctx.HK1_MS + axOut.axRt1 * ctx.RT1_MS
-      + axOut.axHk2 * ctx.HK2_MS + axOut.axRt2 * ctx.RT2_MS);
-    ctx.VSR[1] = zAx * (axOut.axRt1 * ctx.RT1_RE + axOut.axRt2 * ctx.RT2_RE);
-    ctx.VSX[1] = 0.0;
-    ctx.VSREZ[1] = -rezc;
+    VS1[1][1] = zAx * axOut.axA1 - 1.0;
+    VS1[1][2] = zAx * (axOut.axHk1 * hk1T1 + axOut.axT1 + axOut.axRt1 * rt1T1);
+    VS1[1][3] = zAx * (axOut.axHk1 * hk1D1);
+    VS1[1][4] = zAx * (axOut.axHk1 * hk1U1 + axOut.axRt1 * rt1U1);
+    VS1[1][5] = ax;
+    VS2[1][1] = zAx * axOut.axA2 + 1.0;
+    VS2[1][2] = zAx * (axOut.axHk2 * hk2T2 + axOut.axT2 + axOut.axRt2 * rt2T2);
+    VS2[1][3] = zAx * (axOut.axHk2 * hk2D2);
+    VS2[1][4] = zAx * (axOut.axHk2 * hk2U2 + axOut.axRt2 * rt2U2);
+    VS2[1][5] = -ax;
+    VSM[1] = zAx * (axOut.axHk1 * hk1Ms + axOut.axRt1 * rt1Ms
+      + axOut.axHk2 * hk2Ms + axOut.axRt2 * rt2Ms);
+    VSR[1] = zAx * (axOut.axRt1 * rt1Re + axOut.axRt2 * rt2Re);
+    VSX[1] = 0.0;
+    VSREZ[1] = -rezc;
   } else {
-    const sa = (1.0 - upw) * ctx.S1 + upw * ctx.S2;
-    const cqa = (1.0 - upw) * ctx.CQ1 + upw * ctx.CQ2;
-    const cfa = (1.0 - upw) * ctx.CF1 + upw * ctx.CF2;
-    const hka = (1.0 - upw) * ctx.HK1 + upw * ctx.HK2;
+    const sa = (1.0 - upw) * s1 + upw * s2;
+    const cqa = (1.0 - upw) * cq1 + upw * cq2;
+    const cfa = (1.0 - upw) * cf1 + upw * cf2;
+    const hka = (1.0 - upw) * hk1 + upw * hk2;
 
-    const usa = 0.5 * (ctx.US1 + ctx.US2);
-    const rta = 0.5 * (ctx.RT1 + ctx.RT2);
-    const dea = 0.5 * (ctx.DE1 + ctx.DE2);
-    const da = 0.5 * (ctx.D1 + ctx.D2);
+    const usa = 0.5 * (us1 + us2);
+    const rta = 0.5 * (rt1 + rt2);
+    const dea = 0.5 * (de1 + de2);
+    const da = 0.5 * (d1 + d2);
 
-    const ald = ityp === 3 ? ctx.DLCON : 1.0;
+    const ald = ityp === 3 ? dlcon : 1.0;
 
     let gcc = 0.0;
     let hkc = hka - 1.0;
     let hkcHka = 1.0;
     let hkcRta = 0.0;
     if (ityp === 2) {
-      gcc = ctx.GCCON;
+      gcc = gccon;
       hkc = hka - 1.0 - gcc / rta;
       hkcHka = 1.0;
       hkcRta = gcc / rta ** 2;
@@ -1474,16 +1587,16 @@ function bldif(ityp, ctxIn) {
       }
     }
 
-    const hr = hkc / (ctx.GACON * ald * hka);
-    const hrHka = hkcHka / (ctx.GACON * ald * hka) - hr / hka;
-    const hrRta = hkcRta / (ctx.GACON * ald * hka);
+    const hr = hkc / (gacon * ald * hka);
+    const hrHka = hkcHka / (gacon * ald * hka) - hr / hka;
+    const hrRta = hkcRta / (gacon * ald * hka);
 
-    const uq = (0.5 * cfa - hr ** 2) / (ctx.GBCON * da);
-    const uqHka = -2.0 * hr * hrHka / (ctx.GBCON * da);
-    const uqRta = -2.0 * hr * hrRta / (ctx.GBCON * da);
-    const uqCfa = 0.5 / (ctx.GBCON * da);
+    const uq = (0.5 * cfa - hr ** 2) / (gbcon * da);
+    const uqHka = -2.0 * hr * hrHka / (gbcon * da);
+    const uqRta = -2.0 * hr * hrRta / (gbcon * da);
+    const uqCfa = 0.5 / (gbcon * da);
     const uqDa = -uq / da;
-    const uqUpw = uqCfa * (ctx.CF2 - ctx.CF1) + uqHka * (ctx.HK2 - ctx.HK1);
+    const uqUpw = uqCfa * (cf2 - cf1) + uqHka * (hk2 - hk1);
 
     let uqT1 = (1.0 - upw) * (uqCfa * ctx.CF1_T1 + uqHka * ctx.HK1_T1) + uqUpw * upwT1;
     let uqD1 = (1.0 - upw) * (uqCfa * ctx.CF1_D1 + uqHka * ctx.HK1_D1) + uqUpw * upwD1;
@@ -1510,8 +1623,8 @@ function bldif(ityp, ctxIn) {
     const sccUs1 = sccUsa * 0.5;
     const sccUs2 = sccUsa * 0.5;
 
-    const slog = Math.log(ctx.S2 / ctx.S1);
-    const dxi = ctx.X2 - ctx.X1;
+    const slog = Math.log(s2 / s1);
+    const dxi = x2 - x1;
 
     const rezc = scc * (cqa - sa * ald) * dxi
       - dea * 2.0 * slog

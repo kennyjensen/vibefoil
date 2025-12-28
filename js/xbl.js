@@ -749,6 +749,12 @@ function setbl(ctx) {
   const XSSI = ctx.XSSI;
   const ITRAN = ctx.ITRAN;
   const IBLTE = ctx.IBLTE;
+  const minf = ctx.MINF;
+  const qinf = ctx.QINF;
+  const gamma = ctx.GAMMA;
+  const gamm1 = ctx.GAMM1;
+  const hvrat = ctx.HVRAT;
+  const reinf = ctx.REINF;
   // No tracing; setbl assembles VA/VB/VDEL/VM directly.
   // Clear COM arrays before assembling system.
   COM1.fill(0.0, 1);
@@ -771,13 +777,17 @@ function setbl(ctx) {
     }
   }
   for (let k = 1; k <= 3; k += 1) {
+    const VAk = VA[k];
+    const VBk = VB[k];
+    const VDELk = VDEL[k];
+    const VMk = VM[k];
     for (let j = 1; j <= 2; j += 1) {
-      VA[k][j].fill(0.0, 1, nsys + 1);
-      VB[k][j].fill(0.0, 1, nsys + 1);
-      VDEL[k][j].fill(0.0, 1, nsys + 1);
+      VAk[j].fill(0.0, 1, nsys + 1);
+      VBk[j].fill(0.0, 1, nsys + 1);
+      VDELk[j].fill(0.0, 1, nsys + 1);
     }
     for (let j = 1; j <= nsys; j += 1) {
-      VM[k][j].fill(0.0, 1, nsys + 1);
+      VMk[j].fill(0.0, 1, nsys + 1);
     }
   }
 
@@ -787,25 +797,25 @@ function setbl(ctx) {
 
   comset(ctx);
 
-  ctx.GAMBL = ctx.GAMMA;
-  ctx.GM1BL = ctx.GAMM1;
-  ctx.QINFBL = ctx.QINF;
+  ctx.GAMBL = gamma;
+  ctx.GM1BL = gamm1;
+  ctx.QINFBL = qinf;
   ctx.TKBL = ctx.TKLAM;
   ctx.TKBL_MS = ctx.TK_MSQ;
 
-  ctx.RSTBL = (1.0 + 0.5 * ctx.GM1BL * ctx.MINF ** 2) ** (1.0 / ctx.GM1BL);
-  ctx.RSTBL_MS = 0.5 * ctx.RSTBL / (1.0 + 0.5 * ctx.GM1BL * ctx.MINF ** 2);
+  ctx.RSTBL = (1.0 + 0.5 * ctx.GM1BL * minf ** 2) ** (1.0 / ctx.GM1BL);
+  ctx.RSTBL_MS = 0.5 * ctx.RSTBL / (1.0 + 0.5 * ctx.GM1BL * minf ** 2);
 
-  ctx.HSTINV = ctx.GM1BL * (ctx.MINF / ctx.QINFBL) ** 2 / (1.0 + 0.5 * ctx.GM1BL * ctx.MINF ** 2);
-  ctx.HSTINV_MS = ctx.GM1BL * (1.0 / ctx.QINFBL) ** 2 / (1.0 + 0.5 * ctx.GM1BL * ctx.MINF ** 2)
-    - 0.5 * ctx.GM1BL * ctx.HSTINV / (1.0 + 0.5 * ctx.GM1BL * ctx.MINF ** 2);
+  ctx.HSTINV = ctx.GM1BL * (minf / ctx.QINFBL) ** 2 / (1.0 + 0.5 * ctx.GM1BL * minf ** 2);
+  ctx.HSTINV_MS = ctx.GM1BL * (1.0 / ctx.QINFBL) ** 2 / (1.0 + 0.5 * ctx.GM1BL * minf ** 2)
+    - 0.5 * ctx.GM1BL * ctx.HSTINV / (1.0 + 0.5 * ctx.GM1BL * minf ** 2);
 
   const herat = 1.0 - 0.5 * ctx.QINFBL ** 2 * ctx.HSTINV;
   const heratMs = -0.5 * ctx.QINFBL ** 2 * ctx.HSTINV_MS;
 
-  ctx.REYBL = ctx.REINF * Math.sqrt(herat ** 3) * (1.0 + ctx.HVRAT) / (herat + ctx.HVRAT);
-  ctx.REYBL_RE = Math.sqrt(herat ** 3) * (1.0 + ctx.HVRAT) / (herat + ctx.HVRAT);
-  ctx.REYBL_MS = ctx.REYBL * (1.5 / herat - 1.0 / (herat + ctx.HVRAT)) * heratMs;
+  ctx.REYBL = reinf * Math.sqrt(herat ** 3) * (1.0 + hvrat) / (herat + hvrat);
+  ctx.REYBL_RE = Math.sqrt(herat ** 3) * (1.0 + hvrat) / (herat + hvrat);
+  ctx.REYBL_MS = ctx.REYBL * (1.5 / herat - 1.0 / (herat + hvrat)) * heratMs;
 
   ctx.IDAMPV = ctx.IDAMP ?? ctx.IDAMPV ?? 0;
   ctx.DWTE = ctx.WGAP[1] ?? 0.0;
@@ -834,7 +844,8 @@ function setbl(ctx) {
   }
 
   for (let is = 1; is <= 2; is += 1) {
-    for (let ibl = 2; ibl <= NBL[is]; ibl += 1) {
+    const nblIs = NBL[is];
+    for (let ibl = 2; ibl <= nblIs; ibl += 1) {
       usav[ibl][is] = UEDG[ibl][is];
     }
   }
@@ -843,8 +854,9 @@ function setbl(ctx) {
 
   let badUeSet = 0;
   for (let is = 1; is <= 2; is += 1) {
-    for (let ibl = 2; ibl <= ctx.NBL[is]; ibl += 1) {
-      if (!Number.isFinite(ctx.UEDG[ibl][is])) {
+    const nblIs = NBL[is];
+    for (let ibl = 2; ibl <= nblIs; ibl += 1) {
+      if (!Number.isFinite(UEDG[ibl][is])) {
         badUeSet += 1;
       }
     }
@@ -852,16 +864,18 @@ function setbl(ctx) {
 
   if (badUeSet === 0) {
     for (let is = 1; is <= 2; is += 1) {
-      for (let ibl = 2; ibl <= NBL[is]; ibl += 1) {
+      const nblIs = NBL[is];
+      for (let ibl = 2; ibl <= nblIs; ibl += 1) {
         const temp = usav[ibl][is];
-        usav[ibl][is] = ctx.UEDG[ibl][is];
-        ctx.UEDG[ibl][is] = temp;
+        usav[ibl][is] = UEDG[ibl][is];
+        UEDG[ibl][is] = temp;
       }
     }
   } else {
     for (let is = 1; is <= 2; is += 1) {
-      for (let ibl = 2; ibl <= NBL[is]; ibl += 1) {
-        ctx.UEDG[ibl][is] = usav[ibl][is];
+      const nblIs = NBL[is];
+      for (let ibl = 2; ibl <= nblIs; ibl += 1) {
+        UEDG[ibl][is] = usav[ibl][is];
       }
     }
   }

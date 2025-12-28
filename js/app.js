@@ -60,9 +60,11 @@ const machInput = document.getElementById('mach');
 const reynoldsInput = document.getElementById('reynolds');
 const ncrInput = document.getElementById('ncr');
 const nIterInput = document.getElementById('nIter');
-const reuseBlInput = document.getElementById('reuseBl');
 const loadDatButton = document.getElementById('loadDat');
 const datFileInput = document.getElementById('datFile');
+const flapXInput = document.getElementById('flapX');
+const flapYInput = document.getElementById('flapY');
+const flapDefInput = document.getElementById('flapDef');
 const alphaSlider = document.getElementById('alpha');
 const alphaValue = document.getElementById('alphaValue');
 const alphaMinus = document.getElementById('alphaMinus');
@@ -348,7 +350,7 @@ function resizeCanvas() {
 }
 
 // Insert or replace sweep point (alpha-indexed) to keep plots ordered.
-function upsertSweepPoint(alphaDeg, coeffs) {
+function upsertSweepPoint(alphaDeg, coeffs, converged = true) {
   const active = getActiveCase();
   if (!active) return;
   if (!Number.isFinite(alphaDeg)
@@ -361,7 +363,13 @@ function upsertSweepPoint(alphaDeg, coeffs) {
   const history = active.history;
   const eps = 1.0e-6;
   const idx = history.findIndex((p) => Math.abs(p.alpha - alphaDeg) < eps);
-  const point = { alpha: alphaDeg, cl: coeffs.CL, cd: coeffs.CD, cm: coeffs.CM };
+  const point = {
+    alpha: alphaDeg,
+    cl: coeffs.CL,
+    cd: coeffs.CD,
+    cm: coeffs.CM,
+    converged,
+  };
   if (idx >= 0) {
     history[idx] = point;
   } else {
@@ -550,12 +558,14 @@ function drawAlphaSweepPlot() {
     }
   };
 
+  const staleColor = 'rgba(154, 160, 168, 0.85)';
   runCases.forEach((caseItem) => {
     caseItem.history.forEach((p) => {
       const px = xToPx(p.alpha);
-      drawMarker('circle', px, yToPyLeft(p.cl), caseItem.color);
-      drawMarker('square', px, yToPyRight(p.cd), caseItem.color, true);
-      drawMarker('triangle', px, yToPyLeft(p.cm), caseItem.color);
+      const color = p.converged === false ? staleColor : caseItem.color;
+      drawMarker('circle', px, yToPyLeft(p.cl), color);
+      drawMarker('square', px, yToPyRight(p.cd), color, true);
+      drawMarker('triangle', px, yToPyLeft(p.cm), color);
     });
   });
 
@@ -663,12 +673,13 @@ function drawPolarPlot() {
     polarCtx.fillText(yv.toFixed(2), 6, py + 4);
   }
 
+  const staleColor = 'rgba(154, 160, 168, 0.85)';
   runCases.forEach((caseItem) => {
-    polarCtx.fillStyle = caseItem.color;
     caseItem.history.forEach((p) => {
       if (!Number.isFinite(p.cd) || !Number.isFinite(p.cl)) return;
       const px = xToPx(Math.max(p.cd, 0.0));
       const py = yToPy(p.cl);
+      polarCtx.fillStyle = p.converged === false ? staleColor : caseItem.color;
       polarCtx.beginPath();
       polarCtx.arc(px, py, 4, 0, Math.PI * 2);
       polarCtx.fill();
@@ -1492,9 +1503,7 @@ function applySolverResult(payload) {
   }
 
   updateDataBox(alphaRad, coeffs, converged);
-  if (converged) {
-    upsertSweepPoint(alphaDeg, coeffs);
-  }
+  upsertSweepPoint(alphaDeg, coeffs, converged);
   drawAlphaSweepPlot();
   drawPolarPlot();
 
@@ -1590,6 +1599,8 @@ function update() {
   } else {
     geometryKey = `naca6:${series6Profile.value}:${t6Slider.value}:${cl6Input.value}`;
   }
+  const flapKey = `${flapXInput?.value ?? '0.75'}:${flapYInput?.value ?? '0.5'}:${flapDefInput?.value ?? '0'}`;
+  geometryKey = `${geometryKey}:flap:${flapKey}`;
 
   const profile = series6Profile.value;
   const cl = parseFloat(cl6Input.value);
@@ -1610,6 +1621,11 @@ function update() {
     cl6: Number.isFinite(cl) ? cl : 0.0,
     camber6: camber,
     fallbackA6: fallbackA,
+    flap: {
+      x: parseFloat(flapXInput?.value),
+      yrel: parseFloat(flapYInput?.value),
+      deflection: parseFloat(flapDefInput?.value),
+    },
     custom: customAirfoil
       ? {
         name: customAirfoil.name,
@@ -1621,8 +1637,8 @@ function update() {
     alphaDeg,
     alphaRad,
     geometryKey,
-    reusePanel: reuseBlInput?.checked === true && viscousToggle.checked,
-    reuseSolution: reuseBlInput?.checked === true,
+    reusePanel: false,
+    reuseSolution: false,
     viscous: viscousToggle.checked,
     mach: parseFloat(machInput.value),
     reynolds: parseFloat(reynoldsInput.value),
@@ -1659,9 +1675,11 @@ machInput.addEventListener('input', update);
 reynoldsInput.addEventListener('input', update);
 ncrInput.addEventListener('input', update);
 nIterInput.addEventListener('input', update);
-if (reuseBlInput) {
-  reuseBlInput.addEventListener('change', update);
-}
+[flapXInput, flapYInput, flapDefInput].forEach((input) => {
+  if (input) {
+    input.addEventListener('input', update);
+  }
+});
 if (alphaMinus) {
   alphaMinus.addEventListener('click', () => {
     const current = parseFloat(alphaSlider.value);
@@ -1763,11 +1781,6 @@ controls4.hidden = initSource === 'custom' || (seriesRadios.find((item) => item.
 controls5.hidden = initSource === 'custom' || (seriesRadios.find((item) => item.checked)?.value || '4') !== '5';
 controls6.hidden = initSource === 'custom' || (seriesRadios.find((item) => item.checked)?.value || '4') !== '6';
 updateAlphaLabel(parseFloat(alphaSlider.value));
-if (runCases.length === 0) {
-  const initialCase = createRunCase();
-  runCases.push(initialCase);
-  activeCaseId = initialCase.id;
-}
 renderRunCases();
 resizeCanvas();
 update();

@@ -491,6 +491,24 @@
 
 
       <div class="control-group viscous-box">
+        <label>
+          <span>Flap</span>
+        </label>
+        <div class="viscous-row">
+          <label for="flapX">Flap x/c location</label>
+          <input id="flapX" type="number" min="0" max="1" step="0.01" value="0.75" />
+        </div>
+        <div class="viscous-row">
+          <label for="flapY">Hinge y/t location</label>
+          <input id="flapY" type="number" min="0" max="1" step="0.01" value="0.50" />
+        </div>
+        <div class="viscous-row">
+          <label for="flapDef">Deflection (+ down)</label>
+          <input id="flapDef" type="number" step="0.5" value="0.0" />
+        </div>
+      </div>
+
+      <div class="control-group viscous-box">
         <label for="viscous">
           <span>Boundary Layer</span>
         </label>
@@ -501,17 +519,16 @@
         </div>
         <div class="viscous-row">
           <label for="reynolds">Re</label>
-          <input id="reynolds" type="number" min="10000" step="10000" value="1000000" />
+          <input id="reynolds" type="number" min="10000" step="100000" value="1000000" />
         </div>
         <div class="viscous-row">
           <label for="ncr">N<sub>cr</sub></label>
-          <input id="ncr" type="number" min="1" max="15" step="0.1" value="9.0" />
+          <input id="ncr" type="number" min="1" max="15" step="1" value="9.0" />
         </div>
         <div class="viscous-row">
           <label for="nIter">N<sub>iter</sub></label>
           <input id="nIter" type="number" min="1" step="1" value="20" />
         </div>
-        <label><input id="reuseBl" type="checkbox" /> Reuse previous BL solution</label>
       </div>
 
       <div class="control-group viscous-box">

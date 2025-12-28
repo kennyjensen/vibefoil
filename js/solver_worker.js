@@ -10,6 +10,7 @@ import {
 import { computeCoefficients, cpcalc, tecalc, pangen } from './xfoil.js';
 import { buildBlContext, computeQvisFromUedg, specal, viscal } from './xoper.js';
 import { createMatrix } from './arrays.js';
+import { flap as applyFlap } from './xgdes.js';
 
 const nside = 123;
 const xx = new Float64Array(nside);
@@ -366,6 +367,7 @@ function generateGeometry(settings) {
     t6,
     cl6,
     custom,
+    flap,
   } = settings;
 
   let nb = 0;
@@ -376,10 +378,12 @@ function generateGeometry(settings) {
       return { ok: false };
     }
     nb = Math.min(custom.nb, xb.length);
-    for (let i = 0; i < nb; i += 1) {
-      xb[i] = custom.x[i];
-      yb[i] = custom.y[i];
-    }
+    const cx = Array.from(custom.x).slice(0, nb);
+    const cy = Array.from(custom.y).slice(0, nb);
+    const flapped = applyFlap(cx, cy, flap);
+    nb = flapped.nb;
+    xb.set(flapped.xb);
+    yb.set(flapped.yb);
     airfoilName = custom.name || 'Custom Airfoil';
     return { ok: true, nb, airfoilName };
   }
@@ -387,7 +391,8 @@ function generateGeometry(settings) {
   if (mode === '4') {
     const ides = m * 1000 + p * 100 + t;
     const res = globalThis.Naca.naca4(ides, xx, yt, yc, nside, xbBuffer, ybBuffer);
-    const panelRes = pangen(xbBuffer, ybBuffer, res.nb);
+    const flapped = applyFlap(Array.from(xbBuffer).slice(0, res.nb), Array.from(ybBuffer).slice(0, res.nb), flap);
+    const panelRes = pangen(Float64Array.from(flapped.xb), Float64Array.from(flapped.yb), flapped.nb);
     nb = panelRes.n;
     xb.set(panelRes.x);
     yb.set(panelRes.y);
@@ -402,7 +407,8 @@ function generateGeometry(settings) {
     const ides = n5 * 10000 + n4 * 1000 + n3 * 100 + t5;
     const result = globalThis.Naca.naca5(ides, xx, yt, yc, nside, xbBuffer, ybBuffer);
     if (!result.ok) return { ok: false };
-    const panelRes = pangen(xbBuffer, ybBuffer, result.nb);
+    const flapped = applyFlap(Array.from(xbBuffer).slice(0, result.nb), Array.from(ybBuffer).slice(0, result.nb), flap);
+    const panelRes = pangen(Float64Array.from(flapped.xb), Float64Array.from(flapped.yb), flapped.nb);
     nb = panelRes.n;
     xb.set(panelRes.x);
     yb.set(panelRes.y);
@@ -426,7 +432,8 @@ function generateGeometry(settings) {
     ybBuffer,
   );
   if (!result.ok) return { ok: false };
-  const panelRes = pangen(xbBuffer, ybBuffer, result.nb);
+  const flapped = applyFlap(Array.from(xbBuffer).slice(0, result.nb), Array.from(ybBuffer).slice(0, result.nb), flap);
+  const panelRes = pangen(Float64Array.from(flapped.xb), Float64Array.from(flapped.yb), flapped.nb);
   nb = panelRes.n;
   xb.set(panelRes.x);
   yb.set(panelRes.y);

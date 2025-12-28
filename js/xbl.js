@@ -223,10 +223,10 @@ function mrchue(ctx) {
 
 
         if (direct) {
-          ctx.VS2[4][1] = 0.0;
-          ctx.VS2[4][2] = 0.0;
-          ctx.VS2[4][3] = 0.0;
-          ctx.VS2[4][4] = 1.0;
+          ctx.VS2F[4 * 6 + 1] = 0.0;
+          ctx.VS2F[4 * 6 + 2] = 0.0;
+          ctx.VS2F[4 * 6 + 3] = 0.0;
+          ctx.VS2F[4 * 6 + 4] = 1.0;
           ctx.VSREZ[4] = 0.0;
 
           gauss1(4, ctx.VS2, ctx.VSREZ);
@@ -289,10 +289,10 @@ function mrchue(ctx) {
           continue;
           }
         } else {
-          ctx.VS2[4][1] = 0.0;
-          ctx.VS2[4][2] = ctx.HK2_T2;
-          ctx.VS2[4][3] = ctx.HK2_D2;
-          ctx.VS2[4][4] = ctx.HK2_U2;
+          ctx.VS2F[4 * 6 + 1] = 0.0;
+          ctx.VS2F[4 * 6 + 2] = ctx.HK2_T2;
+          ctx.VS2F[4 * 6 + 3] = ctx.HK2_D2;
+          ctx.VS2F[4 * 6 + 4] = ctx.HK2_U2;
           ctx.VSREZ[4] = htarg - ctx.HK2;
 
           gauss1(4, ctx.VS2, ctx.VSREZ);
@@ -437,6 +437,7 @@ function mrchdu(ctx) {
   const TFORCE = ctx.TFORCE;
   const ACRIT = ctx.ACRIT;
   const VS2 = ctx.VS2;
+  const VS2F = ctx.VS2F;
   const VSREZ = ctx.VSREZ;
   const blprv = ctx.blprv;
   const blkin = ctx.blkin;
@@ -448,6 +449,7 @@ function mrchdu(ctx) {
   const blmid = ctx.blmid;
   const syncComToVars = ctx.syncComToVars;
 
+  const vsStride = 6;
   let vtmp = ctx._MRCHDU_VTMP;
   let vztmp = ctx._MRCHDU_VZTMP;
   if (!vtmp || vtmp.length < 5) {
@@ -568,16 +570,16 @@ function mrchdu(ctx) {
         }
 
         if (simi || ibl === IBLTE[is] + 1) {
-          VS2[4][1] = 0.0;
-          VS2[4][2] = 0.0;
-          VS2[4][3] = 0.0;
-          VS2[4][4] = ctx.U2_UEI;
+          VS2F[4 * vsStride + 1] = 0.0;
+          VS2F[4 * vsStride + 2] = 0.0;
+          VS2F[4 * vsStride + 3] = 0.0;
+          VS2F[4 * vsStride + 4] = ctx.U2_UEI;
           VSREZ[4] = ueref - ctx.U2;
         } else {
           for (let k = 1; k <= 4; k += 1) {
             vztmp[k] = VSREZ[k];
             for (let l = 1; l <= 4; l += 1) {
-              vtmp[k][l] = VS2[k][l];
+              vtmp[k][l] = VS2F[k * vsStride + l];
             }
           }
 
@@ -596,10 +598,10 @@ function mrchdu(ctx) {
             sens = 0.5 * (sens + sennew);
           }
 
-          VS2[4][1] = 0.0;
-          VS2[4][2] = ctx.HK2_T2 * hkref;
-          VS2[4][3] = ctx.HK2_D2 * hkref;
-          VS2[4][4] = (ctx.HK2_U2 * hkref + sens / ueref) * ctx.U2_UEI;
+          VS2F[4 * vsStride + 1] = 0.0;
+          VS2F[4 * vsStride + 2] = ctx.HK2_T2 * hkref;
+          VS2F[4 * vsStride + 3] = ctx.HK2_D2 * hkref;
+          VS2F[4 * vsStride + 4] = (ctx.HK2_U2 * hkref + sens / ueref) * ctx.U2_UEI;
           VSREZ[4] = -(hkref ** 2) * (ctx.HK2 / hkref - 1.0)
             - sens * (ctx.U2 / ueref - 1.0);
         }
@@ -728,6 +730,8 @@ function setbl(ctx) {
   const VM = ctx.VM;
   const VS1 = ctx.VS1;
   const VS2 = ctx.VS2;
+  const VS1F = ctx.VS1F;
+  const VS2F = ctx.VS2F;
   const VSX = ctx.VSX;
   const VSREZ = ctx.VSREZ;
   const VSR = ctx.VSR;
@@ -749,6 +753,15 @@ function setbl(ctx) {
   const XSSI = ctx.XSSI;
   const ITRAN = ctx.ITRAN;
   const IBLTE = ctx.IBLTE;
+  const vsStride = 6;
+  const vs1 = VS1F;
+  const vs2 = VS2F;
+  const vs1r1 = 1 * vsStride;
+  const vs1r2 = 2 * vsStride;
+  const vs1r3 = 3 * vsStride;
+  const vs2r1 = 1 * vsStride;
+  const vs2r2 = 2 * vsStride;
+  const vs2r3 = 3 * vsStride;
   const minf = ctx.MINF;
   const qinf = ctx.QINF;
   const gamma = ctx.GAMMA;
@@ -1054,154 +1067,154 @@ function setbl(ctx) {
           + dteUte2 * (UEDG[IBLTE[2]][2] - usav[IBLTE[2]][2]);
 
         for (let jv = 1; jv <= nsys; jv += 1) {
-          VM[1][jv][iv] = VS1[1][3] * d1M[jv] + VS1[1][4] * u1M[jv]
-            + VS2[1][3] * d2M[jv] + VS2[1][4] * u2M[jv]
-            + (VS1[1][5] + VS2[1][5] + VSX[1])
+          VM[1][jv][iv] = vs1[vs1r1 + 3] * d1M[jv] + vs1[vs1r1 + 4] * u1M[jv]
+            + vs2[vs2r1 + 3] * d2M[jv] + vs2[vs2r1 + 4] * u2M[jv]
+            + (vs1[vs1r1 + 5] + vs2[vs2r1 + 5] + VSX[1])
             * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
         }
 
-        VB[1][1][iv] = VS1[1][1];
-        VB[1][2][iv] = VS1[1][2];
-        VA[1][1][iv] = VS2[1][1];
-        VA[1][2][iv] = VS2[1][2];
+        VB[1][1][iv] = vs1[vs1r1 + 1];
+        VB[1][2][iv] = vs1[vs1r1 + 2];
+        VA[1][1][iv] = vs2[vs2r1 + 1];
+        VA[1][2][iv] = vs2[vs2r1 + 2];
 
         VDEL[1][2][iv] = ctx.LALFA
           ? VSR[1] * reClmr + VSM[1] * msqClmr
-          : (VS1[1][4] * u1A + VS1[1][3] * d1A)
-            + (VS2[1][4] * u2A + VS2[1][3] * d2A);
-        VDEL[1][2][iv] += (VS1[1][5] + VS2[1][5] + VSX[1])
+          : (vs1[vs1r1 + 4] * u1A + vs1[vs1r1 + 3] * d1A)
+            + (vs2[vs2r1 + 4] * u2A + vs2[vs2r1 + 3] * d2A);
+        VDEL[1][2][iv] += (vs1[vs1r1 + 5] + vs2[vs2r1 + 5] + VSX[1])
           * (xiUle1 * ule1A + xiUle2 * ule2A);
         VDEL[1][1][iv] = VSREZ[1]
-          + (VS1[1][4] * due1 + VS1[1][3] * dds1)
-          + (VS2[1][4] * due2 + VS2[1][3] * dds2)
-          + (VS1[1][5] + VS2[1][5] + VSX[1])
+          + (vs1[vs1r1 + 4] * due1 + vs1[vs1r1 + 3] * dds1)
+          + (vs2[vs2r1 + 4] * due2 + vs2[vs2r1 + 3] * dds2)
+          + (vs1[vs1r1 + 5] + vs2[vs2r1 + 5] + VSX[1])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
         for (let jv = 1; jv <= nsys; jv += 1) {
-          VM[2][jv][iv] = VS1[2][3] * d1M[jv] + VS1[2][4] * u1M[jv]
-            + VS2[2][3] * d2M[jv] + VS2[2][4] * u2M[jv]
-            + (VS1[2][5] + VS2[2][5] + VSX[2])
+          VM[2][jv][iv] = vs1[vs1r2 + 3] * d1M[jv] + vs1[vs1r2 + 4] * u1M[jv]
+            + vs2[vs2r2 + 3] * d2M[jv] + vs2[vs2r2 + 4] * u2M[jv]
+            + (vs1[vs1r2 + 5] + vs2[vs2r2 + 5] + VSX[2])
             * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
         }
-        VB[2][1][iv] = VS1[2][1];
-        VB[2][2][iv] = VS1[2][2];
-        VA[2][1][iv] = VS2[2][1];
-        VA[2][2][iv] = VS2[2][2];
+        VB[2][1][iv] = vs1[vs1r2 + 1];
+        VB[2][2][iv] = vs1[vs1r2 + 2];
+        VA[2][1][iv] = vs2[vs2r2 + 1];
+        VA[2][2][iv] = vs2[vs2r2 + 2];
         VDEL[2][2][iv] = ctx.LALFA
           ? VSR[2] * reClmr + VSM[2] * msqClmr
-          : (VS1[2][4] * u1A + VS1[2][3] * d1A)
-            + (VS2[2][4] * u2A + VS2[2][3] * d2A);
-        VDEL[2][2][iv] += (VS1[2][5] + VS2[2][5] + VSX[2])
+          : (vs1[vs1r2 + 4] * u1A + vs1[vs1r2 + 3] * d1A)
+            + (vs2[vs2r2 + 4] * u2A + vs2[vs2r2 + 3] * d2A);
+        VDEL[2][2][iv] += (vs1[vs1r2 + 5] + vs2[vs2r2 + 5] + VSX[2])
           * (xiUle1 * ule1A + xiUle2 * ule2A);
         VDEL[2][1][iv] = VSREZ[2]
-          + (VS1[2][4] * due1 + VS1[2][3] * dds1)
-          + (VS2[2][4] * due2 + VS2[2][3] * dds2)
-          + (VS1[2][5] + VS2[2][5] + VSX[2])
+          + (vs1[vs1r2 + 4] * due1 + vs1[vs1r2 + 3] * dds1)
+          + (vs2[vs2r2 + 4] * due2 + vs2[vs2r2 + 3] * dds2)
+          + (vs1[vs1r2 + 5] + vs2[vs2r2 + 5] + VSX[2])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
         for (let jv = 1; jv <= nsys; jv += 1) {
-          VM[3][jv][iv] = VS1[3][3] * d1M[jv] + VS1[3][4] * u1M[jv]
-            + VS2[3][3] * d2M[jv] + VS2[3][4] * u2M[jv]
-            + (VS1[3][5] + VS2[3][5] + VSX[3])
+          VM[3][jv][iv] = vs1[vs1r3 + 3] * d1M[jv] + vs1[vs1r3 + 4] * u1M[jv]
+            + vs2[vs2r3 + 3] * d2M[jv] + vs2[vs2r3 + 4] * u2M[jv]
+            + (vs1[vs1r3 + 5] + vs2[vs2r3 + 5] + VSX[3])
             * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
         }
-        VB[3][1][iv] = VS1[3][1];
-        VB[3][2][iv] = VS1[3][2];
-        VA[3][1][iv] = VS2[3][1];
-        VA[3][2][iv] = VS2[3][2];
+        VB[3][1][iv] = vs1[vs1r3 + 1];
+        VB[3][2][iv] = vs1[vs1r3 + 2];
+        VA[3][1][iv] = vs2[vs2r3 + 1];
+        VA[3][2][iv] = vs2[vs2r3 + 2];
         VDEL[3][2][iv] = ctx.LALFA
           ? VSR[3] * reClmr + VSM[3] * msqClmr
-          : (VS1[3][4] * u1A + VS1[3][3] * d1A)
-            + (VS2[3][4] * u2A + VS2[3][3] * d2A);
-        VDEL[3][2][iv] += (VS1[3][5] + VS2[3][5] + VSX[3])
+          : (vs1[vs1r3 + 4] * u1A + vs1[vs1r3 + 3] * d1A)
+            + (vs2[vs2r3 + 4] * u2A + vs2[vs2r3 + 3] * d2A);
+        VDEL[3][2][iv] += (vs1[vs1r3 + 5] + vs2[vs2r3 + 5] + VSX[3])
           * (xiUle1 * ule1A + xiUle2 * ule2A);
         VDEL[3][1][iv] = VSREZ[3]
-          + (VS1[3][4] * due1 + VS1[3][3] * dds1)
-          + (VS2[3][4] * due2 + VS2[3][3] * dds2)
-          + (VS1[3][5] + VS2[3][5] + VSX[3])
+          + (vs1[vs1r3 + 4] * due1 + vs1[vs1r3 + 3] * dds1)
+          + (vs2[vs2r3 + 4] * due2 + vs2[vs2r3 + 3] * dds2)
+          + (vs1[vs1r3 + 5] + vs2[vs2r3 + 5] + VSX[3])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
-        VZ[1][1] = VS1[1][1] * cteCte1;
-        VZ[1][2] = VS1[1][1] * cteTte1 + VS1[1][2] * tteTte1;
-        VB[1][1][iv] = VS1[1][1] * cteCte2;
-        VB[1][2][iv] = VS1[1][1] * cteTte2 + VS1[1][2] * tteTte2;
+        VZ[1][1] = vs1[vs1r1 + 1] * cteCte1;
+        VZ[1][2] = vs1[vs1r1 + 1] * cteTte1 + vs1[vs1r1 + 2] * tteTte1;
+        VB[1][1][iv] = vs1[vs1r1 + 1] * cteCte2;
+        VB[1][2][iv] = vs1[vs1r1 + 1] * cteTte2 + vs1[vs1r1 + 2] * tteTte2;
 
-        VZ[2][1] = VS1[2][1] * cteCte1;
-        VZ[2][2] = VS1[2][1] * cteTte1 + VS1[2][2] * tteTte1;
-        VB[2][1][iv] = VS1[2][1] * cteCte2;
-        VB[2][2][iv] = VS1[2][1] * cteTte2 + VS1[2][2] * tteTte2;
+        VZ[2][1] = vs1[vs1r2 + 1] * cteCte1;
+        VZ[2][2] = vs1[vs1r2 + 1] * cteTte1 + vs1[vs1r2 + 2] * tteTte1;
+        VB[2][1][iv] = vs1[vs1r2 + 1] * cteCte2;
+        VB[2][2][iv] = vs1[vs1r2 + 1] * cteTte2 + vs1[vs1r2 + 2] * tteTte2;
 
-        VZ[3][1] = VS1[3][1] * cteCte1;
-        VZ[3][2] = VS1[3][1] * cteTte1 + VS1[3][2] * tteTte1;
-        VB[3][1][iv] = VS1[3][1] * cteCte2;
-        VB[3][2][iv] = VS1[3][1] * cteTte2 + VS1[3][2] * tteTte2;
+        VZ[3][1] = vs1[vs1r3 + 1] * cteCte1;
+        VZ[3][2] = vs1[vs1r3 + 1] * cteTte1 + vs1[vs1r3 + 2] * tteTte1;
+        VB[3][1][iv] = vs1[vs1r3 + 1] * cteCte2;
+        VB[3][2][iv] = vs1[vs1r3 + 1] * cteTte2 + vs1[vs1r3 + 2] * tteTte2;
       } else {
         ctx.blsys(ctx);
 
         for (let jv = 1; jv <= nsys; jv += 1) {
-          VM[1][jv][iv] = VS1[1][3] * d1M[jv] + VS1[1][4] * u1M[jv]
-            + VS2[1][3] * d2M[jv] + VS2[1][4] * u2M[jv]
-            + (VS1[1][5] + VS2[1][5] + VSX[1])
+          VM[1][jv][iv] = vs1[vs1r1 + 3] * d1M[jv] + vs1[vs1r1 + 4] * u1M[jv]
+            + vs2[vs2r1 + 3] * d2M[jv] + vs2[vs2r1 + 4] * u2M[jv]
+            + (vs1[vs1r1 + 5] + vs2[vs2r1 + 5] + VSX[1])
             * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
         }
-        VB[1][1][iv] = VS1[1][1];
-        VB[1][2][iv] = VS1[1][2];
-        VA[1][1][iv] = VS2[1][1];
-        VA[1][2][iv] = VS2[1][2];
+        VB[1][1][iv] = vs1[vs1r1 + 1];
+        VB[1][2][iv] = vs1[vs1r1 + 2];
+        VA[1][1][iv] = vs2[vs2r1 + 1];
+        VA[1][2][iv] = vs2[vs2r1 + 2];
         VDEL[1][2][iv] = ctx.LALFA
           ? VSR[1] * reClmr + VSM[1] * msqClmr
-          : (VS1[1][4] * u1A + VS1[1][3] * d1A)
-            + (VS2[1][4] * u2A + VS2[1][3] * d2A)
-            + (VS1[1][5] + VS2[1][5] + VSX[1])
+          : (vs1[vs1r1 + 4] * u1A + vs1[vs1r1 + 3] * d1A)
+            + (vs2[vs2r1 + 4] * u2A + vs2[vs2r1 + 3] * d2A)
+            + (vs1[vs1r1 + 5] + vs2[vs2r1 + 5] + VSX[1])
             * (xiUle1 * ule1A + xiUle2 * ule2A);
         VDEL[1][1][iv] = VSREZ[1]
-          + (VS1[1][4] * due1 + VS1[1][3] * dds1)
-          + (VS2[1][4] * due2 + VS2[1][3] * dds2)
-          + (VS1[1][5] + VS2[1][5] + VSX[1])
+          + (vs1[vs1r1 + 4] * due1 + vs1[vs1r1 + 3] * dds1)
+          + (vs2[vs2r1 + 4] * due2 + vs2[vs2r1 + 3] * dds2)
+          + (vs1[vs1r1 + 5] + vs2[vs2r1 + 5] + VSX[1])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
         for (let jv = 1; jv <= nsys; jv += 1) {
-          VM[2][jv][iv] = VS1[2][3] * d1M[jv] + VS1[2][4] * u1M[jv]
-            + VS2[2][3] * d2M[jv] + VS2[2][4] * u2M[jv]
-            + (VS1[2][5] + VS2[2][5] + VSX[2])
+          VM[2][jv][iv] = vs1[vs1r2 + 3] * d1M[jv] + vs1[vs1r2 + 4] * u1M[jv]
+            + vs2[vs2r2 + 3] * d2M[jv] + vs2[vs2r2 + 4] * u2M[jv]
+            + (vs1[vs1r2 + 5] + vs2[vs2r2 + 5] + VSX[2])
             * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
         }
-        VB[2][1][iv] = VS1[2][1];
-        VB[2][2][iv] = VS1[2][2];
-        VA[2][1][iv] = VS2[2][1];
-        VA[2][2][iv] = VS2[2][2];
+        VB[2][1][iv] = vs1[vs1r2 + 1];
+        VB[2][2][iv] = vs1[vs1r2 + 2];
+        VA[2][1][iv] = vs2[vs2r2 + 1];
+        VA[2][2][iv] = vs2[vs2r2 + 2];
         VDEL[2][2][iv] = ctx.LALFA
           ? VSR[2] * reClmr + VSM[2] * msqClmr
-          : (VS1[2][4] * u1A + VS1[2][3] * d1A)
-            + (VS2[2][4] * u2A + VS2[2][3] * d2A)
-            + (VS1[2][5] + VS2[2][5] + VSX[2])
+          : (vs1[vs1r2 + 4] * u1A + vs1[vs1r2 + 3] * d1A)
+            + (vs2[vs2r2 + 4] * u2A + vs2[vs2r2 + 3] * d2A)
+            + (vs1[vs1r2 + 5] + vs2[vs2r2 + 5] + VSX[2])
             * (xiUle1 * ule1A + xiUle2 * ule2A);
         VDEL[2][1][iv] = VSREZ[2]
-          + (VS1[2][4] * due1 + VS1[2][3] * dds1)
-          + (VS2[2][4] * due2 + VS2[2][3] * dds2)
-          + (VS1[2][5] + VS2[2][5] + VSX[2])
+          + (vs1[vs1r2 + 4] * due1 + vs1[vs1r2 + 3] * dds1)
+          + (vs2[vs2r2 + 4] * due2 + vs2[vs2r2 + 3] * dds2)
+          + (vs1[vs1r2 + 5] + vs2[vs2r2 + 5] + VSX[2])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
         for (let jv = 1; jv <= nsys; jv += 1) {
-          VM[3][jv][iv] = VS1[3][3] * d1M[jv] + VS1[3][4] * u1M[jv]
-            + VS2[3][3] * d2M[jv] + VS2[3][4] * u2M[jv]
-            + (VS1[3][5] + VS2[3][5] + VSX[3])
+          VM[3][jv][iv] = vs1[vs1r3 + 3] * d1M[jv] + vs1[vs1r3 + 4] * u1M[jv]
+            + vs2[vs2r3 + 3] * d2M[jv] + vs2[vs2r3 + 4] * u2M[jv]
+            + (vs1[vs1r3 + 5] + vs2[vs2r3 + 5] + VSX[3])
             * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
         }
-        VB[3][1][iv] = VS1[3][1];
-        VB[3][2][iv] = VS1[3][2];
-        VA[3][1][iv] = VS2[3][1];
-        VA[3][2][iv] = VS2[3][2];
+        VB[3][1][iv] = vs1[vs1r3 + 1];
+        VB[3][2][iv] = vs1[vs1r3 + 2];
+        VA[3][1][iv] = vs2[vs2r3 + 1];
+        VA[3][2][iv] = vs2[vs2r3 + 2];
         VDEL[3][2][iv] = ctx.LALFA
           ? VSR[3] * reClmr + VSM[3] * msqClmr
-          : (VS1[3][4] * u1A + VS1[3][3] * d1A)
-            + (VS2[3][4] * u2A + VS2[3][3] * d2A)
-            + (VS1[3][5] + VS2[3][5] + VSX[3])
+          : (vs1[vs1r3 + 4] * u1A + vs1[vs1r3 + 3] * d1A)
+            + (vs2[vs2r3 + 4] * u2A + vs2[vs2r3 + 3] * d2A)
+            + (vs1[vs1r3 + 5] + vs2[vs2r3 + 5] + VSX[3])
             * (xiUle1 * ule1A + xiUle2 * ule2A);
         VDEL[3][1][iv] = VSREZ[3]
-          + (VS1[3][4] * due1 + VS1[3][3] * dds1)
-          + (VS2[3][4] * due2 + VS2[3][3] * dds2)
-          + (VS1[3][5] + VS2[3][5] + VSX[3])
+          + (vs1[vs1r3 + 4] * due1 + vs1[vs1r3 + 3] * dds1)
+          + (vs2[vs2r3 + 4] * due2 + vs2[vs2r3 + 3] * dds2)
+          + (vs1[vs1r3 + 5] + vs2[vs2r3 + 5] + VSX[3])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
       }

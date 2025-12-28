@@ -49,6 +49,15 @@ function create2d(rows, cols, fill = 0.0) {
   return arr;
 }
 
+function buildVsRows(flat, rows, cols) {
+  const out = new Array(rows + 1);
+  const stride = cols + 1;
+  for (let i = 0; i <= rows; i += 1) {
+    out[i] = flat.subarray(i * stride, (i + 1) * stride);
+  }
+  return out;
+}
+
 // Ensure BL context has all arrays; used to reuse or initialize state.
 function ensureCtx(ctx) {
   if (ctx._ENSURED) return;
@@ -57,29 +66,35 @@ function ensureCtx(ctx) {
   if (!ctx.COM2) ctx.COM2 = new Float64Array(NCOM + 1);
   if (!ctx.C1SAV) ctx.C1SAV = new Float64Array(NCOM + 1);
   if (!ctx.C2SAV) ctx.C2SAV = new Float64Array(NCOM + 1);
-  if (!ctx.VS1) {
-    ctx.VS1 = create2d(4, 5);
-  } else {
-    for (let i = 0; i < ctx.VS1.length; i += 1) {
-      const row = ctx.VS1[i];
-      if (row && !(row instanceof Float64Array)) {
-        const next = new Float64Array(row.length);
-        for (let j = 0; j < row.length; j += 1) next[j] = row[j];
-        ctx.VS1[i] = next;
+  if (!ctx.VS1F) {
+    const flat = new Float64Array((4 + 1) * (5 + 1));
+    if (ctx.VS1) {
+      for (let i = 0; i < ctx.VS1.length; i += 1) {
+        const row = ctx.VS1[i];
+        if (!row) continue;
+        const base = i * 6;
+        for (let j = 0; j < row.length && j <= 5; j += 1) {
+          flat[base + j] = row[j];
+        }
       }
     }
+    ctx.VS1F = flat;
+    ctx.VS1 = buildVsRows(flat, 4, 5);
   }
-  if (!ctx.VS2) {
-    ctx.VS2 = create2d(4, 5);
-  } else {
-    for (let i = 0; i < ctx.VS2.length; i += 1) {
-      const row = ctx.VS2[i];
-      if (row && !(row instanceof Float64Array)) {
-        const next = new Float64Array(row.length);
-        for (let j = 0; j < row.length; j += 1) next[j] = row[j];
-        ctx.VS2[i] = next;
+  if (!ctx.VS2F) {
+    const flat = new Float64Array((4 + 1) * (5 + 1));
+    if (ctx.VS2) {
+      for (let i = 0; i < ctx.VS2.length; i += 1) {
+        const row = ctx.VS2[i];
+        if (!row) continue;
+        const base = i * 6;
+        for (let j = 0; j < row.length && j <= 5; j += 1) {
+          flat[base + j] = row[j];
+        }
       }
     }
+    ctx.VS2F = flat;
+    ctx.VS2 = buildVsRows(flat, 4, 5);
   }
   if (!ctx.VSREZ) ctx.VSREZ = new Float64Array(5);
   if (!ctx.VSR) ctx.VSR = new Float64Array(5);
@@ -542,8 +557,9 @@ function blsys(ctxIn) {
 
   const COM1 = ctx.COM1;
   const COM2 = ctx.COM2;
-  const VS1 = ctx.VS1;
-  const VS2 = ctx.VS2;
+  const VS1F = ctx.VS1F;
+  const VS2F = ctx.VS2F;
+  const vsStride = 6;
   const VSREZ = ctx.VSREZ;
   const VSM = ctx.VSM;
   const u1Uei = ctx.U1_UEI;
@@ -590,25 +606,24 @@ function blsys(ctxIn) {
 
   if (simi) {
     for (let k = 1; k <= 4; k += 1) {
-      const vs1k = VS1[k];
-      const vs2k = VS2[k];
+      const base = k * vsStride;
       for (let l = 1; l <= 5; l += 1) {
-        vs2k[l] = vs1k[l] + vs2k[l];
-        vs1k[l] = 0.0;
+        const idx = base + l;
+        VS2F[idx] = VS1F[idx] + VS2F[idx];
+        VS1F[idx] = 0.0;
       }
     }
   }
 
   // Clear local system arrays for TE closure.
   for (let k = 1; k <= 4; k += 1) {
-    const vs1k = VS1[k];
-    const vs2k = VS2[k];
-    const resU1 = vs1k[4];
-    const resU2 = vs2k[4];
+    const base = k * vsStride;
+    const resU1 = VS1F[base + 4];
+    const resU2 = VS2F[base + 4];
     const resMs = VSM[k];
 
-    vs1k[4] = resU1 * u1Uei;
-    vs2k[4] = resU2 * u2Uei;
+    VS1F[base + 4] = resU1 * u1Uei;
+    VS2F[base + 4] = resU2 * u2Uei;
     VSM[k] = resU1 * u1Ms + resU2 * u2Ms + resMs;
   }
 }
@@ -619,31 +634,36 @@ function tesys(cte, tte, dte, ctxIn) {
   // - Couple wake displacement thickness to TE conditions.
   const ctx = ctxIn || this;
   ensureCtx(ctx);
+  const VS1F = ctx.VS1F;
+  const VS2F = ctx.VS2F;
+  const vsStride = 6;
 
   for (let k = 1; k <= 4; k += 1) {
     ctx.VSREZ[k] = 0.0;
     ctx.VSM[k] = 0.0;
     ctx.VSR[k] = 0.0;
     ctx.VSX[k] = 0.0;
+    const base = k * vsStride;
     for (let l = 1; l <= 5; l += 1) {
-      ctx.VS1[k][l] = 0.0;
-      ctx.VS2[k][l] = 0.0;
+      const idx = base + l;
+      VS1F[idx] = 0.0;
+      VS2F[idx] = 0.0;
     }
   }
 
   // Use wake branch variables.
   blvar(3, ctx);
 
-  ctx.VS1[1][1] = -1.0;
-  ctx.VS2[1][1] = 1.0;
+  VS1F[1 * vsStride + 1] = -1.0;
+  VS2F[1 * vsStride + 1] = 1.0;
   ctx.VSREZ[1] = cte - ctx.S2;
 
-  ctx.VS1[2][2] = -1.0;
-  ctx.VS2[2][2] = 1.0;
+  VS1F[2 * vsStride + 2] = -1.0;
+  VS2F[2 * vsStride + 2] = 1.0;
   ctx.VSREZ[2] = tte - ctx.T2;
 
-  ctx.VS1[3][3] = -1.0;
-  ctx.VS2[3][3] = 1.0;
+  VS1F[3 * vsStride + 3] = -1.0;
+  VS2F[3 * vsStride + 3] = 1.0;
   ctx.VSREZ[3] = dte - ctx.D2 - ctx.DW2;
 }
 
@@ -1105,18 +1125,63 @@ function trdif(ctxIn) {
   // - Build transition equations for Newton updates.
   const ctx = ctxIn || this;
   ensureCtx(ctx);
-  const bl1 = create2d(4, 5);
-  const bl2 = create2d(4, 5);
-  const blrez = new Array(5).fill(0.0);
-  const blm = new Array(5).fill(0.0);
-  const blr = new Array(5).fill(0.0);
-  const blx = new Array(5).fill(0.0);
-  const bt1 = create2d(4, 5);
-  const bt2 = create2d(4, 5);
-  const btrez = new Array(5).fill(0.0);
-  const btm = new Array(5).fill(0.0);
-  const btr = new Array(5).fill(0.0);
-  const btx = new Array(5).fill(0.0);
+  const VS1F = ctx.VS1F;
+  const VS2F = ctx.VS2F;
+  const vsStride = 6;
+  let bl1 = ctx._TRDIF_BL1;
+  let bl2 = ctx._TRDIF_BL2;
+  let bt1 = ctx._TRDIF_BT1;
+  let bt2 = ctx._TRDIF_BT2;
+  let blrez = ctx._TRDIF_BLREZ;
+  let blm = ctx._TRDIF_BLM;
+  let blr = ctx._TRDIF_BLR;
+  let blx = ctx._TRDIF_BLX;
+  let btrez = ctx._TRDIF_BTREZ;
+  let btm = ctx._TRDIF_BTM;
+  let btr = ctx._TRDIF_BTR;
+  let btx = ctx._TRDIF_BTX;
+
+  if (!bl1) {
+    bl1 = create2d(4, 5);
+    bl2 = create2d(4, 5);
+    bt1 = create2d(4, 5);
+    bt2 = create2d(4, 5);
+    blrez = new Float64Array(5);
+    blm = new Float64Array(5);
+    blr = new Float64Array(5);
+    blx = new Float64Array(5);
+    btrez = new Float64Array(5);
+    btm = new Float64Array(5);
+    btr = new Float64Array(5);
+    btx = new Float64Array(5);
+    ctx._TRDIF_BL1 = bl1;
+    ctx._TRDIF_BL2 = bl2;
+    ctx._TRDIF_BT1 = bt1;
+    ctx._TRDIF_BT2 = bt2;
+    ctx._TRDIF_BLREZ = blrez;
+    ctx._TRDIF_BLM = blm;
+    ctx._TRDIF_BLR = blr;
+    ctx._TRDIF_BLX = blx;
+    ctx._TRDIF_BTREZ = btrez;
+    ctx._TRDIF_BTM = btm;
+    ctx._TRDIF_BTR = btr;
+    ctx._TRDIF_BTX = btx;
+  } else {
+    for (let k = 1; k <= 4; k += 1) {
+      bl1[k].fill(0.0);
+      bl2[k].fill(0.0);
+      bt1[k].fill(0.0);
+      bt2[k].fill(0.0);
+    }
+    blrez.fill(0.0);
+    blm.fill(0.0);
+    blr.fill(0.0);
+    blx.fill(0.0);
+    btrez.fill(0.0);
+    btm.fill(0.0);
+    btr.fill(0.0);
+    btx.fill(0.0);
+  }
 
   for (let icom = 1; icom <= NCOM; icom += 1) {
     ctx.C1SAV[icom] = ctx.COM1[icom];
@@ -1210,66 +1275,67 @@ function trdif(ctxIn) {
   bldif(1, ctx);
 
   for (let k = 2; k <= 3; k += 1) {
+    const base = k * vsStride;
     blrez[k] = ctx.VSREZ[k];
     blm[k] = ctx.VSM[k]
-      + ctx.VS2[k][2] * ttMs
-      + ctx.VS2[k][3] * dtMs
-      + ctx.VS2[k][4] * utMs
-      + ctx.VS2[k][5] * ctx.XT_MS;
+      + VS2F[base + 2] * ttMs
+      + VS2F[base + 3] * dtMs
+      + VS2F[base + 4] * utMs
+      + VS2F[base + 5] * ctx.XT_MS;
     blr[k] = ctx.VSR[k]
-      + ctx.VS2[k][2] * ttRe
-      + ctx.VS2[k][3] * dtRe
-      + ctx.VS2[k][4] * utRe
-      + ctx.VS2[k][5] * ctx.XT_RE;
+      + VS2F[base + 2] * ttRe
+      + VS2F[base + 3] * dtRe
+      + VS2F[base + 4] * utRe
+      + VS2F[base + 5] * ctx.XT_RE;
     blx[k] = ctx.VSX[k]
-      + ctx.VS2[k][2] * ttXf
-      + ctx.VS2[k][3] * dtXf
-      + ctx.VS2[k][4] * utXf
-      + ctx.VS2[k][5] * ctx.XT_XF;
+      + VS2F[base + 2] * ttXf
+      + VS2F[base + 3] * dtXf
+      + VS2F[base + 4] * utXf
+      + VS2F[base + 5] * ctx.XT_XF;
 
-    bl1[k][1] = ctx.VS1[k][1]
-      + ctx.VS2[k][2] * ttA1
-      + ctx.VS2[k][3] * dtA1
-      + ctx.VS2[k][4] * utA1
-      + ctx.VS2[k][5] * ctx.XT_A1;
-    bl1[k][2] = ctx.VS1[k][2]
-      + ctx.VS2[k][2] * ttT1
-      + ctx.VS2[k][3] * dtT1
-      + ctx.VS2[k][4] * utT1
-      + ctx.VS2[k][5] * ctx.XT_T1;
-    bl1[k][3] = ctx.VS1[k][3]
-      + ctx.VS2[k][2] * ttD1
-      + ctx.VS2[k][3] * dtD1
-      + ctx.VS2[k][4] * utD1
-      + ctx.VS2[k][5] * ctx.XT_D1;
-    bl1[k][4] = ctx.VS1[k][4]
-      + ctx.VS2[k][2] * ttU1
-      + ctx.VS2[k][3] * dtU1
-      + ctx.VS2[k][4] * utU1
-      + ctx.VS2[k][5] * ctx.XT_U1;
-    bl1[k][5] = ctx.VS1[k][5]
-      + ctx.VS2[k][2] * ttX1
-      + ctx.VS2[k][3] * dtX1
-      + ctx.VS2[k][4] * utX1
-      + ctx.VS2[k][5] * ctx.XT_X1;
+    bl1[k][1] = VS1F[base + 1]
+      + VS2F[base + 2] * ttA1
+      + VS2F[base + 3] * dtA1
+      + VS2F[base + 4] * utA1
+      + VS2F[base + 5] * ctx.XT_A1;
+    bl1[k][2] = VS1F[base + 2]
+      + VS2F[base + 2] * ttT1
+      + VS2F[base + 3] * dtT1
+      + VS2F[base + 4] * utT1
+      + VS2F[base + 5] * ctx.XT_T1;
+    bl1[k][3] = VS1F[base + 3]
+      + VS2F[base + 2] * ttD1
+      + VS2F[base + 3] * dtD1
+      + VS2F[base + 4] * utD1
+      + VS2F[base + 5] * ctx.XT_D1;
+    bl1[k][4] = VS1F[base + 4]
+      + VS2F[base + 2] * ttU1
+      + VS2F[base + 3] * dtU1
+      + VS2F[base + 4] * utU1
+      + VS2F[base + 5] * ctx.XT_U1;
+    bl1[k][5] = VS1F[base + 5]
+      + VS2F[base + 2] * ttX1
+      + VS2F[base + 3] * dtX1
+      + VS2F[base + 4] * utX1
+      + VS2F[base + 5] * ctx.XT_X1;
 
     bl2[k][1] = 0.0;
-    bl2[k][2] = ctx.VS2[k][2] * ttT2
-      + ctx.VS2[k][3] * dtT2
-      + ctx.VS2[k][4] * utT2
-      + ctx.VS2[k][5] * ctx.XT_T2;
-    bl2[k][3] = ctx.VS2[k][2] * ttD2
-      + ctx.VS2[k][3] * dtD2
-      + ctx.VS2[k][4] * utD2
-      + ctx.VS2[k][5] * ctx.XT_D2;
-    bl2[k][4] = ctx.VS2[k][2] * ttU2
-      + ctx.VS2[k][3] * dtU2
-      + ctx.VS2[k][4] * utU2
-      + ctx.VS2[k][5] * ctx.XT_U2;
-    bl2[k][5] = ctx.VS2[k][2] * ttX2
-      + ctx.VS2[k][3] * dtX2
-      + ctx.VS2[k][4] * utX2
-      + ctx.VS2[k][5] * ctx.XT_X2;
+    bl2[k][2] = VS2F[base + 2] * ttT2
+      + VS2F[base + 3] * dtT2
+      + VS2F[base + 4] * utT2
+      + VS2F[base + 5] * ctx.XT_T2;
+    bl2[k][3] = VS2F[base + 2] * ttD2
+      + VS2F[base + 3] * dtD2
+      + VS2F[base + 4] * utD2
+      + VS2F[base + 5] * ctx.XT_D2;
+    bl2[k][4] = VS2F[base + 2] * ttU2
+      + VS2F[base + 3] * dtU2
+      + VS2F[base + 4] * utU2
+      + VS2F[base + 5] * ctx.XT_U2;
+    bl2[k][5] = VS2F[base + 2] * ttX2
+      + VS2F[base + 3] * dtX2
+      + VS2F[base + 4] * utX2
+      + VS2F[base + 5] * ctx.XT_X2;
   }
 
   blvar(2, ctx);
@@ -1312,77 +1378,78 @@ function trdif(ctxIn) {
   bldif(2, ctx);
 
   for (let k = 1; k <= 3; k += 1) {
+    const base = k * vsStride;
     btrez[k] = ctx.VSREZ[k];
     btm[k] = ctx.VSM[k]
-      + ctx.VS1[k][1] * stMs2
-      + ctx.VS1[k][2] * ttMs
-      + ctx.VS1[k][3] * dtMs
-      + ctx.VS1[k][4] * utMs
-      + ctx.VS1[k][5] * ctx.XT_MS;
+      + VS1F[base + 1] * stMs2
+      + VS1F[base + 2] * ttMs
+      + VS1F[base + 3] * dtMs
+      + VS1F[base + 4] * utMs
+      + VS1F[base + 5] * ctx.XT_MS;
     btr[k] = ctx.VSR[k]
-      + ctx.VS1[k][1] * stRe2
-      + ctx.VS1[k][2] * ttRe
-      + ctx.VS1[k][3] * dtRe
-      + ctx.VS1[k][4] * utRe
-      + ctx.VS1[k][5] * ctx.XT_RE;
+      + VS1F[base + 1] * stRe2
+      + VS1F[base + 2] * ttRe
+      + VS1F[base + 3] * dtRe
+      + VS1F[base + 4] * utRe
+      + VS1F[base + 5] * ctx.XT_RE;
     btx[k] = ctx.VSX[k]
-      + ctx.VS1[k][1] * stXf
-      + ctx.VS1[k][2] * ttXf
-      + ctx.VS1[k][3] * dtXf
-      + ctx.VS1[k][4] * utXf
-      + ctx.VS1[k][5] * ctx.XT_XF;
+      + VS1F[base + 1] * stXf
+      + VS1F[base + 2] * ttXf
+      + VS1F[base + 3] * dtXf
+      + VS1F[base + 4] * utXf
+      + VS1F[base + 5] * ctx.XT_XF;
 
-    bt1[k][1] = ctx.VS1[k][1] * stA1
-      + ctx.VS1[k][2] * ttA1
-      + ctx.VS1[k][3] * dtA1
-      + ctx.VS1[k][4] * utA1
-      + ctx.VS1[k][5] * ctx.XT_A1;
-    bt1[k][2] = ctx.VS1[k][1] * stT1
-      + ctx.VS1[k][2] * ttT1
-      + ctx.VS1[k][3] * dtT1
-      + ctx.VS1[k][4] * utT1
-      + ctx.VS1[k][5] * ctx.XT_T1;
-    bt1[k][3] = ctx.VS1[k][1] * stD1
-      + ctx.VS1[k][2] * ttD1
-      + ctx.VS1[k][3] * dtD1
-      + ctx.VS1[k][4] * utD1
-      + ctx.VS1[k][5] * ctx.XT_D1;
-    bt1[k][4] = ctx.VS1[k][1] * stU1
-      + ctx.VS1[k][2] * ttU1
-      + ctx.VS1[k][3] * dtU1
-      + ctx.VS1[k][4] * utU1
-      + ctx.VS1[k][5] * ctx.XT_U1;
-    bt1[k][5] = ctx.VS1[k][1] * stX1
-      + ctx.VS1[k][2] * ttX1
-      + ctx.VS1[k][3] * dtX1
-      + ctx.VS1[k][4] * utX1
-      + ctx.VS1[k][5] * ctx.XT_X1;
+    bt1[k][1] = VS1F[base + 1] * stA1
+      + VS1F[base + 2] * ttA1
+      + VS1F[base + 3] * dtA1
+      + VS1F[base + 4] * utA1
+      + VS1F[base + 5] * ctx.XT_A1;
+    bt1[k][2] = VS1F[base + 1] * stT1
+      + VS1F[base + 2] * ttT1
+      + VS1F[base + 3] * dtT1
+      + VS1F[base + 4] * utT1
+      + VS1F[base + 5] * ctx.XT_T1;
+    bt1[k][3] = VS1F[base + 1] * stD1
+      + VS1F[base + 2] * ttD1
+      + VS1F[base + 3] * dtD1
+      + VS1F[base + 4] * utD1
+      + VS1F[base + 5] * ctx.XT_D1;
+    bt1[k][4] = VS1F[base + 1] * stU1
+      + VS1F[base + 2] * ttU1
+      + VS1F[base + 3] * dtU1
+      + VS1F[base + 4] * utU1
+      + VS1F[base + 5] * ctx.XT_U1;
+    bt1[k][5] = VS1F[base + 1] * stX1
+      + VS1F[base + 2] * ttX1
+      + VS1F[base + 3] * dtX1
+      + VS1F[base + 4] * utX1
+      + VS1F[base + 5] * ctx.XT_X1;
 
-    bt2[k][1] = ctx.VS2[k][1];
-    bt2[k][2] = ctx.VS2[k][2]
-      + ctx.VS1[k][1] * stT2
-      + ctx.VS1[k][2] * ttT2
-      + ctx.VS1[k][3] * dtT2
-      + ctx.VS1[k][4] * utT2
-      + ctx.VS1[k][5] * ctx.XT_T2;
-    bt2[k][3] = ctx.VS2[k][3]
-      + ctx.VS1[k][1] * stD2
-      + ctx.VS1[k][2] * ttD2
-      + ctx.VS1[k][3] * dtD2
-      + ctx.VS1[k][4] * utD2
-      + ctx.VS1[k][5] * ctx.XT_D2;
-    bt2[k][4] = ctx.VS2[k][4]
-      + ctx.VS1[k][1] * stU2
-      + ctx.VS1[k][2] * ttU2
-      + ctx.VS1[k][3] * dtU2
-      + ctx.VS1[k][4] * utU2
-      + ctx.VS1[k][5] * ctx.XT_U2;
-    bt2[k][5] = ctx.VS2[k][5]
-      + ctx.VS1[k][1] * stX2
-      + ctx.VS1[k][2] * ttX2
-      + ctx.VS1[k][3] * dtX2
-      + ctx.VS1[k][4] * utX2
-      + ctx.VS1[k][5] * ctx.XT_X2;
+    bt2[k][1] = VS2F[base + 1];
+    bt2[k][2] = VS2F[base + 2]
+      + VS1F[base + 1] * stT2
+      + VS1F[base + 2] * ttT2
+      + VS1F[base + 3] * dtT2
+      + VS1F[base + 4] * utT2
+      + VS1F[base + 5] * ctx.XT_T2;
+    bt2[k][3] = VS2F[base + 3]
+      + VS1F[base + 1] * stD2
+      + VS1F[base + 2] * ttD2
+      + VS1F[base + 3] * dtD2
+      + VS1F[base + 4] * utD2
+      + VS1F[base + 5] * ctx.XT_D2;
+    bt2[k][4] = VS2F[base + 4]
+      + VS1F[base + 1] * stU2
+      + VS1F[base + 2] * ttU2
+      + VS1F[base + 3] * dtU2
+      + VS1F[base + 4] * utU2
+      + VS1F[base + 5] * ctx.XT_U2;
+    bt2[k][5] = VS2F[base + 5]
+      + VS1F[base + 1] * stX2
+      + VS1F[base + 2] * ttX2
+      + VS1F[base + 3] * dtX2
+      + VS1F[base + 4] * utX2
+      + VS1F[base + 5] * ctx.XT_X2;
   }
 
   ctx.VSREZ[1] = btrez[1];
@@ -1398,12 +1465,12 @@ function trdif(ctxIn) {
   ctx.VSX[2] = blx[2] + btx[2];
   ctx.VSX[3] = blx[3] + btx[3];
   for (let l = 1; l <= 5; l += 1) {
-    ctx.VS1[1][l] = bt1[1][l];
-    ctx.VS2[1][l] = bt2[1][l];
-    ctx.VS1[2][l] = bl1[2][l] + bt1[2][l];
-    ctx.VS2[2][l] = bl2[2][l] + bt2[2][l];
-    ctx.VS1[3][l] = bl1[3][l] + bt1[3][l];
-    ctx.VS2[3][l] = bl2[3][l] + bt2[3][l];
+    VS1F[1 * vsStride + l] = bt1[1][l];
+    VS2F[1 * vsStride + l] = bt2[1][l];
+    VS1F[2 * vsStride + l] = bl1[2][l] + bt1[2][l];
+    VS2F[2 * vsStride + l] = bl2[2][l] + bt2[2][l];
+    VS1F[3 * vsStride + l] = bl1[3][l] + bt1[3][l];
+    VS2F[3 * vsStride + l] = bl2[3][l] + bt2[3][l];
   }
 
   for (let icom = 1; icom <= NCOM; icom += 1) {
@@ -1418,8 +1485,9 @@ function bldif(ityp, ctxIn) {
   // - Log/linear forms for BL integrals.
   const ctx = ctxIn || this;
   ensureCtx(ctx);
-  const VS1 = ctx.VS1;
-  const VS2 = ctx.VS2;
+  const VS1F = ctx.VS1F;
+  const VS2F = ctx.VS2F;
+  const vsStride = 6;
   const VSREZ = ctx.VSREZ;
   const VSM = ctx.VSM;
   const VSR = ctx.VSR;
@@ -1493,9 +1561,11 @@ function bldif(ityp, ctxIn) {
     VSM[k] = 0.0;
     VSR[k] = 0.0;
     VSX[k] = 0.0;
+    const base = k * vsStride;
     for (let l = 1; l <= 5; l += 1) {
-      VS1[k][l] = 0.0;
-      VS2[k][l] = 0.0;
+      const idx = base + l;
+      VS1F[idx] = 0.0;
+      VS2F[idx] = 0.0;
     }
   }
 
@@ -1533,7 +1603,7 @@ function bldif(ityp, ctxIn) {
   const upwMs = upwHk1 * hk1Ms + upwHk2 * hk2Ms;
 
   if (ityp === 0) {
-    VS2[1][1] = 1.0;
+    VS2F[1 * vsStride + 1] = 1.0;
     VSR[1] = 0.0;
     VSREZ[1] = -ctx.AMPL2;
   } else if (ityp === 1) {
@@ -1543,16 +1613,16 @@ function bldif(ityp, ctxIn) {
     const rezc = ctx.AMPL2 - ctx.AMPL1 - ax * (x2 - x1);
     const zAx = -(x2 - x1);
 
-    VS1[1][1] = zAx * axOut.axA1 - 1.0;
-    VS1[1][2] = zAx * (axOut.axHk1 * hk1T1 + axOut.axT1 + axOut.axRt1 * rt1T1);
-    VS1[1][3] = zAx * (axOut.axHk1 * hk1D1);
-    VS1[1][4] = zAx * (axOut.axHk1 * hk1U1 + axOut.axRt1 * rt1U1);
-    VS1[1][5] = ax;
-    VS2[1][1] = zAx * axOut.axA2 + 1.0;
-    VS2[1][2] = zAx * (axOut.axHk2 * hk2T2 + axOut.axT2 + axOut.axRt2 * rt2T2);
-    VS2[1][3] = zAx * (axOut.axHk2 * hk2D2);
-    VS2[1][4] = zAx * (axOut.axHk2 * hk2U2 + axOut.axRt2 * rt2U2);
-    VS2[1][5] = -ax;
+    VS1F[1 * vsStride + 1] = zAx * axOut.axA1 - 1.0;
+    VS1F[1 * vsStride + 2] = zAx * (axOut.axHk1 * hk1T1 + axOut.axT1 + axOut.axRt1 * rt1T1);
+    VS1F[1 * vsStride + 3] = zAx * (axOut.axHk1 * hk1D1);
+    VS1F[1 * vsStride + 4] = zAx * (axOut.axHk1 * hk1U1 + axOut.axRt1 * rt1U1);
+    VS1F[1 * vsStride + 5] = ax;
+    VS2F[1 * vsStride + 1] = zAx * axOut.axA2 + 1.0;
+    VS2F[1 * vsStride + 2] = zAx * (axOut.axHk2 * hk2T2 + axOut.axT2 + axOut.axRt2 * rt2T2);
+    VS2F[1 * vsStride + 3] = zAx * (axOut.axHk2 * hk2D2);
+    VS2F[1 * vsStride + 4] = zAx * (axOut.axHk2 * hk2U2 + axOut.axRt2 * rt2U2);
+    VS2F[1 * vsStride + 5] = -ax;
     VSM[1] = zAx * (axOut.axHk1 * hk1Ms + axOut.axRt1 * rt1Ms
       + axOut.axHk2 * hk2Ms + axOut.axRt2 * rt2Ms);
     VSR[1] = zAx * (axOut.axRt1 * rt1Re + axOut.axRt2 * rt2Re);
@@ -1662,26 +1732,26 @@ function bldif(ityp, ctxIn) {
     const zHk1 = (1.0 - upw) * zHka;
     const zHk2 = upw * zHka;
 
-    ctx.VS1[1][1] = zS1;
-    ctx.VS1[1][2] = zUpw * upwT1 + zDe1 * ctx.DE1_T1 + zUs1 * ctx.US1_T1;
-    ctx.VS1[1][3] = zD1 + zUpw * upwD1 + zDe1 * ctx.DE1_D1 + zUs1 * ctx.US1_D1;
-    ctx.VS1[1][4] = zU1 + zUpw * upwU1 + zDe1 * ctx.DE1_U1 + zUs1 * ctx.US1_U1;
-    ctx.VS1[1][5] = zX1;
-    ctx.VS2[1][1] = zS2;
-    ctx.VS2[1][2] = zUpw * upwT2 + zDe2 * ctx.DE2_T2 + zUs2 * ctx.US2_T2;
-    ctx.VS2[1][3] = zD2 + zUpw * upwD2 + zDe2 * ctx.DE2_D2 + zUs2 * ctx.US2_D2;
-    ctx.VS2[1][4] = zU2 + zUpw * upwU2 + zDe2 * ctx.DE2_U2 + zUs2 * ctx.US2_U2;
-    ctx.VS2[1][5] = zX2;
+    VS1F[1 * vsStride + 1] = zS1;
+    VS1F[1 * vsStride + 2] = zUpw * upwT1 + zDe1 * ctx.DE1_T1 + zUs1 * ctx.US1_T1;
+    VS1F[1 * vsStride + 3] = zD1 + zUpw * upwD1 + zDe1 * ctx.DE1_D1 + zUs1 * ctx.US1_D1;
+    VS1F[1 * vsStride + 4] = zU1 + zUpw * upwU1 + zDe1 * ctx.DE1_U1 + zUs1 * ctx.US1_U1;
+    VS1F[1 * vsStride + 5] = zX1;
+    VS2F[1 * vsStride + 1] = zS2;
+    VS2F[1 * vsStride + 2] = zUpw * upwT2 + zDe2 * ctx.DE2_T2 + zUs2 * ctx.US2_T2;
+    VS2F[1 * vsStride + 3] = zD2 + zUpw * upwD2 + zDe2 * ctx.DE2_D2 + zUs2 * ctx.US2_D2;
+    VS2F[1 * vsStride + 4] = zU2 + zUpw * upwU2 + zDe2 * ctx.DE2_U2 + zUs2 * ctx.US2_U2;
+    VS2F[1 * vsStride + 5] = zX2;
     ctx.VSM[1] = zUpw * upwMs + zDe1 * ctx.DE1_MS + zUs1 * ctx.US1_MS
       + zDe2 * ctx.DE2_MS + zUs2 * ctx.US2_MS;
 
-    ctx.VS1[1][2] += zCq1 * ctx.CQ1_T1 + zCf1 * ctx.CF1_T1 + zHk1 * ctx.HK1_T1;
-    ctx.VS1[1][3] += zCq1 * ctx.CQ1_D1 + zCf1 * ctx.CF1_D1 + zHk1 * ctx.HK1_D1;
-    ctx.VS1[1][4] += zCq1 * ctx.CQ1_U1 + zCf1 * ctx.CF1_U1 + zHk1 * ctx.HK1_U1;
+    VS1F[1 * vsStride + 2] += zCq1 * ctx.CQ1_T1 + zCf1 * ctx.CF1_T1 + zHk1 * ctx.HK1_T1;
+    VS1F[1 * vsStride + 3] += zCq1 * ctx.CQ1_D1 + zCf1 * ctx.CF1_D1 + zHk1 * ctx.HK1_D1;
+    VS1F[1 * vsStride + 4] += zCq1 * ctx.CQ1_U1 + zCf1 * ctx.CF1_U1 + zHk1 * ctx.HK1_U1;
 
-    ctx.VS2[1][2] += zCq2 * ctx.CQ2_T2 + zCf2 * ctx.CF2_T2 + zHk2 * ctx.HK2_T2;
-    ctx.VS2[1][3] += zCq2 * ctx.CQ2_D2 + zCf2 * ctx.CF2_D2 + zHk2 * ctx.HK2_D2;
-    ctx.VS2[1][4] += zCq2 * ctx.CQ2_U2 + zCf2 * ctx.CF2_U2 + zHk2 * ctx.HK2_U2;
+    VS2F[1 * vsStride + 2] += zCq2 * ctx.CQ2_T2 + zCf2 * ctx.CF2_T2 + zHk2 * ctx.HK2_T2;
+    VS2F[1 * vsStride + 3] += zCq2 * ctx.CQ2_D2 + zCf2 * ctx.CF2_D2 + zHk2 * ctx.HK2_D2;
+    VS2F[1 * vsStride + 4] += zCq2 * ctx.CQ2_U2 + zCf2 * ctx.CF2_U2 + zHk2 * ctx.HK2_U2;
 
     ctx.VSM[1] += zCq1 * ctx.CQ1_MS + zCf1 * ctx.CF1_MS + zHk1 * ctx.HK1_MS
       + zCq2 * ctx.CQ2_MS + zCf2 * ctx.CF2_MS + zHk2 * ctx.HK2_MS;
@@ -1729,14 +1799,14 @@ function bldif(ityp, ctxIn) {
   const zU1 = -zUl / ctx.U1;
   const zU2 = zUl / ctx.U2;
 
-  ctx.VS1[2][2] = 0.5 * zHa * ctx.H1_T1 + zCfm * ctx.CFM_T1 + zCf1 * ctx.CF1_T1 + zT1;
-  ctx.VS1[2][3] = 0.5 * zHa * ctx.H1_D1 + zCfm * ctx.CFM_D1 + zCf1 * ctx.CF1_D1;
-  ctx.VS1[2][4] = 0.5 * zMa * ctx.M1_U1 + zCfm * ctx.CFM_U1 + zCf1 * ctx.CF1_U1 + zU1;
-  ctx.VS1[2][5] = zX1;
-  ctx.VS2[2][2] = 0.5 * zHa * ctx.H2_T2 + zCfm * ctx.CFM_T2 + zCf2 * ctx.CF2_T2 + zT2;
-  ctx.VS2[2][3] = 0.5 * zHa * ctx.H2_D2 + zCfm * ctx.CFM_D2 + zCf2 * ctx.CF2_D2;
-  ctx.VS2[2][4] = 0.5 * zMa * ctx.M2_U2 + zCfm * ctx.CFM_U2 + zCf2 * ctx.CF2_U2 + zU2;
-  ctx.VS2[2][5] = zX2;
+  VS1F[2 * vsStride + 2] = 0.5 * zHa * ctx.H1_T1 + zCfm * ctx.CFM_T1 + zCf1 * ctx.CF1_T1 + zT1;
+  VS1F[2 * vsStride + 3] = 0.5 * zHa * ctx.H1_D1 + zCfm * ctx.CFM_D1 + zCf1 * ctx.CF1_D1;
+  VS1F[2 * vsStride + 4] = 0.5 * zMa * ctx.M1_U1 + zCfm * ctx.CFM_U1 + zCf1 * ctx.CF1_U1 + zU1;
+  VS1F[2 * vsStride + 5] = zX1;
+  VS2F[2 * vsStride + 2] = 0.5 * zHa * ctx.H2_T2 + zCfm * ctx.CFM_T2 + zCf2 * ctx.CF2_T2 + zT2;
+  VS2F[2 * vsStride + 3] = 0.5 * zHa * ctx.H2_D2 + zCfm * ctx.CFM_D2 + zCf2 * ctx.CF2_D2;
+  VS2F[2 * vsStride + 4] = 0.5 * zMa * ctx.M2_U2 + zCfm * ctx.CFM_U2 + zCf2 * ctx.CF2_U2 + zU2;
+  VS2F[2 * vsStride + 5] = zX2;
 
   ctx.VSM[2] = 0.5 * zMa * ctx.M1_MS + zCfm * ctx.CFM_MS + zCf1 * ctx.CF1_MS
     + 0.5 * zMa * ctx.M2_MS + zCf2 * ctx.CF2_MS;
@@ -1788,27 +1858,27 @@ function bldif(ityp, ctxIn) {
   zT1b += zHwa2 * 0.5 * (-ctx.DW1 / ctx.T1 ** 2);
   zT2b += zHwa2 * 0.5 * (-ctx.DW2 / ctx.T2 ** 2);
 
-  ctx.VS1[3][1] = zDi1 * ctx.DI1_S1;
-  ctx.VS1[3][2] = zHs1 * ctx.HS1_T1 + zCf1b * ctx.CF1_T1 + zDi1 * ctx.DI1_T1 + zT1b;
-  ctx.VS1[3][3] = zHs1 * ctx.HS1_D1 + zCf1b * ctx.CF1_D1 + zDi1 * ctx.DI1_D1;
-  ctx.VS1[3][4] = zHs1 * ctx.HS1_U1 + zCf1b * ctx.CF1_U1 + zDi1 * ctx.DI1_U1 + zU1b;
-  ctx.VS1[3][5] = zX1b;
-  ctx.VS2[3][1] = zDi2 * ctx.DI2_S2;
-  ctx.VS2[3][2] = zHs2 * ctx.HS2_T2 + zCf2b * ctx.CF2_T2 + zDi2 * ctx.DI2_T2 + zT2b;
-  ctx.VS2[3][3] = zHs2 * ctx.HS2_D2 + zCf2b * ctx.CF2_D2 + zDi2 * ctx.DI2_D2;
-  ctx.VS2[3][4] = zHs2 * ctx.HS2_U2 + zCf2b * ctx.CF2_U2 + zDi2 * ctx.DI2_U2 + zU2b;
-  ctx.VS2[3][5] = zX2b;
+  VS1F[3 * vsStride + 1] = zDi1 * ctx.DI1_S1;
+  VS1F[3 * vsStride + 2] = zHs1 * ctx.HS1_T1 + zCf1b * ctx.CF1_T1 + zDi1 * ctx.DI1_T1 + zT1b;
+  VS1F[3 * vsStride + 3] = zHs1 * ctx.HS1_D1 + zCf1b * ctx.CF1_D1 + zDi1 * ctx.DI1_D1;
+  VS1F[3 * vsStride + 4] = zHs1 * ctx.HS1_U1 + zCf1b * ctx.CF1_U1 + zDi1 * ctx.DI1_U1 + zU1b;
+  VS1F[3 * vsStride + 5] = zX1b;
+  VS2F[3 * vsStride + 1] = zDi2 * ctx.DI2_S2;
+  VS2F[3 * vsStride + 2] = zHs2 * ctx.HS2_T2 + zCf2b * ctx.CF2_T2 + zDi2 * ctx.DI2_T2 + zT2b;
+  VS2F[3 * vsStride + 3] = zHs2 * ctx.HS2_D2 + zCf2b * ctx.CF2_D2 + zDi2 * ctx.DI2_D2;
+  VS2F[3 * vsStride + 4] = zHs2 * ctx.HS2_U2 + zCf2b * ctx.CF2_U2 + zDi2 * ctx.DI2_U2 + zU2b;
+  VS2F[3 * vsStride + 5] = zX2b;
   ctx.VSM[3] = zHs1 * ctx.HS1_MS + zCf1b * ctx.CF1_MS + zDi1 * ctx.DI1_MS
     + zHs2 * ctx.HS2_MS + zCf2b * ctx.CF2_MS + zDi2 * ctx.DI2_MS;
   ctx.VSR[3] = zHs1 * ctx.HS1_RE + zCf1b * ctx.CF1_RE + zDi1 * ctx.DI1_RE
     + zHs2 * ctx.HS2_RE + zCf2b * ctx.CF2_RE + zDi2 * ctx.DI2_RE;
 
-  ctx.VS1[3][2] += 0.5 * (zHca * ctx.HC1_T1 + zHa2 * ctx.H1_T1) + zUpw2 * upwT1;
-  ctx.VS1[3][3] += 0.5 * (zHca * ctx.HC1_D1 + zHa2 * ctx.H1_D1) + zUpw2 * upwD1;
-  ctx.VS1[3][4] += 0.5 * (zHca * ctx.HC1_U1) + zUpw2 * upwU1;
-  ctx.VS2[3][2] += 0.5 * (zHca * ctx.HC2_T2 + zHa2 * ctx.H2_T2) + zUpw2 * upwT2;
-  ctx.VS2[3][3] += 0.5 * (zHca * ctx.HC2_D2 + zHa2 * ctx.H2_D2) + zUpw2 * upwD2;
-  ctx.VS2[3][4] += 0.5 * (zHca * ctx.HC2_U2) + zUpw2 * upwU2;
+  VS1F[3 * vsStride + 2] += 0.5 * (zHca * ctx.HC1_T1 + zHa2 * ctx.H1_T1) + zUpw2 * upwT1;
+  VS1F[3 * vsStride + 3] += 0.5 * (zHca * ctx.HC1_D1 + zHa2 * ctx.H1_D1) + zUpw2 * upwD1;
+  VS1F[3 * vsStride + 4] += 0.5 * (zHca * ctx.HC1_U1) + zUpw2 * upwU1;
+  VS2F[3 * vsStride + 2] += 0.5 * (zHca * ctx.HC2_T2 + zHa2 * ctx.H2_T2) + zUpw2 * upwT2;
+  VS2F[3 * vsStride + 3] += 0.5 * (zHca * ctx.HC2_D2 + zHa2 * ctx.H2_D2) + zUpw2 * upwD2;
+  VS2F[3 * vsStride + 4] += 0.5 * (zHca * ctx.HC2_U2) + zUpw2 * upwU2;
 
   ctx.VSM[3] += 0.5 * (zHca * ctx.HC1_MS) + zUpw2 * upwMs
     + 0.5 * (zHca * ctx.HC2_MS);

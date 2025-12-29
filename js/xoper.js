@@ -47,6 +47,13 @@ import { createMatrix1, createTensor3Flat } from './arrays.js';
 function applyXfoilOperInit(blCtx, alphaRad, reinf1, opts = {}) {
   const { resetConvergence = true } = opts;
   blCtx.LVISC = true;
+  if (blCtx.LVCONV) {
+    const da = Math.abs((blCtx.AVISC ?? NaN) - alphaRad);
+    const dm = Math.abs((blCtx.MVISC ?? NaN) - (blCtx.MINF ?? NaN));
+    if ((Number.isFinite(da) && da > 1.0e-5) || (Number.isFinite(dm) && dm > 1.0e-5)) {
+      blCtx.LVCONV = false;
+    }
+  }
   if (resetConvergence) {
     blCtx.LVCONV = false;
   }
@@ -307,6 +314,13 @@ function initViscousBl(blCtx, ctxPanel, qinv, qinvA) {
     iblpan(blCtx, ctxPanel.N, ctxPanel.NW ?? 0);
     xicalc(blCtx, ctxPanel);
     iblsys(blCtx);
+    ensureViscousArrays(blCtx);
+  }
+
+  if (!blCtx.VA || !blCtx.VB || !blCtx.VDEL || !blCtx.VM) {
+    if (!Number.isFinite(blCtx.NSYS) || blCtx.NSYS <= 0) {
+      iblsys(blCtx);
+    }
     ensureViscousArrays(blCtx);
   }
 

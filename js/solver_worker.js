@@ -121,7 +121,7 @@ function pointInPolygon(x, y, px, py, n) {
 }
 
 function buildPanelContext(nb, alphaRad, opts = {}) {
-  const { reusePanel = false, geometryKey = '' } = opts;
+  const { reusePanel = false, geometryKey = '', reuseState = null } = opts;
   const waklen = 1.0;
   const nw = Math.floor(nb / 12) + 10 * Math.floor(waklen);
   const total = nb + nw;
@@ -216,7 +216,295 @@ function buildPanelContext(nb, alphaRad, opts = {}) {
 
   panelCache.ctx = panelCtx;
   panelCache.key = geometryKey;
+
+  if (reuseState && reuseState.panel) {
+    const restored = applyPanelSnapshot(panelCtx, reuseState.panel);
+    if (restored) {
+      panelCache.ctx = panelCtx;
+      panelCache.key = geometryKey;
+    }
+  }
   return panelCtx;
+}
+
+function cloneFloat64Array(arr) {
+  return arr ? new Float64Array(arr) : null;
+}
+
+function cloneInt32Array(arr) {
+  return arr ? new Int32Array(arr) : null;
+}
+
+function cloneArrayOfFloat64Arrays(arr) {
+  if (!arr) return null;
+  const out = new Array(arr.length);
+  for (let i = 0; i < arr.length; i += 1) {
+    const row = arr[i];
+    out[i] = row instanceof Float64Array ? new Float64Array(row) : row;
+  }
+  return out;
+}
+
+function cloneMatrix1(mat) {
+  return cloneArrayOfFloat64Arrays(mat);
+}
+
+function snapshotPanelCtx(ctx) {
+  return {
+    N: ctx.N,
+    NW: ctx.NW,
+    WAKLEN: ctx.WAKLEN,
+    LWAKE: ctx.LWAKE,
+    LWDIJ: ctx.LWDIJ,
+    LADIJ: ctx.LADIJ,
+    SHARP: ctx.SHARP,
+    ANTE: ctx.ANTE,
+    ASTE: ctx.ASTE,
+    DSTE: ctx.DSTE,
+    XTE: ctx.XTE,
+    YTE: ctx.YTE,
+    QINF: ctx.QINF,
+    ALFA: ctx.ALFA,
+    X: cloneFloat64Array(ctx.X),
+    Y: cloneFloat64Array(ctx.Y),
+    XP: cloneFloat64Array(ctx.XP),
+    YP: cloneFloat64Array(ctx.YP),
+    S: cloneFloat64Array(ctx.S),
+    NX: cloneFloat64Array(ctx.NX),
+    NY: cloneFloat64Array(ctx.NY),
+    APANEL: cloneFloat64Array(ctx.APANEL),
+    SIG: cloneFloat64Array(ctx.SIG),
+    QF0: cloneFloat64Array(ctx.QF0),
+    QF1: cloneFloat64Array(ctx.QF1),
+    QF2: cloneFloat64Array(ctx.QF2),
+    QF3: cloneFloat64Array(ctx.QF3),
+    DZDG: cloneFloat64Array(ctx.DZDG),
+    DZDN: cloneFloat64Array(ctx.DZDN),
+    DQDG: cloneFloat64Array(ctx.DQDG),
+    DZDM: cloneFloat64Array(ctx.DZDM),
+    DQDM: cloneFloat64Array(ctx.DQDM),
+    QINV: cloneFloat64Array(ctx.QINV),
+    QINV_A: cloneFloat64Array(ctx.QINV_A),
+    QVIS: cloneFloat64Array(ctx.QVIS),
+    GAM: cloneFloat64Array(ctx.GAM),
+    GAM_A: cloneFloat64Array(ctx.GAM_A),
+    GAMU: cloneArrayOfFloat64Arrays(ctx.GAMU),
+    QINVU: cloneArrayOfFloat64Arrays(ctx.QINVU),
+    AIJ: cloneArrayOfFloat64Arrays(ctx.AIJ),
+    BIJ: cloneArrayOfFloat64Arrays(ctx.BIJ),
+    AIJPIV: cloneInt32Array(ctx.AIJPIV),
+    DIJ: cloneArrayOfFloat64Arrays(ctx.DIJ),
+  };
+}
+
+function applyPanelSnapshot(ctx, snap) {
+  if (!snap || snap.N !== ctx.N || snap.NW !== ctx.NW) return false;
+  ctx.WAKLEN = snap.WAKLEN ?? ctx.WAKLEN;
+  ctx.LWAKE = !!snap.LWAKE;
+  ctx.LWDIJ = !!snap.LWDIJ;
+  ctx.LADIJ = !!snap.LADIJ;
+  ctx.SHARP = !!snap.SHARP;
+  ctx.ANTE = snap.ANTE ?? ctx.ANTE;
+  ctx.ASTE = snap.ASTE ?? ctx.ASTE;
+  ctx.DSTE = snap.DSTE ?? ctx.DSTE;
+  ctx.XTE = snap.XTE ?? ctx.XTE;
+  ctx.YTE = snap.YTE ?? ctx.YTE;
+  ctx.QINF = snap.QINF ?? ctx.QINF;
+  ctx.ALFA = snap.ALFA ?? ctx.ALFA;
+  if (snap.X) ctx.X.set(snap.X);
+  if (snap.Y) ctx.Y.set(snap.Y);
+  if (snap.XP) ctx.XP.set(snap.XP);
+  if (snap.YP) ctx.YP.set(snap.YP);
+  if (snap.S) ctx.S.set(snap.S);
+  if (snap.NX) ctx.NX.set(snap.NX);
+  if (snap.NY) ctx.NY.set(snap.NY);
+  if (snap.APANEL) ctx.APANEL.set(snap.APANEL);
+  if (snap.SIG) ctx.SIG.set(snap.SIG);
+  if (snap.QF0) ctx.QF0.set(snap.QF0);
+  if (snap.QF1) ctx.QF1.set(snap.QF1);
+  if (snap.QF2) ctx.QF2.set(snap.QF2);
+  if (snap.QF3) ctx.QF3.set(snap.QF3);
+  if (snap.DZDG) ctx.DZDG.set(snap.DZDG);
+  if (snap.DZDN) ctx.DZDN.set(snap.DZDN);
+  if (snap.DQDG) ctx.DQDG.set(snap.DQDG);
+  if (snap.DZDM) ctx.DZDM.set(snap.DZDM);
+  if (snap.DQDM) ctx.DQDM.set(snap.DQDM);
+  if (snap.QINV) ctx.QINV.set(snap.QINV);
+  if (snap.QINV_A) ctx.QINV_A.set(snap.QINV_A);
+  if (snap.QVIS) ctx.QVIS.set(snap.QVIS);
+  if (snap.GAM) ctx.GAM.set(snap.GAM);
+  if (snap.GAM_A) ctx.GAM_A.set(snap.GAM_A);
+  if (snap.GAMU) {
+    for (let i = 0; i < snap.GAMU.length && i < ctx.GAMU.length; i += 1) {
+      if (snap.GAMU[i]) ctx.GAMU[i].set(snap.GAMU[i]);
+    }
+  }
+  if (snap.QINVU) {
+    for (let i = 0; i < snap.QINVU.length && i < ctx.QINVU.length; i += 1) {
+      if (snap.QINVU[i]) ctx.QINVU[i].set(snap.QINVU[i]);
+    }
+  }
+  if (snap.AIJ) {
+    for (let i = 0; i < snap.AIJ.length && i < ctx.AIJ.length; i += 1) {
+      if (snap.AIJ[i]) ctx.AIJ[i].set(snap.AIJ[i]);
+    }
+  }
+  if (snap.BIJ) {
+    for (let i = 0; i < snap.BIJ.length && i < ctx.BIJ.length; i += 1) {
+      if (snap.BIJ[i]) ctx.BIJ[i].set(snap.BIJ[i]);
+    }
+  }
+  if (snap.AIJPIV) ctx.AIJPIV.set(snap.AIJPIV);
+  if (snap.DIJ) {
+    if (!ctx.DIJ || ctx.DIJ.length !== snap.DIJ.length) {
+      ctx.DIJ = cloneArrayOfFloat64Arrays(snap.DIJ);
+    } else {
+      for (let i = 0; i < snap.DIJ.length; i += 1) {
+        if (snap.DIJ[i]) ctx.DIJ[i].set(snap.DIJ[i]);
+      }
+    }
+  } else {
+    ctx.LWDIJ = false;
+    ctx.LADIJ = false;
+  }
+  if ((!ctx.DIJ) && (ctx.LWDIJ || ctx.LADIJ)) {
+    ctx.LWDIJ = false;
+    ctx.LADIJ = false;
+  }
+  return true;
+}
+
+function snapshotBlCtx(ctx) {
+  const maxNbl = Math.max(ctx.NBL[1], ctx.NBL[2]);
+  return {
+    N: ctx.N,
+    NW: ctx.NW,
+    LBLINI: !!ctx.LBLINI,
+    LVCONV: !!ctx.LVCONV,
+    LIPAN: !!ctx.LIPAN,
+    NSYS: ctx.NSYS,
+    IST: ctx.IST,
+    SST: ctx.SST,
+    SST_GO: ctx.SST_GO,
+    SST_GP: ctx.SST_GP,
+    SLE: ctx.SLE,
+    XLE: ctx.XLE,
+    YLE: ctx.YLE,
+    XTE: ctx.XTE,
+    YTE: ctx.YTE,
+    AVISC: ctx.AVISC,
+    MVISC: ctx.MVISC,
+    MINF: ctx.MINF,
+    MINF1: ctx.MINF1,
+    REINF: ctx.REINF,
+    REINF1: ctx.REINF1,
+    ACRIT: cloneFloat64Array(ctx.ACRIT),
+    XSTRIP: cloneFloat64Array(ctx.XSTRIP),
+    NBL: cloneInt32Array(ctx.NBL),
+    IBLTE: cloneInt32Array(ctx.IBLTE),
+    ITRAN: cloneInt32Array(ctx.ITRAN),
+    XSSITR: cloneFloat64Array(ctx.XSSITR),
+    TFORCE: Array.from(ctx.TFORCE ?? []),
+    WGAP: cloneFloat64Array(ctx.WGAP),
+    IPAN: cloneMatrix1(ctx.IPAN),
+    ISYS: cloneMatrix1(ctx.ISYS),
+    VTI: cloneMatrix1(ctx.VTI),
+    XSSI: cloneMatrix1(ctx.XSSI),
+    UEDG: cloneMatrix1(ctx.UEDG),
+    UINV: cloneMatrix1(ctx.UINV),
+    UINV_A: cloneMatrix1(ctx.UINV_A),
+    THET: cloneMatrix1(ctx.THET),
+    DSTR: cloneMatrix1(ctx.DSTR),
+    CTAU: cloneMatrix1(ctx.CTAU),
+    MASS: cloneMatrix1(ctx.MASS),
+    TAU: cloneMatrix1(ctx.TAU),
+    DIS: cloneMatrix1(ctx.DIS),
+    CTQ: cloneMatrix1(ctx.CTQ),
+    DELT: cloneMatrix1(ctx.DELT),
+    TSTR: cloneMatrix1(ctx.TSTR),
+    maxNbl,
+  };
+}
+
+function applyBlSnapshot(ctx, snap) {
+  if (!snap || snap.N !== ctx.N || snap.NW !== ctx.NW) return false;
+  ctx.LBLINI = !!snap.LBLINI;
+  ctx.LVCONV = !!snap.LVCONV;
+  ctx.LIPAN = !!snap.LIPAN;
+  ctx.NSYS = snap.NSYS ?? ctx.NSYS;
+  ctx.IST = snap.IST ?? ctx.IST;
+  ctx.SST = snap.SST ?? ctx.SST;
+  ctx.SST_GO = snap.SST_GO ?? ctx.SST_GO;
+  ctx.SST_GP = snap.SST_GP ?? ctx.SST_GP;
+  ctx.SLE = snap.SLE ?? ctx.SLE;
+  ctx.XLE = snap.XLE ?? ctx.XLE;
+  ctx.YLE = snap.YLE ?? ctx.YLE;
+  ctx.XTE = snap.XTE ?? ctx.XTE;
+  ctx.YTE = snap.YTE ?? ctx.YTE;
+  ctx.AVISC = snap.AVISC ?? ctx.AVISC;
+  ctx.MVISC = snap.MVISC ?? ctx.MVISC;
+  ctx.MINF = snap.MINF ?? ctx.MINF;
+  ctx.MINF1 = snap.MINF1 ?? ctx.MINF1;
+  ctx.REINF = snap.REINF ?? ctx.REINF;
+  ctx.REINF1 = snap.REINF1 ?? ctx.REINF1;
+  if (snap.ACRIT) ctx.ACRIT.set(snap.ACRIT);
+  if (snap.XSTRIP) ctx.XSTRIP.set(snap.XSTRIP);
+  if (snap.NBL) ctx.NBL.set(snap.NBL);
+  if (snap.IBLTE) ctx.IBLTE.set(snap.IBLTE);
+  if (snap.ITRAN) ctx.ITRAN.set(snap.ITRAN);
+  if (snap.XSSITR) ctx.XSSITR.set(snap.XSSITR);
+  if (snap.TFORCE && ctx.TFORCE) {
+    for (let i = 0; i < snap.TFORCE.length && i < ctx.TFORCE.length; i += 1) {
+      ctx.TFORCE[i] = snap.TFORCE[i];
+    }
+  }
+  if (snap.WGAP) ctx.WGAP.set(snap.WGAP);
+  if (snap.IPAN) {
+    for (let i = 0; i < snap.IPAN.length && i < ctx.IPAN.length; i += 1) {
+      if (snap.IPAN[i]) ctx.IPAN[i].set(snap.IPAN[i]);
+    }
+  }
+  if (snap.ISYS) {
+    for (let i = 0; i < snap.ISYS.length && i < ctx.ISYS.length; i += 1) {
+      if (snap.ISYS[i]) ctx.ISYS[i].set(snap.ISYS[i]);
+    }
+  }
+  if (snap.VTI) {
+    for (let i = 0; i < snap.VTI.length && i < ctx.VTI.length; i += 1) {
+      if (snap.VTI[i]) ctx.VTI[i].set(snap.VTI[i]);
+    }
+  }
+  if (snap.XSSI) {
+    for (let i = 0; i < snap.XSSI.length && i < ctx.XSSI.length; i += 1) {
+      if (snap.XSSI[i]) ctx.XSSI[i].set(snap.XSSI[i]);
+    }
+  }
+  if (snap.UEDG) {
+    for (let i = 0; i < snap.UEDG.length && i < ctx.UEDG.length; i += 1) {
+      if (snap.UEDG[i]) ctx.UEDG[i].set(snap.UEDG[i]);
+    }
+  }
+  if (snap.UINV) {
+    for (let i = 0; i < snap.UINV.length && i < ctx.UINV.length; i += 1) {
+      if (snap.UINV[i]) ctx.UINV[i].set(snap.UINV[i]);
+    }
+  }
+  if (snap.UINV_A) {
+    for (let i = 0; i < snap.UINV_A.length && i < ctx.UINV_A.length; i += 1) {
+      if (snap.UINV_A[i]) ctx.UINV_A[i].set(snap.UINV_A[i]);
+    }
+  }
+  const fields = ['THET', 'DSTR', 'CTAU', 'MASS', 'TAU', 'DIS', 'CTQ', 'DELT', 'TSTR'];
+  for (let f = 0; f < fields.length; f += 1) {
+    const key = fields[f];
+    const snapMat = snap[key];
+    const ctxMat = ctx[key];
+    if (!snapMat || !ctxMat) continue;
+    for (let i = 0; i < snapMat.length && i < ctxMat.length; i += 1) {
+      if (snapMat[i]) ctxMat[i].set(snapMat[i]);
+    }
+  }
+  return true;
 }
 
 function getSurfaceIndices(nb, ctxPanel) {
@@ -448,6 +736,7 @@ function computeCase(settings) {
     geometryKey,
     reusePanel,
     reuseSolution,
+    reuseState,
     viscous,
     mach,
     reynolds,
@@ -464,7 +753,14 @@ function computeCase(settings) {
   const displayAngle = -alphaRad;
   const bounds = computeBounds(nb, displayAngle, canvasWidth, canvasHeight);
 
-  const ctxPanel = buildPanelContext(nb, alphaRad, { reusePanel, geometryKey });
+  const matchedReuseState = reuseState && reuseState.geometryKey === geometryKey
+    ? reuseState
+    : null;
+  const ctxPanel = buildPanelContext(nb, alphaRad, {
+    reusePanel,
+    geometryKey,
+    reuseState: matchedReuseState,
+  });
   let blCtx = null;
   let qinv = null;
   let qinvA = null;
@@ -477,8 +773,16 @@ function computeCase(settings) {
       blCtx.ACRIT[2] = acrit;
     } else {
       blCtx = buildBlContext(nb, ctxPanel, ncr);
-      blCache.ctx = blCtx;
-      blCache.key = geometryKey;
+      if (reuseSolution && matchedReuseState?.bl) {
+        const restored = applyBlSnapshot(blCtx, matchedReuseState.bl);
+        if (restored) {
+          blCache.ctx = blCtx;
+          blCache.key = geometryKey;
+        }
+      } else {
+        blCache.ctx = blCtx;
+        blCache.key = geometryKey;
+      }
     }
 
     const maxIter = Number.isFinite(nIter) && nIter > 0 ? nIter : 20;
@@ -593,6 +897,15 @@ function computeCase(settings) {
     blLines = buildBoundaryLayerLines(blCtx, ctxPanel, 1.0);
   }
 
+  let reuseSnapshot = null;
+  if (viscous && reuseSolution && blCtx && ctxPanel) {
+    reuseSnapshot = {
+      geometryKey,
+      panel: snapshotPanelCtx(ctxPanel),
+      bl: snapshotBlCtx(blCtx),
+    };
+  }
+
   return {
     ok: true,
     nb,
@@ -609,6 +922,7 @@ function computeCase(settings) {
     alphaDeg,
     alphaRad,
     viscous,
+    reuseState: reuseSnapshot,
   };
 }
 
@@ -622,6 +936,7 @@ self.onmessage = (event) => {
       requestId,
       ok: false,
       error: err instanceof Error ? err.message : String(err),
+      errorStack: err instanceof Error ? err.stack : null,
     });
   }
 };

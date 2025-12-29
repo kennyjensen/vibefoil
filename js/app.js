@@ -79,6 +79,7 @@ const machInput = document.getElementById('mach');
 const reynoldsInput = document.getElementById('reynolds');
 const ncrInput = document.getElementById('ncr');
 const nIterInput = document.getElementById('nIter');
+const reuseSolutionToggle = document.getElementById('reuseSolution');
 const loadDatButton = document.getElementById('loadDat');
 const datFileInput = document.getElementById('datFile');
 const uiucNameInput = document.getElementById('uiucName');
@@ -129,6 +130,7 @@ let nextCaseId = 1;
 let sweeping = false;
 const panelCache = { ctx: null, key: null };
 const blCache = { ctx: null, key: null };
+let reuseState = null;
 let solverWorker = null;
 let solverRequestId = 0;
 let latestSolverId = 0;
@@ -1729,7 +1731,13 @@ function spawnSolverWorker() {
       if (payload.error) {
         console.warn(`Solver worker error: ${payload.error}`);
       }
+      if (payload.errorStack) {
+        console.warn(payload.errorStack);
+      }
       return;
+    }
+    if (payload.reuseState) {
+      reuseState = payload.reuseState;
     }
     applySolverResult(payload);
   };
@@ -1805,6 +1813,9 @@ function update() {
   const fallbackA = defaultSixSeriesA(profile);
 
   const rect = canvas.getBoundingClientRect();
+  const reuseKeyedState = reuseSolutionToggle?.checked && reuseState?.geometryKey === geometryKey
+    ? reuseState
+    : null;
   const settings = {
     mode,
     source,
@@ -1834,8 +1845,9 @@ function update() {
     alphaDeg,
     alphaRad,
     geometryKey,
-    reusePanel: false,
-    reuseSolution: false,
+    reusePanel: viscousToggle.checked && !!reuseSolutionToggle?.checked,
+    reuseSolution: viscousToggle.checked && !!reuseSolutionToggle?.checked,
+    reuseState: reuseKeyedState,
     viscous: viscousToggle.checked,
     mach: parseFloat(machInput.value),
     reynolds: parseFloat(reynoldsInput.value),
@@ -1935,6 +1947,9 @@ sourceRadios.forEach((radio) => {
 });
 
 viscousToggle.addEventListener('change', update);
+if (reuseSolutionToggle) {
+  reuseSolutionToggle.addEventListener('change', update);
+}
 series5Select.addEventListener('change', update);
 series6Profile.addEventListener('change', () => {
   update();

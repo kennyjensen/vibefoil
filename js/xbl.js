@@ -643,6 +643,10 @@ function mrchdu(ctx) {
         }
       }
 
+      if (dmax > deps) {
+        console.log(` MRCHDU: Convergence failed at${String(ibl).padStart(4)}  side${String(is).padStart(3)}    Res =${dmax.toExponential(4).padStart(12)}`);
+      }
+
       if (dmax > deps && dmax > 0.1 && ibl > 3) {
         if (ibl <= IBLTE[is]) {
           thi = THET[ibm][is] * (XSSI[ibl][is] / XSSI[ibm][is]) ** 0.5;

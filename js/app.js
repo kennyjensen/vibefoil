@@ -41,7 +41,7 @@ const dataNcr = document.getElementById('dataNcr');
 const dataConverged = document.getElementById('dataConverged');
 const DEFAULT_BL_ITER = 20;
 const UIUC_BASE_URL = 'https://raw.githubusercontent.com/kennyjensen/uiuc_airfoil_database/master/';
-const UIUC_INDEX_URL = window.UIUC_INDEX_URL || `${UIUC_BASE_URL}airfoils.json`;
+const UIUC_TREE_URL = 'https://api.github.com/repos/kennyjensen/uiuc_airfoil_database/git/trees/master?recursive=1';
 const UIUC_FALLBACK_LIST = [
   'e387.dat',
   'e423.dat',
@@ -79,6 +79,8 @@ const machInput = document.getElementById('mach');
 const reynoldsInput = document.getElementById('reynolds');
 const ncrInput = document.getElementById('ncr');
 const nIterInput = document.getElementById('nIter');
+const advancedModeToggle = document.getElementById('advancedMode');
+const advancedControls = document.getElementById('advancedControls');
 const reuseSolutionToggle = document.getElementById('reuseSolution');
 const loadDatButton = document.getElementById('loadDat');
 const datFileInput = document.getElementById('datFile');
@@ -92,6 +94,8 @@ const flapDefInput = document.getElementById('flapDef');
 const flapDefValue = document.getElementById('flapDefValue');
 const flapXValue = document.getElementById('flapXValue');
 const flapYValue = document.getElementById('flapYValue');
+const flapDefMinus = document.getElementById('flapDefMinus');
+const flapDefPlus = document.getElementById('flapDefPlus');
 const alphaSlider = document.getElementById('alpha');
 const alphaValue = document.getElementById('alphaValue');
 const alphaMinus = document.getElementById('alphaMinus');
@@ -225,6 +229,17 @@ function updateFlapHingeLabels(xValue, yValue) {
   }
 }
 
+function adjustFlapDeflection(delta) {
+  if (!flapDefInput) return;
+  const min = parseFloat(flapDefInput.min);
+  const max = parseFloat(flapDefInput.max);
+  const current = parseFloat(flapDefInput.value);
+  const next = Number.isFinite(current) ? current + delta : delta;
+  const clamped = Math.max(min, Math.min(max, next));
+  flapDefInput.value = `${clamped}`;
+  update();
+}
+
 // Subscript labeling to mimic textbook notation (C_L, C_D, etc.).
 function drawSubLabel(ctx2d, base, sub, x, y) {
   const baseFont = ctx2d.font;
@@ -252,19 +267,10 @@ function createRunCase() {
   const color = colors[(nextCaseId - 1) % colors.length];
   const id = nextCaseId;
   nextCaseId += 1;
-  const rawName = (currentAirfoilName || 'Foil').replace(/[^A-Za-z0-9]/g, '');
-  const foilLabel = rawName.length ? rawName.slice(0, 8) : 'Foil';
-  const reynolds = parseFloat(reynoldsInput?.value);
-  const reLabel = Number.isFinite(reynolds)
-    ? reynolds.toExponential(0).replace('+', '')
-    : '—';
-  const deflection = parseFloat(flapDefInput?.value);
-  const defLabel = Number.isFinite(deflection)
-    ? `${Math.abs(deflection - Math.round(deflection)) < 1.0e-6 ? Math.round(deflection) : deflection.toFixed(1)}°`
-    : '—';
+  const foilLabel = currentAirfoilName || 'Airfoil';
   return {
     id,
-    name: `${foilLabel}, Re=${reLabel}, δ=${defLabel}`,
+    name: `${foilLabel} Run ${id}`,
     color,
     history: [],
     sweep: null,
@@ -1039,22 +1045,18 @@ function renderUiucList(items) {
   });
 }
 
-function parseUiucIndex(text) {
-  try {
-    const parsed = JSON.parse(text);
-    if (Array.isArray(parsed)) {
-      return parsed.map((name) => String(name)).filter(Boolean);
+function parseUiucTree(payload) {
+  const tree = Array.isArray(payload?.tree) ? payload.tree : [];
+  const names = new Set();
+  tree.forEach((item) => {
+    if (!item || item.type !== 'blob' || typeof item.path !== 'string') return;
+    if (!item.path.toLowerCase().endsWith('.dat')) return;
+    const filename = item.path.split('/').pop();
+    if (filename) {
+      names.add(filename);
     }
-    if (Array.isArray(parsed?.names)) {
-      return parsed.names.map((name) => String(name)).filter(Boolean);
-    }
-  } catch (error) {
-    // Fall through to line parsing.
-  }
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith('#'));
+  });
+  return Array.from(names).sort((a, b) => a.localeCompare(b));
 }
 
 async function ensureUiucListLoaded() {
@@ -1064,19 +1066,19 @@ async function ensureUiucListLoaded() {
     renderUiucList(UIUC_FALLBACK_LIST);
   }
   try {
-    const response = await fetch(UIUC_INDEX_URL);
+    const response = await fetch(UIUC_TREE_URL);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    const text = await response.text();
-    const names = parseUiucIndex(text).filter((name) => name.toLowerCase().endsWith('.dat'));
+    const payload = await response.json();
+    const names = parseUiucTree(payload);
     if (names.length > 0) {
       renderUiucList(names);
     }
     uiucListLoaded = true;
   } catch (error) {
     uiucListLoaded = true;
-    setUiucStatus('Autocomplete using starter list (index fetch failed).');
+    setUiucStatus('Autocomplete using starter list (GitHub API fetch failed).');
   } finally {
     uiucListLoading = false;
   }
@@ -1630,7 +1632,7 @@ function drawFlapHinge(bounds, hinge) {
   const size = 6;
 
   ctx.save();
-  ctx.strokeStyle = '#ffd166';
+  ctx.strokeStyle = '#9aa0a8';
   ctx.lineWidth = 2.0;
   ctx.beginPath();
   ctx.moveTo(p.x - size, p.y);
@@ -1639,7 +1641,7 @@ function drawFlapHinge(bounds, hinge) {
   ctx.lineTo(p.x, p.y + size);
   ctx.stroke();
 
-  ctx.fillStyle = 'rgba(255, 209, 102, 0.6)';
+  ctx.fillStyle = 'rgba(154, 160, 168, 0.55)';
   ctx.beginPath();
   ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
   ctx.fill();
@@ -1753,6 +1755,12 @@ function spawnSolverWorker() {
   };
 }
 
+function syncAdvancedControls() {
+  if (advancedControls && advancedModeToggle) {
+    advancedControls.hidden = !advancedModeToggle.checked;
+  }
+}
+
 // Main compute/render pipeline: geometry -> panel -> BL -> coefficients -> plots.
 function update() {
   const mode = seriesRadios.find((radio) => radio.checked)?.value || '4';
@@ -1813,7 +1821,9 @@ function update() {
   const fallbackA = defaultSixSeriesA(profile);
 
   const rect = canvas.getBoundingClientRect();
-  const reuseKeyedState = reuseSolutionToggle?.checked && reuseState?.geometryKey === geometryKey
+  const advancedMode = !!advancedModeToggle?.checked;
+  const reuseEnabled = viscousToggle.checked && !!reuseSolutionToggle?.checked;
+  const reuseKeyedState = reuseState?.geometryKey === geometryKey
     ? reuseState
     : null;
   const settings = {
@@ -1845,8 +1855,9 @@ function update() {
     alphaDeg,
     alphaRad,
     geometryKey,
-    reusePanel: viscousToggle.checked && !!reuseSolutionToggle?.checked,
-    reuseSolution: viscousToggle.checked && !!reuseSolutionToggle?.checked,
+    advancedMode,
+    reusePanel: viscousToggle.checked && (advancedMode ? reuseEnabled : true),
+    reuseSolution: advancedMode ? reuseEnabled : false,
     reuseState: reuseKeyedState,
     viscous: viscousToggle.checked,
     mach: parseFloat(machInput.value),
@@ -1876,6 +1887,8 @@ function update() {
   });
 }
 
+syncAdvancedControls();
+
 [mSlider, pSlider, tSlider, t5Slider].forEach((slider) => {
   slider.addEventListener('input', update);
 });
@@ -1899,6 +1912,16 @@ if (alphaPlus) {
   alphaPlus.addEventListener('click', () => {
     const current = parseFloat(alphaSlider.value);
     setAlphaValue(current + 1.0);
+  });
+}
+if (flapDefMinus) {
+  flapDefMinus.addEventListener('click', () => {
+    adjustFlapDeflection(-1.0);
+  });
+}
+if (flapDefPlus) {
+  flapDefPlus.addEventListener('click', () => {
+    adjustFlapDeflection(1.0);
   });
 }
 if (alphaSweep) {
@@ -1949,6 +1972,12 @@ sourceRadios.forEach((radio) => {
 viscousToggle.addEventListener('change', update);
 if (reuseSolutionToggle) {
   reuseSolutionToggle.addEventListener('change', update);
+}
+if (advancedModeToggle) {
+  advancedModeToggle.addEventListener('change', () => {
+    syncAdvancedControls();
+    update();
+  });
 }
 series5Select.addEventListener('change', update);
 series6Profile.addEventListener('change', () => {
@@ -2029,6 +2058,11 @@ updateFlapHingeLabels(
   parseFloat(flapXInput?.value),
   parseFloat(flapYInput?.value),
 );
+if (runCases.length === 0) {
+  const initialCase = createRunCase();
+  runCases.push(initialCase);
+  activeCaseId = initialCase.id;
+}
 renderRunCases();
 resizeCanvas();
 update();

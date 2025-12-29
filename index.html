@@ -409,8 +409,8 @@
         </label>
         <div class="mode-toggle">
           <label><input type="radio" name="source" value="naca" checked /> NACA</label>
-          <label><input type="radio" name="source" value="custom" /> Custom</label>
           <label><input type="radio" name="source" value="database" /> Database</label>
+          <label><input type="radio" name="source" value="custom" /> Custom</label>
         </div>
 
         <div id="nacaOptions">
@@ -551,11 +551,16 @@
           <input id="ncr" type="number" min="1" max="15" step="1" value="9.0" />
         </div>
         <div class="viscous-row">
-          <label for="nIter">N<sub>iter</sub></label>
-          <input id="nIter" type="number" min="1" step="1" value="20" />
+          <label><input id="advancedMode" type="checkbox" /> Advanced mode</label>
         </div>
-        <div class="viscous-row">
-          <label><input id="reuseSolution" type="checkbox" /> Reuse BL solution</label>
+        <div id="advancedControls" hidden>
+          <div class="viscous-row">
+            <label for="nIter">N<sub>iter</sub></label>
+            <input id="nIter" type="number" min="1" step="1" value="20" />
+          </div>
+          <div class="viscous-row">
+            <label><input id="reuseSolution" type="checkbox" /> Reuse BL solution</label>
+          </div>
         </div>
       </div>
 
@@ -564,7 +569,7 @@
           <span>Angle-of-attack</span>
           <span id="alphaValue">0°</span>
         </label>
-        <input id="alpha" type="range" min="-10" max="10" step="0.25" value="0" />
+        <input id="alpha" type="range" min="-15" max="15" step="0.1" value="0" />
         <div class="sweep-actions">
           <button id="alphaMinus" type="button">−</button>
           <button id="alphaPlus" type="button">+</button>
@@ -598,6 +603,10 @@
             <span id="flapDefValue">0.0°</span>
           </label>
           <input id="flapDef" type="range" min="-20" max="20" step="0.5" value="0" />
+          <div class="sweep-actions">
+            <button id="flapDefMinus" type="button">−</button>
+            <button id="flapDefPlus" type="button">+</button>
+          </div>
         </div>
         <div class="control-group">
           <label for="flapX">

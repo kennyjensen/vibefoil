@@ -1,3 +1,8 @@
+// Ported from XFOIL Fortran source (Mark Drela).
+// This file is a derived work and remains under the terms of the
+// GNU General Public License v2 or later.
+// See https://web.mit.edu/drela/Public/web/xfoil/ for the original code and license text.
+
 // Port of xbl.f (partial). Marching and utility routines for the integral BL.
 // Integral boundary-layer method: marching, closures, and coupling terms.
 
@@ -725,6 +730,14 @@ function setbl(ctx) {
   // Fortran comments (SETBL) highlight:
   // - Assemble system matrices and residuals for Newton iteration.
   // - Set transition indices, compute TE coupling, and fill V arrays.
+  if (!ctx.VA || !ctx.VB || !ctx.VDEL || !ctx.VM) {
+    if (!Number.isFinite(ctx.NSYS) || ctx.NSYS <= 0) {
+      iblsys(ctx);
+    }
+    if (typeof ctx.ensureViscousArrays === 'function') {
+      ctx.ensureViscousArrays(ctx);
+    }
+  }
   const nsys = ctx.NSYS;
   const COM1 = ctx.COM1;
   const COM2 = ctx.COM2;

@@ -1,3 +1,8 @@
+# Ported from XFOIL Fortran source (Mark Drela).
+# This file is a derived work and remains under the terms of the
+# GNU General Public License v2 or later.
+# See https://web.mit.edu/drela/Public/web/xfoil/ for the original code and license text.
+
 import math
 
 from .xsolve import ludcmp, baksub

@@ -734,6 +734,7 @@ function computeCase(settings) {
     alphaDeg,
     alphaRad,
     geometryKey,
+    advancedMode = false,
     reusePanel,
     reuseSolution,
     reuseState,
@@ -756,50 +757,73 @@ function computeCase(settings) {
   const matchedReuseState = reuseState && reuseState.geometryKey === geometryKey
     ? reuseState
     : null;
-  const ctxPanel = buildPanelContext(nb, alphaRad, {
-    reusePanel,
+  const prevConverged = matchedReuseState?.bl?.LVCONV === true
+    || (blCache.ctx && blCache.key === geometryKey && blCache.ctx.LVCONV === true);
+  const reuseAttempt = advancedMode ? reuseSolution : prevConverged;
+  const panelReuse = reusePanel && (advancedMode ? reuseSolution : reuseAttempt);
+  let ctxPanel = buildPanelContext(nb, alphaRad, {
+    reusePanel: panelReuse,
     geometryKey,
-    reuseState: matchedReuseState,
+    reuseState: reuseAttempt ? matchedReuseState : null,
   });
   let blCtx = null;
   let qinv = null;
   let qinvA = null;
   if (viscous && ctxPanel) {
-    const reuse = reuseSolution && blCache.ctx && blCache.key === geometryKey;
-    if (reuse) {
-      blCtx = blCache.ctx;
-      const acrit = Number.isFinite(ncr) ? ncr : 9.0;
-      blCtx.ACRIT[1] = acrit;
-      blCtx.ACRIT[2] = acrit;
-    } else {
-      blCtx = buildBlContext(nb, ctxPanel, ncr);
-      if (reuseSolution && matchedReuseState?.bl) {
-        const restored = applyBlSnapshot(blCtx, matchedReuseState.bl);
-        if (restored) {
+    const maxIter = Number.isFinite(nIter) && nIter > 0 ? nIter : 20;
+    const applyMach = () => {
+      blCtx.MINF = Number.isFinite(mach) ? mach : 0.0;
+      blCtx.MINF1 = blCtx.MINF;
+    };
+
+    const runViscous = (useReuse, allowRestore) => {
+      const reuseCache = useReuse && blCache.ctx && blCache.key === geometryKey;
+      if (reuseCache) {
+        blCtx = blCache.ctx;
+        const acrit = Number.isFinite(ncr) ? ncr : 9.0;
+        blCtx.ACRIT[1] = acrit;
+        blCtx.ACRIT[2] = acrit;
+      } else {
+        blCtx = buildBlContext(nb, ctxPanel, ncr);
+        if (useReuse && allowRestore && matchedReuseState?.bl) {
+          const restored = applyBlSnapshot(blCtx, matchedReuseState.bl);
+          if (restored) {
+            blCache.ctx = blCtx;
+            blCache.key = geometryKey;
+          }
+        } else {
           blCache.ctx = blCtx;
           blCache.key = geometryKey;
         }
-      } else {
-        blCache.ctx = blCtx;
-        blCache.key = geometryKey;
       }
+
+      applyMach();
+      return viscal(
+        blCtx,
+        ctxPanel,
+        alphaRad,
+        Number.isFinite(reynolds) ? reynolds : 0.0,
+        {
+          maxIter,
+          logSurface: true,
+          reuseSolution: useReuse,
+        },
+      );
+    };
+
+    let viscalResult = runViscous(reuseAttempt, reuseAttempt);
+    qinv = viscalResult.qinv;
+    qinvA = viscalResult.qinvA;
+    if (!advancedMode && reuseAttempt && !viscalResult.converged) {
+      ctxPanel = buildPanelContext(nb, alphaRad, {
+        reusePanel: false,
+        geometryKey,
+        reuseState: null,
+      });
+      viscalResult = runViscous(false, false);
+      qinv = viscalResult.qinv;
+      qinvA = viscalResult.qinvA;
     }
-
-    const maxIter = Number.isFinite(nIter) && nIter > 0 ? nIter : 20;
-    blCtx.MINF = Number.isFinite(mach) ? mach : 0.0;
-    blCtx.MINF1 = blCtx.MINF;
-
-    ({ qinv, qinvA } = viscal(
-      blCtx,
-      ctxPanel,
-      alphaRad,
-      Number.isFinite(reynolds) ? reynolds : 0.0,
-      {
-        maxIter,
-        logSurface: true,
-        reuseSolution: reuse,
-      },
-    ));
   } else if (ctxPanel) {
     ({ qinv, qinvA } = specal(ctxPanel, alphaRad));
   }
@@ -898,7 +922,7 @@ function computeCase(settings) {
   }
 
   let reuseSnapshot = null;
-  if (viscous && reuseSolution && blCtx && ctxPanel) {
+  if (viscous && blCtx && ctxPanel && (advancedMode ? reuseSolution : true)) {
     reuseSnapshot = {
       geometryKey,
       panel: snapshotPanelCtx(ctxPanel),

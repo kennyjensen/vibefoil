@@ -1,3 +1,8 @@
+// Ported from XFOIL Fortran source (Mark Drela).
+// This file is a derived work and remains under the terms of the
+// GNU General Public License v2 or later.
+// See https://web.mit.edu/drela/Public/web/xfoil/ for the original code and license text.
+
 // Port of src/profil.f (profile routines).
 // Velocity profile construction for BL integral methods and closures.
 import { cft } from './blu.js';

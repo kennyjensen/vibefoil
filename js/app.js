@@ -1,14 +1,4 @@
-import { scalc, segspl } from './spline.js';
-import {
-  apcalc,
-  ncalc,
-  psilin,
-  ggcalc,
-  stfind,
-} from './xpanel.js';
-import { computeCoefficients, cpcalc, tecalc, pangen } from './xfoil.js';
 import { buildBlContext, computeQvisFromUedg, specal, viscal } from './xoper.js';
-import { createMatrix } from './arrays.js';
 
 // High-level orchestrator for the XFOIL port: UI, geometry generation,
 // inviscid panel solve, viscous BL coupling, and plotting.
@@ -131,16 +121,10 @@ let currentAirfoilName = 'NACA 2412';
 let customAirfoilVersion = 0;
 
 // Panel-method working state and run history.
-let panelCtx = null;
-let panelX = null;
-let panelY = null;
-let panelXP = null;
-let panelYP = null;
 const runCases = [];
 let activeCaseId = null;
 let nextCaseId = 1;
 let sweeping = false;
-const panelCache = { ctx: null, key: null };
 const blCache = { ctx: null, key: null };
 let reuseState = null;
 let solverWorker = null;
@@ -905,150 +889,6 @@ function worldToCanvas(x, y, bounds) {
   return {
     x: bounds.offsetX + (wx - bounds.xmin) * bounds.scale,
     y: bounds.height - bounds.offsetY - (wy - bounds.ymin) * bounds.scale,
-  };
-}
-
-function pointInPolygon(x, y, px, py, n) {
-  let inside = false;
-  for (let i = 0, j = n - 1; i < n; j = i, i += 1) {
-    const xi = px[i];
-    const yi = py[i];
-    const xj = px[j];
-    const yj = py[j];
-
-    const intersect = ((yi > y) !== (yj > y))
-      && (x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi);
-    if (intersect) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
-
-// Panel-method geometry setup: arc length, normals, influence matrices.
-function buildPanelContext(nb, alphaRad, opts = {}) {
-  const { reusePanel = false, geometryKey = '' } = opts;
-  const waklen = 1.0;
-  const nw = Math.floor(nb / 12) + 10 * Math.floor(waklen);
-  const total = nb + nw;
-  if (reusePanel && panelCache.ctx && panelCache.key === geometryKey
-    && panelCache.ctx.N === nb && panelCache.ctx.NW === nw) {
-    panelCtx = panelCache.ctx;
-    panelCtx.ALFA = alphaRad;
-    return panelCtx;
-  }
-
-  const resetViscous = !reusePanel || panelCache.key !== geometryKey;
-  if (!panelCtx || panelCtx.N !== nb || panelCtx.NW !== nw) {
-    panelX = new Float64Array(total);
-    panelY = new Float64Array(total);
-    panelXP = new Float64Array(total);
-    panelYP = new Float64Array(total);
-    const n1 = nb + 1;
-    panelCtx = {
-      N: nb,
-      NW: nw,
-      WAKLEN: waklen,
-      X: panelX,
-      Y: panelY,
-      XP: panelXP,
-      YP: panelYP,
-      S: new Float64Array(total),
-      NX: new Float64Array(total),
-      NY: new Float64Array(total),
-      APANEL: new Float64Array(total),
-      SHARP: true,
-      PI: Math.PI,
-      ANTE: 0.0,
-      ASTE: 0.0,
-      DSTE: 0.0,
-      GAM: new Float64Array(n1),
-      GAM_A: new Float64Array(n1),
-      QINV: new Float64Array(total + 1),
-      QINV_A: new Float64Array(total + 1),
-      QVIS: new Float64Array(total + 1),
-      GAMU: Array.from({ length: n1 }, () => new Float64Array(2)),
-      SIG: new Float64Array(total),
-      QF0: new Float64Array(nb),
-      QF1: new Float64Array(nb),
-      QF2: new Float64Array(nb),
-      QF3: new Float64Array(nb),
-      QINVU: Array.from({ length: total }, () => new Float64Array(2)),
-      AIJ: createMatrix(n1, n1),
-      BIJ: createMatrix(n1, total),
-      AIJPIV: new Int32Array(n1),
-      QOPI: 1.0 / (4.0 * Math.PI),
-      HOPI: 1.0 / (2.0 * Math.PI),
-      ALFA: 0.0,
-      QINF: 1.0,
-      LIMAGE: false,
-      YIMAGE: 0.0,
-      XTE: 0.0,
-      YTE: 0.0,
-      DZDG: new Float64Array(nb),
-      DZDN: new Float64Array(nb),
-      DQDG: new Float64Array(nb),
-      DZDM: new Float64Array(total),
-      DQDM: new Float64Array(total),
-      LWAKE: false,
-      LWDIJ: false,
-      LADIJ: false,
-      SNEW: new Float64Array(total),
-    };
-  }
-
-  for (let i = 0; i < nb; i += 1) {
-    panelX[i] = xb[i];
-    panelY[i] = yb[i];
-  }
-
-  scalc(panelX, panelY, panelCtx.S, nb);
-  segspl(panelX, panelXP, panelCtx.S, nb);
-  segspl(panelY, panelYP, panelCtx.S, nb);
-  ncalc(panelX, panelY, panelCtx.S, nb, panelCtx.NX, panelCtx.NY);
-  panelCtx.XTE = 0.5 * (panelX[0] + panelX[nb - 1]);
-  panelCtx.YTE = 0.5 * (panelY[0] + panelY[nb - 1]);
-  tecalc(panelCtx);
-  apcalc(panelCtx);
-  panelCtx.ALFA = alphaRad;
-  ggcalc(panelCtx);
-
-  if (resetViscous && panelCtx.QVIS) {
-    panelCtx.QVIS.fill(0.0);
-    panelCtx.LWAKE = false;
-    panelCtx.LWDIJ = false;
-    panelCtx.LADIJ = false;
-  }
-
-  panelCache.ctx = panelCtx;
-  panelCache.key = geometryKey;
-  return panelCtx;
-}
-
-// Stagnation point from circulation sign change; used to split upper/lower.
-function getSurfaceIndices(nb, ctxPanel) {
-  const { ist } = stfind(ctxPanel, nb);
-  const upperIdx = [];
-  for (let i = ist; i >= 0; i -= 1) {
-    upperIdx.push(i);
-  }
-  const lowerIdx = [];
-  for (let i = ist + 1; i < nb; i += 1) {
-    lowerIdx.push(i);
-  }
-  return { upperIdx, lowerIdx };
-}
-
-function getChordPoints(nb) {
-  let leIdx = 0;
-  let teIdx = 0;
-  for (let i = 1; i < nb; i += 1) {
-    if (xb[i] < xb[leIdx]) leIdx = i;
-    if (xb[i] > xb[teIdx]) teIdx = i;
-  }
-  return {
-    le: { x: xb[leIdx], y: yb[leIdx] },
-    te: { x: xb[teIdx], y: yb[teIdx] },
   };
 }
 

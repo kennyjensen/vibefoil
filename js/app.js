@@ -59,6 +59,11 @@ const UIUC_FALLBACK_LIST = [
 ];
 let uiucListLoaded = false;
 let uiucListLoading = false;
+let lastSolverPayload = null;
+let lastViewportSize = {
+  width: window.innerWidth,
+  height: window.innerHeight,
+};
 
 const mSlider = document.getElementById('m');
 const pSlider = document.getElementById('p');
@@ -426,6 +431,32 @@ function updateDataBoxScale() {
   dataBox.style.setProperty('--data-box-font', `${fontSize.toFixed(1)}px`);
   dataBox.style.setProperty('--data-box-pad-y', `${padY.toFixed(1)}px`);
   dataBox.style.setProperty('--data-box-pad-x', `${padX.toFixed(1)}px`);
+}
+
+function reframeBoundsForCanvas(bounds) {
+  if (!bounds) return bounds;
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return bounds;
+  const width = rect.width;
+  const height = rect.height;
+  const minDim = Math.min(width, height);
+  const padding = Math.max(8, Math.floor(minDim * 0.025));
+  const spanX = bounds.xmax - bounds.xmin || 1.0;
+  const spanY = bounds.ymax - bounds.ymin || 1.0;
+  const plotWidth = Math.max(1, width - padding * 2);
+  const plotHeight = Math.max(1, height - padding * 2);
+  const scale = Math.min(plotWidth / spanX, plotHeight / spanY);
+  const offsetX = padding + Math.max(0, (plotWidth - spanX * scale) * 0.5);
+  const offsetY = padding + Math.max(0, (plotHeight - spanY * scale) * 0.5);
+  return {
+    ...bounds,
+    width,
+    height,
+    padding,
+    offsetX,
+    offsetY,
+    scale,
+  };
 }
 
 // Insert or replace sweep point (alpha-indexed) to keep plots ordered.
@@ -1687,6 +1718,7 @@ function drawFlapHinge(bounds, hinge) {
 
 function applySolverResult(payload) {
   if (!payload?.ok) return;
+  lastSolverPayload = payload;
   const {
     nb,
     xb: xbResult,
@@ -1705,6 +1737,7 @@ function applySolverResult(payload) {
   } = payload;
 
   if (!nb || !bounds) return;
+  const framedBounds = reframeBoundsForCanvas(bounds);
   if (xbResult && ybResult) {
     xb.set(xbResult);
     yb.set(ybResult);
@@ -1713,10 +1746,10 @@ function applySolverResult(payload) {
     currentAirfoilName = airfoilName;
   }
 
-  ctx.clearRect(0, 0, bounds.width, bounds.height);
+  ctx.clearRect(0, 0, framedBounds.width, framedBounds.height);
 
   if (streamlines) {
-    drawStreamlines(bounds, nb, streamlines);
+    drawStreamlines(framedBounds, nb, streamlines);
   }
 
   if (cpData?.upper?.length || cpData?.lower?.length) {
@@ -1726,7 +1759,7 @@ function applySolverResult(payload) {
       cpData.lower,
       cpData.le,
       cpData.te,
-      bounds,
+      framedBounds,
       cpData.invAll || [],
       cpData.wake || [],
     );
@@ -1740,10 +1773,10 @@ function applySolverResult(payload) {
   drawAlphaSweepPlot();
   drawPolarPlot();
 
-  drawAirfoil(nb, bounds);
-  drawFlapHinge(bounds, hinge);
+  drawAirfoil(nb, framedBounds);
+  drawFlapHinge(framedBounds, hinge);
   if (viscous && blLines) {
-    drawBoundaryLayerLines(bounds, blLines);
+    drawBoundaryLayerLines(framedBounds, blLines);
   }
 }
 
@@ -2119,8 +2152,19 @@ if (layoutPanel && pageButtons.length > 0) {
 }
 
 window.addEventListener('resize', () => {
+  const nextWidth = window.innerWidth;
+  const nextHeight = window.innerHeight;
+  const widthChanged = Math.abs(nextWidth - lastViewportSize.width) > 1;
+  const heightChanged = Math.abs(nextHeight - lastViewportSize.height) > 1;
+  if (!widthChanged && !heightChanged) return;
+  lastViewportSize = { width: nextWidth, height: nextHeight };
+  if (!widthChanged) {
+    return;
+  }
   resizeCanvas();
-  update();
+  if (lastSolverPayload) {
+    applySolverResult(lastSolverPayload);
+  }
   updatePageIndicator();
 });
 

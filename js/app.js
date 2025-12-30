@@ -60,6 +60,8 @@ const UIUC_FALLBACK_LIST = [
 let uiucListLoaded = false;
 let uiucListLoading = false;
 let lastSolverPayload = null;
+let lastGeometrySettings = null;
+let pendingGeometrySettings = null;
 let lastViewportSize = {
   width: window.innerWidth,
   height: window.innerHeight,
@@ -1719,6 +1721,9 @@ function drawFlapHinge(bounds, hinge) {
 function applySolverResult(payload) {
   if (!payload?.ok) return;
   lastSolverPayload = payload;
+  if (pendingGeometrySettings) {
+    lastGeometrySettings = pendingGeometrySettings;
+  }
   const {
     nb,
     xb: xbResult,
@@ -1845,12 +1850,7 @@ function update() {
     parseFloat(flapYInput?.value),
   );
 
-  if (source === 'custom' || source === 'database') {
-    if (!customAirfoil) {
-      currentAirfoilName = source === 'database' ? 'Select database airfoil' : 'Load .dat airfoil';
-      return Promise.resolve({ skipped: true });
-    }
-  } else if (mode === '4') {
+  if (mode === '4') {
     const m = parseInt(mSlider.value, 10);
     const p = parseInt(pSlider.value, 10);
     const t = parseInt(tSlider.value, 10);
@@ -1873,31 +1873,12 @@ function update() {
     }
   }
 
-  let geometryKey = '';
-  if (source === 'custom' || source === 'database') {
-    geometryKey = `${source}:${customAirfoil?.name || 'none'}:${customAirfoilVersion}`;
-  } else if (mode === '4') {
-    geometryKey = `naca4:${mSlider.value}:${pSlider.value}:${tSlider.value}`;
-  } else if (mode === '5') {
-    geometryKey = `naca5:${series5Select.value}:${t5Slider.value}`;
-  } else {
-    geometryKey = `naca6:${series6Profile.value}:${t6Slider.value}:${cl6Input.value}`;
-  }
-  const flapKey = `${flapXInput?.value ?? '0.75'}:${flapYInput?.value ?? '0.5'}:${flapDefInput?.value ?? '0'}`;
-  geometryKey = `${geometryKey}:flap:${flapKey}`;
-
   const profile = series6Profile.value;
   const cl = parseFloat(cl6Input.value);
   const camber = inferSixSeriesCamber(profile, cl);
   const fallbackA = defaultSixSeriesA(profile);
 
-  const rect = canvas.getBoundingClientRect();
-  const advancedMode = !!advancedModeToggle?.checked;
-  const reuseEnabled = viscousToggle.checked && !!reuseSolutionToggle?.checked;
-  const reuseKeyedState = reuseState?.geometryKey === geometryKey
-    ? reuseState
-    : null;
-  const settings = {
+  const uiGeometry = {
     mode,
     source,
     m: parseInt(mSlider.value, 10),
@@ -1910,11 +1891,6 @@ function update() {
     cl6: Number.isFinite(cl) ? cl : 0.0,
     camber6: camber,
     fallbackA6: fallbackA,
-    flap: {
-      x: parseFloat(flapXInput?.value),
-      yrel: parseFloat(flapYInput?.value),
-      deflection: parseFloat(flapDefInput?.value),
-    },
     custom: customAirfoil
       ? {
         name: customAirfoil.name,
@@ -1923,6 +1899,60 @@ function update() {
         y: ybCustom,
       }
       : null,
+  };
+
+  let geometry = uiGeometry;
+  if ((source === 'custom' || source === 'database') && !customAirfoil) {
+    if (lastGeometrySettings) {
+      geometry = lastGeometrySettings;
+    } else {
+      currentAirfoilName = source === 'database' ? 'Select database airfoil' : 'Load .dat airfoil';
+      return Promise.resolve({ skipped: true });
+    }
+  }
+
+  if ((geometry.source === 'custom' || geometry.source === 'database') && !geometry.custom) {
+    return Promise.resolve({ skipped: true });
+  }
+
+  let geometryKey = '';
+  if (geometry.source === 'custom' || geometry.source === 'database') {
+    geometryKey = `${geometry.source}:${geometry.custom?.name || 'none'}:${customAirfoilVersion}`;
+  } else if (geometry.mode === '4') {
+    geometryKey = `naca4:${geometry.m}:${geometry.p}:${geometry.t}`;
+  } else if (geometry.mode === '5') {
+    geometryKey = `naca5:${geometry.series5}:${geometry.t5}`;
+  } else {
+    geometryKey = `naca6:${geometry.profile6}:${geometry.t6}:${geometry.cl6}`;
+  }
+  const flapKey = `${flapXInput?.value ?? '0.75'}:${flapYInput?.value ?? '0.5'}:${flapDefInput?.value ?? '0'}`;
+  geometryKey = `${geometryKey}:flap:${flapKey}`;
+
+  const rect = canvas.getBoundingClientRect();
+  const advancedMode = !!advancedModeToggle?.checked;
+  const reuseEnabled = viscousToggle.checked && !!reuseSolutionToggle?.checked;
+  const reuseKeyedState = reuseState?.geometryKey === geometryKey
+    ? reuseState
+    : null;
+  const settings = {
+    mode: geometry.mode,
+    source: geometry.source,
+    m: geometry.m,
+    p: geometry.p,
+    t: geometry.t,
+    series5: geometry.series5,
+    t5: geometry.t5,
+    profile6: geometry.profile6,
+    t6: geometry.t6,
+    cl6: geometry.cl6,
+    camber6: geometry.camber6,
+    fallbackA6: geometry.fallbackA6,
+    flap: {
+      x: parseFloat(flapXInput?.value),
+      yrel: parseFloat(flapYInput?.value),
+      deflection: parseFloat(flapDefInput?.value),
+    },
+    custom: geometry.custom,
     alphaDeg,
     alphaRad,
     geometryKey,
@@ -1952,6 +1982,7 @@ function update() {
   solverRequestId += 1;
   latestSolverId = solverRequestId;
   solverInFlight = true;
+  pendingGeometrySettings = geometry;
   solverWorker.postMessage({ requestId: solverRequestId, settings });
   return new Promise((resolve) => {
     pendingSolves.set(solverRequestId, resolve);

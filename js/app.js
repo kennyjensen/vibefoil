@@ -39,6 +39,7 @@ const dataCd = document.getElementById('dataCd');
 const dataLd = document.getElementById('dataLd');
 const dataNcr = document.getElementById('dataNcr');
 const dataConverged = document.getElementById('dataConverged');
+const dataBox = document.getElementById('dataBox');
 const DEFAULT_BL_ITER = 20;
 const UIUC_BASE_URL = 'https://raw.githubusercontent.com/kennyjensen/uiuc_airfoil_database/master/';
 const UIUC_TREE_URL = 'https://api.github.com/repos/kennyjensen/uiuc_airfoil_database/git/trees/master?recursive=1';
@@ -408,6 +409,23 @@ function resizeCanvas() {
     polarCanvas.height = Math.max(1, Math.floor(polarRect.height * ratio));
     polarCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
   }
+
+  updateDataBoxScale();
+}
+
+function updateDataBoxScale() {
+  if (!dataBox || !canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width) return;
+  const targetWidth = rect.width * 0.25;
+  const width = targetWidth;
+  const fontSize = width / 9.2;
+  const padY = width * 0.06;
+  const padX = width * 0.07;
+  dataBox.style.setProperty('--data-box-width', `${width.toFixed(1)}px`);
+  dataBox.style.setProperty('--data-box-font', `${fontSize.toFixed(1)}px`);
+  dataBox.style.setProperty('--data-box-pad-y', `${padY.toFixed(1)}px`);
+  dataBox.style.setProperty('--data-box-pad-x', `${padX.toFixed(1)}px`);
 }
 
 // Insert or replace sweep point (alpha-indexed) to keep plots ordered.
@@ -442,12 +460,13 @@ function upsertSweepPoint(alphaDeg, coeffs, converged = true) {
 // Alpha plot: CL/CM on left axis and CD on right, matching XFOIL conventions.
 function drawAlphaSweepPlot() {
   if (!alphaCanvas || !alphaCtx) return;
-  alphaCtx.clearRect(0, 0, alphaCanvas.width, alphaCanvas.height);
+  const alphaRect = alphaCanvas.getBoundingClientRect();
+  alphaCtx.clearRect(0, 0, alphaRect.width, alphaRect.height);
   const allPoints = runCases.flatMap((c) => c.history);
   if (allPoints.length === 0) return;
 
-  const w = alphaCanvas.width;
-  const h = alphaCanvas.height;
+  const w = alphaRect.width;
+  const h = alphaRect.height;
   const left = 58;
   const right = 72;
   const top = 18;
@@ -646,12 +665,13 @@ function drawAlphaSweepPlot() {
 // Polar plot: CL vs CD with nonnegative CD axis, point-only styling.
 function drawPolarPlot() {
   if (!polarCanvas || !polarCtx) return;
-  polarCtx.clearRect(0, 0, polarCanvas.width, polarCanvas.height);
+  const polarRect = polarCanvas.getBoundingClientRect();
+  polarCtx.clearRect(0, 0, polarRect.width, polarRect.height);
   const allPoints = runCases.flatMap((c) => c.history);
   if (allPoints.length === 0) return;
 
-  const w = polarCanvas.width;
-  const h = polarCanvas.height;
+  const w = polarRect.width;
+  const h = polarRect.height;
   const left = 58;
   const right = 16;
   const top = 18;
@@ -798,19 +818,31 @@ function computeBounds(nb, angle) {
   }
 
   const marginX = 0.05 * chord;
-  const marginY = 0.2 * chord;
+  const rect = canvas.getBoundingClientRect();
+  const width = rect.width;
+  const height = rect.height;
+  const minDim = Math.min(width, height);
+  const padding = Math.max(8, Math.floor(minDim * 0.025));
+  const marginY = (minDim < 520 ? 0.04 : 0.12) * chord;
   rxmin -= marginX;
   rxmax += marginX;
   rymin -= marginY;
   rymax += marginY;
 
-  const rect = canvas.getBoundingClientRect();
-  const width = rect.width;
-  const height = rect.height;
-  const padding = 32;
   const spanX = rxmax - rxmin || 1.0;
-  const spanY = rymax - rymin || 1.0;
-  const scale = Math.min((width - padding * 2) / spanX, (height - padding * 2) / spanY);
+  let spanY = rymax - rymin || 1.0;
+  const plotWidth = Math.max(1, width - padding * 2);
+  const plotHeight = Math.max(1, height - padding * 2);
+  const targetSpanY = spanX * (plotHeight / plotWidth);
+  if (spanY < targetSpanY) {
+    const expand = targetSpanY - spanY;
+    rymin -= 0.5 * expand;
+    rymax += 0.5 * expand;
+    spanY = targetSpanY;
+  }
+  const scale = Math.min(plotWidth / spanX, plotHeight / spanY);
+  const offsetX = padding + Math.max(0, (plotWidth - spanX * scale) * 0.5);
+  const offsetY = padding + Math.max(0, (plotHeight - spanY * scale) * 0.5);
 
   return {
     xmin: rxmin,
@@ -820,6 +852,8 @@ function computeBounds(nb, angle) {
     width,
     height,
     padding,
+    offsetX,
+    offsetY,
     scale,
     angle,
     ox,
@@ -836,8 +870,8 @@ function worldToCanvas(x, y, bounds) {
     wy = rotated.y;
   }
   return {
-    x: bounds.padding + (wx - bounds.xmin) * bounds.scale,
-    y: bounds.height - bounds.padding - (wy - bounds.ymin) * bounds.scale,
+    x: bounds.offsetX + (wx - bounds.xmin) * bounds.scale,
+    y: bounds.height - bounds.offsetY - (wy - bounds.ymin) * bounds.scale,
   };
 }
 
@@ -1135,7 +1169,8 @@ async function fetchUiucAirfoil() {
 // Cp plot in XFOIL style: viscous Cp with optional inviscid overlay.
 function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpWake = []) {
   if (!cpCanvas) return;
-  cpCtx.clearRect(0, 0, cpCanvas.width, cpCanvas.height);
+  const cpRect = cpCanvas.getBoundingClientRect();
+  cpCtx.clearRect(0, 0, cpRect.width, cpRect.height);
 
   const dxChord = tePt.x - lePt.x;
   const dyChord = tePt.y - lePt.y;
@@ -1150,8 +1185,8 @@ function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpW
   }
   let cpMax = 1.0;
 
-  const w = cpCanvas.width;
-  const h = cpCanvas.height;
+  const w = cpRect.width;
+  const h = cpRect.height;
   const left = 64;
   const right = 18;
   const top = 18;
@@ -1165,8 +1200,10 @@ function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpW
     leScreen = worldToCanvas(lePt.x, lePt.y, bounds);
     teScreen = worldToCanvas(tePt.x, tePt.y, bounds);
   }
-  const leX = leScreen ? leScreen.x * (w / canvas.width) : left;
-  const teX = teScreen ? teScreen.x * (w / canvas.width) : left + plotW;
+  const mainRect = canvas.getBoundingClientRect();
+  const scaleX = mainRect.width ? w / mainRect.width : 1.0;
+  const leX = leScreen ? leScreen.x * scaleX : left;
+  const teX = teScreen ? teScreen.x * scaleX : left + plotW;
   const span = teX - leX || plotW;
   const xToPx = (s) => leX + s * span;
   const cpToPy = (cp) => top + ((cp - cpMin) / (cpMax - cpMin)) * plotH;
@@ -1425,7 +1462,7 @@ function drawStreamlines(bounds, nb, streamlines) {
   ctx.strokeStyle = 'rgba(220, 226, 232, 0.4)';
   ctx.lineWidth = 1.0;
   ctx.beginPath();
-  ctx.rect(0, 0, canvas.width, canvas.height);
+  ctx.rect(0, 0, bounds.width, bounds.height);
   const start = worldToCanvas(xb[0], yb[0], bounds);
   ctx.moveTo(start.x, start.y);
   for (let i = 1; i < nb; i += 1) {
@@ -1694,7 +1731,8 @@ function applySolverResult(payload) {
       cpData.wake || [],
     );
   } else if (cpCtx) {
-    cpCtx.clearRect(0, 0, cpCanvas.width, cpCanvas.height);
+    const cpRect = cpCanvas.getBoundingClientRect();
+    cpCtx.clearRect(0, 0, cpRect.width, cpRect.height);
   }
 
   updateDataBox(alphaRad, coeffs, converged);
@@ -2038,9 +2076,52 @@ if (uiucNameInput) {
   });
 }
 
+const layoutPanel = document.querySelector('.layout');
+const pageButtons = Array.from(document.querySelectorAll('.page-indicator button'));
+
+function setActivePageButton(index) {
+  if (pageButtons.length === 0) return;
+  const clamped = Math.max(0, Math.min(index, pageButtons.length - 1));
+  pageButtons.forEach((button, idx) => {
+    button.classList.toggle('active', idx === clamped);
+  });
+}
+
+function updatePageIndicator() {
+  if (!layoutPanel) return;
+  const pageWidth = layoutPanel.clientWidth;
+  if (!pageWidth) return;
+  const index = Math.round(layoutPanel.scrollLeft / pageWidth);
+  setActivePageButton(index);
+}
+
+if (layoutPanel && pageButtons.length > 0) {
+  let scrollFrame = null;
+  layoutPanel.addEventListener('scroll', () => {
+    if (scrollFrame) return;
+    scrollFrame = window.requestAnimationFrame(() => {
+      scrollFrame = null;
+      updatePageIndicator();
+    });
+  }, { passive: true });
+
+  pageButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const index = Number.parseInt(button.dataset.index || '0', 10);
+      const pageWidth = layoutPanel.clientWidth;
+      layoutPanel.scrollTo({
+        left: pageWidth * index,
+        behavior: 'smooth',
+      });
+      setActivePageButton(index);
+    });
+  });
+}
+
 window.addEventListener('resize', () => {
   resizeCanvas();
   update();
+  updatePageIndicator();
 });
 
 const initSource = sourceRadios.find((item) => item.checked)?.value || 'naca';

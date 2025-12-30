@@ -77,16 +77,28 @@ function computeBounds(nb, angle, width, height) {
   }
 
   const marginX = 0.05 * chord;
-  const marginY = 0.2 * chord;
+  const minDim = Math.min(width, height);
+  const padding = Math.max(8, Math.floor(minDim * 0.025));
+  const marginY = (minDim < 520 ? 0.04 : 0.12) * chord;
   rxmin -= marginX;
   rxmax += marginX;
   rymin -= marginY;
   rymax += marginY;
 
-  const padding = 32;
   const spanX = rxmax - rxmin || 1.0;
-  const spanY = rymax - rymin || 1.0;
-  const scale = Math.min((width - padding * 2) / spanX, (height - padding * 2) / spanY);
+  let spanY = rymax - rymin || 1.0;
+  const plotWidth = Math.max(1, width - padding * 2);
+  const plotHeight = Math.max(1, height - padding * 2);
+  const targetSpanY = spanX * (plotHeight / plotWidth);
+  if (spanY < targetSpanY) {
+    const expand = targetSpanY - spanY;
+    rymin -= 0.5 * expand;
+    rymax += 0.5 * expand;
+    spanY = targetSpanY;
+  }
+  const scale = Math.min(plotWidth / spanX, plotHeight / spanY);
+  const offsetX = padding + Math.max(0, (plotWidth - spanX * scale) * 0.5);
+  const offsetY = padding + Math.max(0, (plotHeight - spanY * scale) * 0.5);
 
   return {
     xmin: rxmin,
@@ -96,6 +108,8 @@ function computeBounds(nb, angle, width, height) {
     width,
     height,
     padding,
+    offsetX,
+    offsetY,
     scale,
     angle,
     ox,

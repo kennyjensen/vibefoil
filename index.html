@@ -62,6 +62,31 @@
       min-height: calc(100vh - 96px);
     }
 
+    .page-indicator {
+      display: none;
+      gap: 8px;
+      padding: 0 16px 12px 16px;
+    }
+
+    .page-indicator button {
+      flex: 1 1 0;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--panel-border);
+      background: rgba(8, 10, 12, 0.6);
+      color: var(--ink-soft);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .page-indicator button.active {
+      color: var(--ink);
+      border-color: rgba(127, 179, 255, 0.8);
+      background: rgba(16, 24, 36, 0.85);
+      box-shadow: 0 0 0 1px rgba(127, 179, 255, 0.35);
+    }
+
     .panel {
       background: var(--panel);
       border-radius: 16px;
@@ -291,6 +316,10 @@
       width: 100%;
       height: 100%;
       display: block;
+      min-width: 0;
+      min-height: 0;
+      max-width: 100%;
+      max-height: 100%;
       border-radius: 16px;
       background: var(--canvas);
       box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
@@ -346,12 +375,12 @@
       right: 16px;
       top: 16px;
       background: rgba(8, 10, 12, 0.6);
-      padding: 12px 14px;
+      padding: var(--data-box-pad-y, 12px) var(--data-box-pad-x, 14px);
       border-radius: 12px;
-      font-size: 24px;
+      font-size: var(--data-box-font, 24px);
       color: var(--ink);
       line-height: 1.35;
-      min-width: 220px;
+      width: var(--data-box-width, 220px);
       box-shadow: 0 8px 18px var(--shadow);
     }
 
@@ -379,13 +408,67 @@
     }
 
     @media (max-width: 900px) {
+      header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      header h1 {
+        margin-bottom: 0;
+        white-space: nowrap;
+      }
+
+      .subtitle {
+        max-width: 220px;
+        padding: 6px 8px;
+        border-radius: 10px;
+        background: rgba(8, 10, 12, 0.55);
+        font-size: 11px;
+        line-height: 1.35;
+        margin: 0;
+      }
+
       .layout {
-        grid-template-columns: 1fr;
+        grid-template-columns: none;
+        display: flex;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        scroll-padding: 16px;
+        padding: 16px 16px 24px 16px;
+        gap: 16px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+
+      .layout::-webkit-scrollbar {
+        display: none;
+      }
+
+      .page-indicator {
+        display: flex;
+      }
+
+      .panel {
+        flex: 0 0 100%;
+        scroll-snap-align: start;
+      }
+
+      .settings-panel {
+        position: relative;
+        top: auto;
       }
 
       .plot-wrap {
         height: auto;
         min-height: 420px;
+      }
+
+      #plot {
+        flex: 0 0 auto;
+        height: auto;
+        aspect-ratio: 2.4 / 1;
       }
 
       .side-plots {
@@ -400,6 +483,12 @@
     <h1>Vibefoil</h1>
     <p class="subtitle">An interactive airfoil explorer based on <a href="https://web.mit.edu/drela/Public/web/xfoil/" target="_blank" rel="noopener">XFOIL</a>.</p>
   </header>
+
+  <div class="page-indicator" role="tablist" aria-label="Panels">
+    <button type="button" data-index="0" class="active">Settings</button>
+    <button type="button" data-index="1">Airfoil Vis</button>
+    <button type="button" data-index="2">C<sub>L</sub>/C<sub>D</sub> Plots</button>
+  </div>
 
   <div class="layout">
     <div class="panel settings-panel">
@@ -509,7 +598,7 @@
               <span>Airfoil File</span>
             </label>
             <div class="mode-toggle">
-              <button id="loadDat" type="button">Open .dat</button>
+              <button id="loadDat" type="button">Open</button>
               <input id="datFile" type="file" accept=".dat" hidden />
             </div>
             <p class="subtitle">Loads XFOIL .dat airfoil coordinates.</p>
@@ -524,7 +613,7 @@
             <div class="airfoil-row">
               <input id="uiucName" type="text" list="uiucList" placeholder="e.g. sd7003 or e387.dat" />
               <datalist id="uiucList"></datalist>
-              <button id="fetchUiuc" type="button">Fetch .dat</button>
+              <button id="fetchUiuc" type="button">Fetch</button>
             </div>
             <p class="subtitle">Pulls Selig-format .dat files from uiuc_airfoil_database on GitHub.</p>
             <p id="uiucStatus" class="subtitle status-text" hidden></p>

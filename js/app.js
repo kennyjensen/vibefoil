@@ -513,6 +513,8 @@ function drawAlphaSweepPlot() {
   const padL = 0.12 * (ymaxL - yminL || 1.0);
   yminL -= padL;
   ymaxL += padL;
+  yminL = Math.max(yminL, -2.0);
+  ymaxL = Math.min(ymaxL, 2.0);
 
   let yminR = Math.min(...cdVals);
   let ymaxR = Math.max(...cdVals);
@@ -526,6 +528,8 @@ function drawAlphaSweepPlot() {
   const padR = 0.2 * (ymaxR - yminR || 1.0);
   yminR -= padR;
   ymaxR += padR;
+  yminR = Math.max(yminR, -2.0);
+  ymaxR = Math.min(ymaxR, 2.0);
   if (yminR <= 0.0 && ymaxR >= 0.0) {
     const zeroLeft = (0.0 - yminL) / (ymaxL - yminL);
     const zeroRight = (0.0 - yminR) / (ymaxR - yminR);
@@ -729,6 +733,9 @@ function drawPolarPlot() {
     ymin -= padY;
     ymax += padY;
   }
+  xmax = Math.min(xmax, 0.04);
+  ymin = Math.max(ymin, -2.0);
+  ymax = Math.min(ymax, 2.0);
 
   const xToPx = (x) => left + ((x - xmin) / (xmax - xmin)) * plotW;
   const yToPy = (y) => top + (1.0 - (y - ymin) / (ymax - ymin)) * plotH;

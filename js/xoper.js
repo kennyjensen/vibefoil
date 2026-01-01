@@ -47,6 +47,158 @@ import {
 } from './xblsys.js';
 import { createMatrix1, createTensor3Flat } from './arrays.js';
 
+function formatFixed(value, width, decimals) {
+  const text = Number.isFinite(value) ? value.toFixed(decimals) : String(value);
+  if (width <= 0 || text.length >= width) {
+    return text;
+  }
+  return text.padStart(width, ' ');
+}
+
+function bstrip(line) {
+  return line.replace(/ /g, '');
+}
+
+function cpdump(ctxPanel, blCtx = null, opts = {}) {
+  const kdelim = Number.isFinite(opts.kdelim) ? opts.kdelim : (Number.isFinite(ctxPanel?.KDELIM) ? ctxPanel.KDELIM : 1);
+  let delim = ' ';
+  if (kdelim === 1) {
+    delim = ',';
+  } else if (kdelim === 2) {
+    delim = '\t';
+  } else if (kdelim !== 0) {
+    console.warn('? Illegal delimiter.  Using blank.');
+    delim = ' ';
+  }
+
+  const n = ctxPanel?.N ?? blCtx?.N ?? 0;
+  const qinf = Number.isFinite(ctxPanel?.QINF) ? ctxPanel.QINF : (blCtx?.QINF ?? 1.0);
+  const minf = Number.isFinite(blCtx?.MINF) ? blCtx.MINF : (Number.isFinite(ctxPanel?.MINF) ? ctxPanel.MINF : 0.0);
+
+  const lines = [];
+  if (kdelim === 0) {
+    lines.push('#      x          Cp  ');
+  } else {
+    lines.push(`#x${delim}Cp`);
+  }
+
+  const beta = Math.sqrt(1.0 - minf ** 2);
+  const bfac = 0.5 * minf ** 2 / (1.0 + beta);
+  for (let i = 1; i <= n; i += 1) {
+    const gam = ctxPanel?.GAM?.[i - 1] ?? 0.0;
+    const cpinc = 1.0 - (gam / qinf) ** 2;
+    const den = beta + bfac * cpinc;
+    const cpcom = cpinc / den;
+    if (kdelim === 0) {
+      const line = ` ${formatFixed(ctxPanel?.X?.[i - 1] ?? blCtx?.X?.[i] ?? 0.0, 11, 5)}${formatFixed(cpcom, 11, 5)}`;
+      lines.push(line);
+    } else {
+      const line = ` ${formatFixed(ctxPanel?.X?.[i - 1] ?? blCtx?.X?.[i] ?? 0.0, 11, 5)}${delim}${formatFixed(cpcom, 11, 5)}${delim}`;
+      lines.push(bstrip(line));
+    }
+  }
+
+  return `${lines.join('\n')}\n`;
+}
+
+function bldump(ctxPanel, blCtx = null, opts = {}) {
+  const kdelim = Number.isFinite(opts.kdelim) ? opts.kdelim : (Number.isFinite(ctxPanel?.KDELIM) ? ctxPanel.KDELIM : 1);
+  let delim = ' ';
+  if (kdelim === 1) {
+    delim = ',';
+  } else if (kdelim === 2) {
+    delim = '\t';
+  } else if (kdelim !== 0) {
+    console.warn('? Illegal delimiter.  Using blank.');
+    delim = ' ';
+  }
+
+  const n = ctxPanel?.N ?? blCtx?.N ?? 0;
+  const nw = blCtx?.NW ?? ctxPanel?.NW ?? 0;
+  const qinf = Number.isFinite(ctxPanel?.QINF) ? ctxPanel.QINF : (blCtx?.QINF ?? 1.0);
+  const minf = Number.isFinite(blCtx?.MINF) ? blCtx.MINF : (Number.isFinite(ctxPanel?.MINF) ? ctxPanel.MINF : 0.0);
+  const gamm1 = Number.isFinite(blCtx?.GAMM1) ? blCtx.GAMM1 : 0.4;
+  const beta = Math.sqrt(1.0 - minf ** 2);
+  const tklam = minf ** 2 / (1.0 + beta) ** 2;
+
+  const lines = [];
+  if (kdelim === 0) {
+    lines.push(
+      '#    s        x        y     Ue/Vinf    Dstar     Theta      Cf       H       H*        P         m          K          tau         Di',
+    );
+  } else {
+    lines.push(`#s${delim}x${delim}y${delim}Ue/Vinf${delim}Dstar${delim}Theta${delim}Cf${delim}H`);
+  }
+
+  const hstinv = gamm1 * (minf / qinf) ** 2 / (1.0 + 0.5 * gamm1 * minf ** 2);
+
+  for (let i = 1; i <= n; i += 1) {
+    const gam = ctxPanel?.GAM?.[i - 1] ?? 0.0;
+    const is = gam < 0.0 ? 2 : 1;
+    let ds = 0.0;
+    let th = 0.0;
+    let ts = 0.0;
+    let cf = 0.0;
+    let h = 1.0;
+    let hs = 2.0;
+    if (blCtx?.LIPAN && blCtx?.LVISC) {
+      let ibl;
+      if (is === 1) {
+        ibl = blCtx.IBLTE[is] - i + 1;
+      } else {
+        ibl = blCtx.IBLTE[is] + i - n;
+      }
+      ds = blCtx.DSTR[ibl][is];
+      th = blCtx.THET[ibl][is];
+      ts = blCtx.TSTR[ibl][is];
+      cf = blCtx.TAU[ibl][is] / (0.5 * qinf ** 2);
+      if (th === 0.0) {
+        h = 1.0;
+        hs = 1.0;
+      } else {
+        h = ds / th;
+        hs = ts / th;
+      }
+    }
+    const ue = (gam / qinf) * (1.0 - tklam) / (1.0 - tklam * (gam / qinf) ** 2);
+    const amsq = ue * ue * hstinv / (gamm1 * (1.0 - 0.5 * ue * ue * hstinv));
+    const hk = hkin(h, amsq).hk;
+
+    if (kdelim === 0) {
+      const line = ` ${formatFixed(blCtx?.S?.[i] ?? ctxPanel?.S?.[i - 1] ?? 0.0, 9, 5)}${formatFixed(blCtx?.X?.[i] ?? ctxPanel?.X?.[i - 1] ?? 0.0, 9, 5)}${formatFixed(blCtx?.Y?.[i] ?? ctxPanel?.Y?.[i - 1] ?? 0.0, 9, 5)}${formatFixed(ue, 9, 5)}${formatFixed(ds, 10, 6)}${formatFixed(th, 10, 6)}${formatFixed(cf, 10, 6)}${formatFixed(hk, 10, 4)}${formatFixed(hs, 10, 4)}${formatFixed(th * ue ** 2, 9, 5)}${formatFixed(ds * ue, 9, 5)}${formatFixed(ts * ue ** 3, 9, 5)}`;
+      lines.push(line);
+    } else {
+      const line = ` ${formatFixed(blCtx?.S?.[i] ?? ctxPanel?.S?.[i - 1] ?? 0.0, 9, 5)}${delim}${formatFixed(blCtx?.X?.[i] ?? ctxPanel?.X?.[i - 1] ?? 0.0, 9, 5)}${delim}${formatFixed(blCtx?.Y?.[i] ?? ctxPanel?.Y?.[i - 1] ?? 0.0, 9, 5)}${delim}${formatFixed(ue, 9, 5)}${delim}${formatFixed(ds, 10, 6)}${delim}${formatFixed(th, 10, 6)}${delim}${formatFixed(cf, 10, 6)}${delim}${formatFixed(hk, 10, 4)}`;
+      lines.push(bstrip(line));
+    }
+  }
+
+  if (blCtx?.LWAKE) {
+    const is = 2;
+    for (let i = n + 1; i <= n + nw; i += 1) {
+      const ibl = blCtx.IBLTE[is] + i - n;
+      const ds = blCtx.DSTR[ibl][is];
+      const th = blCtx.THET[ibl][is];
+      const h = ds / th;
+      const cf = 0.0;
+      const ui = blCtx.UEDG[ibl][is];
+      const ue = (ui / qinf) * (1.0 - tklam) / (1.0 - tklam * (ui / qinf) ** 2);
+      const amsq = ue * ue * hstinv / (gamm1 * (1.0 - 0.5 * ue * ue * hstinv));
+      const hk = hkin(h, amsq).hk;
+
+      if (kdelim === 0) {
+        const line = ` ${formatFixed(blCtx.S?.[i] ?? ctxPanel?.S?.[i - 1] ?? 0.0, 9, 5)}${formatFixed(blCtx.X?.[i] ?? ctxPanel?.X?.[i - 1] ?? 0.0, 9, 5)}${formatFixed(blCtx.Y?.[i] ?? ctxPanel?.Y?.[i - 1] ?? 0.0, 9, 5)}${formatFixed(ue, 9, 5)}${formatFixed(ds, 10, 6)}${formatFixed(th, 10, 6)}${formatFixed(cf, 10, 6)}${formatFixed(hk, 10, 4)}`;
+        lines.push(line);
+      } else {
+        const line = ` ${formatFixed(blCtx.S?.[i] ?? ctxPanel?.S?.[i - 1] ?? 0.0, 9, 5)}${delim}${formatFixed(blCtx.X?.[i] ?? ctxPanel?.X?.[i - 1] ?? 0.0, 9, 5)}${delim}${formatFixed(blCtx.Y?.[i] ?? ctxPanel?.Y?.[i - 1] ?? 0.0, 9, 5)}${delim}${formatFixed(ue, 9, 5)}${delim}${formatFixed(ds, 10, 6)}${delim}${formatFixed(th, 10, 6)}${delim}${formatFixed(cf, 10, 6)}${delim}${formatFixed(hk, 10, 4)}`;
+        lines.push(bstrip(line));
+      }
+    }
+  }
+
+  return `${lines.join('\n')}\n`;
+}
+
 // Initialize BL operating point (alpha, Mach, Re) to match XFOIL's OPER init.
 // Mirrors OPER/SPECAL setup in xoper.f.
 function applyXfoilOperInit(blCtx, alphaRad, reinf1, opts = {}) {
@@ -582,6 +734,8 @@ function computeQvisFromUedg(blCtx, nb, qinv) {
 export {
   applyXfoilOperInit,
   buildBlContext,
+  bldump,
+  cpdump,
   initViscousPanel,
   initViscousBl,
   resetBlState,

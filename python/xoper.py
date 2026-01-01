@@ -10,6 +10,176 @@ from .xgdes import getxyf
 from .xpanel import gamqv, iblpan, qdcalc, qiset, qvfue, qwcalc, stfind, stmove, uicalc, xicalc, xywake
 from .xsolve import blsolv
 from .xbl import iblsys, setbl, update
+from .xblsys import hkin
+
+
+def _format_fixed(value, width, decimals):
+    text = f"{value:.{decimals}f}"
+    if len(text) < width:
+        text = (" " * (width - len(text))) + text
+    return text
+
+
+def _bstrip(line):
+    stripped = line.strip()
+    return stripped.replace(" ", "")
+
+
+def cpdump(ctx, fname1, kdelim=1):
+    if not fname1 or not str(fname1).strip():
+        raise ValueError("CPDUMP requires a filename.")
+    delim = " "
+    if kdelim == 1:
+        delim = ","
+    elif kdelim == 2:
+        delim = "\t"
+    elif kdelim != 0:
+        print("? Illegal delimiter.  Using blank.")
+        delim = " "
+
+    with open(fname1, "w", encoding="ascii") as lu:
+        if kdelim == 0:
+            lu.write("#      x          Cp  \n")
+        else:
+            lu.write(f"#x{delim}Cp\n")
+
+        comset(ctx)
+        beta = math.sqrt(1.0 - ctx.MINF**2)
+        bfac = 0.5 * ctx.MINF**2 / (1.0 + beta)
+
+        for i in range(1, ctx.N + 1):
+            cpinc = 1.0 - (ctx.GAM[i] / ctx.QINF) ** 2
+            den = beta + bfac * cpinc
+            cpcom = cpinc / den
+            if kdelim == 0:
+                line = f" {_format_fixed(ctx.X[i], 11, 5)}{_format_fixed(cpcom, 11, 5)}"
+                lu.write(f"{line}\n")
+            else:
+                line = f" {_format_fixed(ctx.X[i], 11, 5)}{delim}{_format_fixed(cpcom, 11, 5)}{delim}"
+                lu.write(f"{_bstrip(line)}\n")
+
+
+def bldump(ctx, fname1, kdelim=1):
+    if not fname1 or not str(fname1).strip():
+        raise ValueError("BLDUMP requires a filename.")
+    delim = " "
+    if kdelim == 1:
+        delim = ","
+    elif kdelim == 2:
+        delim = "\t"
+    elif kdelim != 0:
+        print("? Illegal delimiter.  Using blank.")
+        delim = " "
+
+    with open(fname1, "w", encoding="ascii") as lu:
+        if kdelim == 0:
+            lu.write(
+                "#    s        x        y     Ue/Vinf    Dstar     Theta      Cf       H       H*        P         m          K          tau         Di\n"
+            )
+        else:
+            lu.write(f"#s{delim}x{delim}y{delim}Ue/Vinf{delim}Dstar{delim}Theta{delim}Cf{delim}H\n")
+
+        comset(ctx)
+        hstinv = ctx.GAMM1 * (ctx.MINF / ctx.QINF) ** 2 / (1.0 + 0.5 * ctx.GAMM1 * ctx.MINF**2)
+
+        for i in range(1, ctx.N + 1):
+            is_ = 1
+            if ctx.GAM[i] < 0.0:
+                is_ = 2
+
+            if ctx.LIPAN and ctx.LVISC:
+                if is_ == 1:
+                    ibl = ctx.IBLTE[is_] - i + 1
+                else:
+                    ibl = ctx.IBLTE[is_] + i - ctx.N
+                ds = ctx.DSTR[ibl][is_]
+                th = ctx.THET[ibl][is_]
+                ts = ctx.TSTR[ibl][is_]
+                cf = ctx.TAU[ibl][is_] / (0.5 * ctx.QINF**2)
+                if th == 0.0:
+                    h = 1.0
+                    hs = 1.0
+                else:
+                    h = ds / th
+                    hs = ts / th
+            else:
+                ds = 0.0
+                th = 0.0
+                ts = 0.0
+                cf = 0.0
+                h = 1.0
+                hs = 2.0
+
+            ue = (ctx.GAM[i] / ctx.QINF) * (1.0 - ctx.TKLAM) / (1.0 - ctx.TKLAM * (ctx.GAM[i] / ctx.QINF) ** 2)
+            amsq = ue * ue * hstinv / (ctx.GAMM1 * (1.0 - 0.5 * ue * ue * hstinv))
+            hk, _, _ = hkin(h, amsq)
+
+            if kdelim == 0:
+                line = (
+                    f" {_format_fixed(ctx.S[i], 9, 5)}"
+                    f"{_format_fixed(ctx.X[i], 9, 5)}"
+                    f"{_format_fixed(ctx.Y[i], 9, 5)}"
+                    f"{_format_fixed(ue, 9, 5)}"
+                    f"{_format_fixed(ds, 10, 6)}"
+                    f"{_format_fixed(th, 10, 6)}"
+                    f"{_format_fixed(cf, 10, 6)}"
+                    f"{_format_fixed(hk, 10, 4)}"
+                    f"{_format_fixed(hs, 10, 4)}"
+                    f"{_format_fixed(th * ue**2, 9, 5)}"
+                    f"{_format_fixed(ds * ue, 9, 5)}"
+                    f"{_format_fixed(ts * ue**3, 9, 5)}"
+                )
+                lu.write(f"{line}\n")
+            else:
+                line = (
+                    f" {_format_fixed(ctx.S[i], 9, 5)}{delim}"
+                    f"{_format_fixed(ctx.X[i], 9, 5)}{delim}"
+                    f"{_format_fixed(ctx.Y[i], 9, 5)}{delim}"
+                    f"{_format_fixed(ue, 9, 5)}{delim}"
+                    f"{_format_fixed(ds, 10, 6)}{delim}"
+                    f"{_format_fixed(th, 10, 6)}{delim}"
+                    f"{_format_fixed(cf, 10, 6)}{delim}"
+                    f"{_format_fixed(hk, 10, 4)}"
+                )
+                lu.write(f"{_bstrip(line)}\n")
+
+        if ctx.LWAKE:
+            is_ = 2
+            for i in range(ctx.N + 1, ctx.N + ctx.NW + 1):
+                ibl = ctx.IBLTE[is_] + i - ctx.N
+                ds = ctx.DSTR[ibl][is_]
+                th = ctx.THET[ibl][is_]
+                h = ds / th
+                cf = 0.0
+                ui = ctx.UEDG[ibl][is_]
+                ue = (ui / ctx.QINF) * (1.0 - ctx.TKLAM) / (1.0 - ctx.TKLAM * (ui / ctx.QINF) ** 2)
+                amsq = ue * ue * hstinv / (ctx.GAMM1 * (1.0 - 0.5 * ue * ue * hstinv))
+                hk, _, _ = hkin(h, amsq)
+
+                if kdelim == 0:
+                    line = (
+                        f" {_format_fixed(ctx.S[i], 9, 5)}"
+                        f"{_format_fixed(ctx.X[i], 9, 5)}"
+                        f"{_format_fixed(ctx.Y[i], 9, 5)}"
+                        f"{_format_fixed(ue, 9, 5)}"
+                        f"{_format_fixed(ds, 10, 6)}"
+                        f"{_format_fixed(th, 10, 6)}"
+                        f"{_format_fixed(cf, 10, 6)}"
+                        f"{_format_fixed(hk, 10, 4)}"
+                    )
+                    lu.write(f"{line}\n")
+                else:
+                    line = (
+                        f" {_format_fixed(ctx.S[i], 9, 5)}{delim}"
+                        f"{_format_fixed(ctx.X[i], 9, 5)}{delim}"
+                        f"{_format_fixed(ctx.Y[i], 9, 5)}{delim}"
+                        f"{_format_fixed(ue, 9, 5)}{delim}"
+                        f"{_format_fixed(ds, 10, 6)}{delim}"
+                        f"{_format_fixed(th, 10, 6)}{delim}"
+                        f"{_format_fixed(cf, 10, 6)}{delim}"
+                        f"{_format_fixed(hk, 10, 4)}"
+                    )
+                    lu.write(f"{_bstrip(line)}\n")
 
 
 def mhinge(ctx):

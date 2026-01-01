@@ -5,10 +5,13 @@
 
 #include "xoper.h"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -21,6 +24,200 @@
 #include "xpanel.h"
 #include "xsolve.h"
 #include "xutils.h"
+
+namespace {
+
+bool is_blank(const std::string &input) {
+    for (char c : input) {
+        if (c != ' ') {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::string bstrip(const std::string &line) {
+    std::string stripped = line;
+    stripped.erase(std::remove(stripped.begin(), stripped.end(), ' '), stripped.end());
+    return stripped;
+}
+
+std::string format_fixed(double value, int width, int decimals) {
+    std::ostringstream ss;
+    ss.setf(std::ios::fixed);
+    ss << std::setw(width) << std::setprecision(decimals) << value;
+    return ss.str();
+}
+
+}  // namespace
+
+void cpdump(XFoilState &ctx, const std::string &fname1, int kdelim) {
+    if (fname1.empty() || is_blank(fname1)) {
+        throw std::runtime_error("CPDUMP requires a filename.");
+    }
+    char delim = ' ';
+    if (kdelim == 1) {
+        delim = ',';
+    } else if (kdelim == 2) {
+        delim = '\t';
+    } else if (kdelim != 0) {
+        std::cout << "? Illegal delimiter.  Using blank.\n";
+        delim = ' ';
+    }
+
+    std::ofstream lu(fname1);
+    if (kdelim == 0) {
+        lu << "#      x          Cp  \n";
+    } else {
+        lu << "#x" << delim << "Cp\n";
+    }
+
+    comset(ctx);
+    const double beta = std::sqrt(1.0 - ctx.MINF * ctx.MINF);
+    const double bfac = 0.5 * ctx.MINF * ctx.MINF / (1.0 + beta);
+
+    for (int i = 1; i <= ctx.N; ++i) {
+        const double cpinc = 1.0 - std::pow(ctx.GAM[i] / ctx.QINF, 2.0);
+        const double den = beta + bfac * cpinc;
+        const double cpcom = cpinc / den;
+        if (kdelim == 0) {
+            const std::string line = " " + format_fixed(ctx.X[i], 11, 5) + format_fixed(cpcom, 11, 5);
+            lu << line << "\n";
+        } else {
+            const std::string line = " " + format_fixed(ctx.X[i], 11, 5) + delim + format_fixed(cpcom, 11, 5) + delim;
+            lu << bstrip(line) << "\n";
+        }
+    }
+}
+
+void bldump(XFoilState &ctx, const std::string &fname1, int kdelim) {
+    if (fname1.empty() || is_blank(fname1)) {
+        throw std::runtime_error("BLDUMP requires a filename.");
+    }
+    char delim = ' ';
+    if (kdelim == 1) {
+        delim = ',';
+    } else if (kdelim == 2) {
+        delim = '\t';
+    } else if (kdelim != 0) {
+        std::cout << "? Illegal delimiter.  Using blank.\n";
+        delim = ' ';
+    }
+
+    std::ofstream lu(fname1);
+    if (kdelim == 0) {
+        lu << "#    s        x        y     Ue/Vinf    Dstar     Theta      Cf       H       H*        P         m          K          tau         Di\n";
+    } else {
+        lu << "#s" << delim << "x" << delim << "y" << delim << "Ue/Vinf" << delim << "Dstar" << delim << "Theta" << delim << "Cf" << delim
+           << "H\n";
+    }
+
+    comset(ctx);
+    const double hstinv = ctx.GAMM1 * std::pow(ctx.MINF / ctx.QINF, 2.0) / (1.0 + 0.5 * ctx.GAMM1 * ctx.MINF * ctx.MINF);
+
+    for (int i = 1; i <= ctx.N; ++i) {
+        int is = 1;
+        if (ctx.GAM[i] < 0.0) {
+            is = 2;
+        }
+
+        double ds = 0.0;
+        double th = 0.0;
+        double ts = 0.0;
+        double cf = 0.0;
+        double h = 1.0;
+        double hs = 2.0;
+        if (ctx.LIPAN && ctx.LVISC) {
+            int ibl = 0;
+            if (is == 1) {
+                ibl = ctx.IBLTE[is] - i + 1;
+            } else {
+                ibl = ctx.IBLTE[is] + i - ctx.N;
+            }
+            ds = ctx.DSTR[ibl][is];
+            th = ctx.THET[ibl][is];
+            ts = ctx.TSTR[ibl][is];
+            cf = ctx.TAU[ibl][is] / (0.5 * ctx.QINF * ctx.QINF);
+            if (th == 0.0) {
+                h = 1.0;
+                hs = 1.0;
+            } else {
+                h = ds / th;
+                hs = ts / th;
+            }
+        }
+        const double ue = (ctx.GAM[i] / ctx.QINF) * (1.0 - ctx.TKLAM) / (1.0 - ctx.TKLAM * std::pow(ctx.GAM[i] / ctx.QINF, 2.0));
+        const double amsq = ue * ue * hstinv / (ctx.GAMM1 * (1.0 - 0.5 * ue * ue * hstinv));
+        const double hk = std::get<0>(hkin(h, amsq));
+
+        if (kdelim == 0) {
+            std::string line = " ";
+            line += format_fixed(ctx.S[i], 9, 5);
+            line += format_fixed(ctx.X[i], 9, 5);
+            line += format_fixed(ctx.Y[i], 9, 5);
+            line += format_fixed(ue, 9, 5);
+            line += format_fixed(ds, 10, 6);
+            line += format_fixed(th, 10, 6);
+            line += format_fixed(cf, 10, 6);
+            line += format_fixed(hk, 10, 4);
+            line += format_fixed(hs, 10, 4);
+            line += format_fixed(th * ue * ue, 9, 5);
+            line += format_fixed(ds * ue, 9, 5);
+            line += format_fixed(ts * std::pow(ue, 3.0), 9, 5);
+            lu << line << "\n";
+        } else {
+            std::string line = " ";
+            line += format_fixed(ctx.S[i], 9, 5) + delim;
+            line += format_fixed(ctx.X[i], 9, 5) + delim;
+            line += format_fixed(ctx.Y[i], 9, 5) + delim;
+            line += format_fixed(ue, 9, 5) + delim;
+            line += format_fixed(ds, 10, 6) + delim;
+            line += format_fixed(th, 10, 6) + delim;
+            line += format_fixed(cf, 10, 6) + delim;
+            line += format_fixed(hk, 10, 4);
+            lu << bstrip(line) << "\n";
+        }
+    }
+
+    if (ctx.LWAKE) {
+        const int is = 2;
+        for (int i = ctx.N + 1; i <= ctx.N + ctx.NW; ++i) {
+            const int ibl = ctx.IBLTE[is] + i - ctx.N;
+            const double ds = ctx.DSTR[ibl][is];
+            const double th = ctx.THET[ibl][is];
+            const double h = ds / th;
+            const double cf = 0.0;
+            const double ui = ctx.UEDG[ibl][is];
+            const double ue = (ui / ctx.QINF) * (1.0 - ctx.TKLAM) / (1.0 - ctx.TKLAM * std::pow(ui / ctx.QINF, 2.0));
+            const double amsq = ue * ue * hstinv / (ctx.GAMM1 * (1.0 - 0.5 * ue * ue * hstinv));
+            const double hk = std::get<0>(hkin(h, amsq));
+
+            if (kdelim == 0) {
+                std::string line = " ";
+                line += format_fixed(ctx.S[i], 9, 5);
+                line += format_fixed(ctx.X[i], 9, 5);
+                line += format_fixed(ctx.Y[i], 9, 5);
+                line += format_fixed(ue, 9, 5);
+                line += format_fixed(ds, 10, 6);
+                line += format_fixed(th, 10, 6);
+                line += format_fixed(cf, 10, 6);
+                line += format_fixed(hk, 10, 4);
+                lu << line << "\n";
+            } else {
+                std::string line = " ";
+                line += format_fixed(ctx.S[i], 9, 5) + delim;
+                line += format_fixed(ctx.X[i], 9, 5) + delim;
+                line += format_fixed(ctx.Y[i], 9, 5) + delim;
+                line += format_fixed(ue, 9, 5) + delim;
+                line += format_fixed(ds, 10, 6) + delim;
+                line += format_fixed(th, 10, 6) + delim;
+                line += format_fixed(cf, 10, 6) + delim;
+                line += format_fixed(hk, 10, 4);
+                lu << bstrip(line) << "\n";
+            }
+        }
+    }
+}
 
 void mhinge(XFoilState &ctx) {
     double tops = 0.0;

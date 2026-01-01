@@ -6,9 +6,13 @@
 #ifndef WASM_XOPER_H
 #define WASM_XOPER_H
 
+#include <string>
+
 struct XFoilState;
 struct XBlState;
 
+void bldump(XFoilState &ctx, const std::string &fname1, int kdelim = 1);
+void cpdump(XFoilState &ctx, const std::string &fname1, int kdelim = 1);
 void mhinge(XFoilState &ctx);
 void viscal(XFoilState &ctx, XBlState &bl, int niter1);
 

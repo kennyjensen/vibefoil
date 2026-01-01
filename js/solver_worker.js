@@ -8,7 +8,7 @@ import {
   stfind,
 } from './xpanel.js';
 import { computeCoefficients, cpcalc, tecalc, pangen } from './xfoil.js';
-import { buildBlContext, computeQvisFromUedg, specal, viscal } from './xoper.js';
+import { buildBlContext, bldump, cpdump, computeQvisFromUedg, specal, viscal } from './xoper.js';
 import { createMatrix } from './arrays.js';
 import { flap as applyFlap } from './xgdes.js';
 
@@ -28,6 +28,7 @@ let panelXP = null;
 let panelYP = null;
 const panelCache = { ctx: null, key: null };
 const blCache = { ctx: null, key: null };
+let lastDumpState = null;
 
 function rotatePoint(x, y, angle, ox, oy) {
   const dx = x - ox;
@@ -852,6 +853,9 @@ function computeCase(settings) {
   if (ctxPanel && qinv) {
     const qinf = ctxPanel.QINF ?? 1.0;
     const minf = viscous && blCtx ? blCtx.MINF ?? 0.0 : (Number.isFinite(mach) ? mach : 0.0);
+    if (ctxPanel) {
+      ctxPanel.MINF = minf;
+    }
     const total = ctxPanel.N + (ctxPanel.NW ?? 0);
     const qvis = (ctxPanel.QVIS && ctxPanel.QVIS.length === total + 1)
       ? ctxPanel.QVIS
@@ -944,6 +948,15 @@ function computeCase(settings) {
     };
   }
 
+  lastDumpState = {
+    ctxPanel,
+    blCtx,
+    airfoilName: geom.airfoilName,
+    alphaDeg,
+    reynolds: settings?.reynolds,
+    deflection: settings?.flap?.deflection,
+  };
+
   return {
     ok: true,
     nb,
@@ -964,8 +977,99 @@ function computeCase(settings) {
   };
 }
 
+function normalizeAirfoilName(raw, fallback) {
+  const name = String(raw || '').trim().toLowerCase();
+  if (!name) return fallback;
+  const cleaned = name.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return cleaned || fallback;
+}
+
+function formatDecimalTag(value) {
+  if (!Number.isFinite(value)) return '0';
+  if (Math.abs(value) < 1.0e-9) return '0';
+  const sign = value < 0 ? '-' : '';
+  const absVal = Math.abs(value);
+  let str = absVal.toFixed(6);
+  str = str.replace(/0+$/, '');
+  if (str.endsWith('.')) {
+    str = str.slice(0, -1);
+  }
+  if (str === '') str = '0';
+  return `${sign}${str.replace('.', 'p')}`;
+}
+
+function formatReynolds(value) {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  let val = Math.round(value);
+  let exp = 0;
+  while (val % 10 === 0 && val !== 0) {
+    val /= 10;
+    exp += 1;
+  }
+  return `${val}e${exp}`;
+}
+
+function buildDumpPayload(kind, kdelim = 0) {
+  if (!lastDumpState?.ctxPanel) {
+    throw new Error('No solved case available for dump.');
+  }
+  const baseName = normalizeAirfoilName(lastDumpState.airfoilName, 'xfoil');
+  const alphaTag = formatDecimalTag(lastDumpState.alphaDeg ?? 0.0);
+  const reynoldsTag = formatReynolds(lastDumpState.reynolds ?? lastDumpState.blCtx?.REINF1 ?? 0.0);
+  const deflection = lastDumpState.deflection ?? 0.0;
+  const deflectionTag = Math.abs(deflection) < 1.0e-9 ? '' : `_d${formatDecimalTag(deflection)}`;
+  if (kind === 'cp') {
+    return {
+      kind,
+      filename: `${baseName}_a${alphaTag}_r${reynoldsTag}${deflectionTag}_cp.csv`,
+      content: cpdump(lastDumpState.ctxPanel, lastDumpState.blCtx, { kdelim }),
+    };
+  }
+  if (kind === 'bl') {
+    return {
+      kind,
+      filename: `${baseName}_a${alphaTag}_r${reynoldsTag}${deflectionTag}_bl.csv`,
+      content: bldump(lastDumpState.ctxPanel, lastDumpState.blCtx, { kdelim }),
+    };
+  }
+  throw new Error(`Unknown dump kind: ${kind}`);
+}
+
 self.onmessage = (event) => {
-  const { requestId, settings } = event.data;
+  const {
+    requestId,
+    settings,
+    action,
+    kind,
+    kdelim,
+  } = event.data;
+
+  if (action === 'dump') {
+    try {
+      const payload = buildDumpPayload(kind, kdelim);
+      self.postMessage({ requestId, type: 'dump', ok: true, ...payload });
+    } catch (err) {
+      self.postMessage({
+        requestId,
+        type: 'dump',
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+        errorStack: err instanceof Error ? err.stack : null,
+      });
+    }
+    return;
+  }
+
+  if (!settings) {
+    self.postMessage({
+      requestId,
+      ok: false,
+      error: 'Solver settings missing.',
+      errorStack: null,
+    });
+    return;
+  }
+
   try {
     const payload = computeCase(settings);
     self.postMessage({ requestId, ...payload });

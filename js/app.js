@@ -6,6 +6,8 @@ const canvas = document.getElementById('plot');
 const ctx = canvas.getContext('2d');
 const cpCanvas = document.getElementById('cpPlot');
 const cpCtx = cpCanvas.getContext('2d');
+const downloadCpButton = document.getElementById('downloadCp');
+const downloadBlButton = document.getElementById('downloadBl');
 const alphaCanvas = document.getElementById('alphaPlot');
 const alphaCtx = alphaCanvas ? alphaCanvas.getContext('2d') : null;
 const polarCanvas = document.getElementById('polarPlot');
@@ -132,6 +134,8 @@ let solverRequestId = 0;
 let latestSolverId = 0;
 let solverInFlight = false;
 const pendingSolves = new Map();
+const pendingDumps = new Map();
+let nextDumpId = 1;
 
 // NACA 4-digit designation formatting for UI/overlay.
 function updateLabels(m, p, t) {
@@ -671,7 +675,7 @@ function drawAlphaSweepPlot() {
   });
 
   const legendX = left + plotW - 70;
-  const legendY = top + 14;
+  const legendY = top + plotH - 50;
   const labelX = legendX + 12;
   alphaCtx.fillStyle = 'rgba(230, 236, 244, 0.85)';
   drawMarker('circle', legendX, legendY, alphaCtx.fillStyle);
@@ -1630,6 +1634,8 @@ function applySolverResult(payload) {
   if (viscous && blLines) {
     drawBoundaryLayerLines(framedBounds, blLines);
   }
+
+  updateDownloadButtons();
 }
 
 function resolvePendingSolve(id, payload) {
@@ -1645,10 +1651,27 @@ function cancelPendingSolves() {
   pendingSolves.clear();
 }
 
+function resolvePendingDump(id, payload) {
+  const resolve = pendingDumps.get(id);
+  if (resolve) {
+    resolve(payload);
+    pendingDumps.delete(id);
+  }
+}
+
+function cancelPendingDumps() {
+  pendingDumps.forEach((resolve) => resolve({ canceled: true }));
+  pendingDumps.clear();
+}
+
 function spawnSolverWorker() {
   solverWorker = new Worker(new URL('./solver_worker.js', import.meta.url), { type: 'module' });
   solverWorker.onmessage = (event) => {
     const payload = event.data;
+    if (payload?.type === 'dump') {
+      resolvePendingDump(payload.requestId, payload);
+      return;
+    }
     resolvePendingSolve(payload.requestId, payload);
     if (payload.requestId !== latestSolverId) return;
     solverInFlight = false;
@@ -1669,13 +1692,49 @@ function spawnSolverWorker() {
   solverWorker.onerror = (event) => {
     solverInFlight = false;
     cancelPendingSolves();
+    cancelPendingDumps();
     console.warn('Solver worker error:', event);
   };
   solverWorker.onmessageerror = (event) => {
     solverInFlight = false;
     cancelPendingSolves();
+    cancelPendingDumps();
     console.warn('Solver worker message error:', event);
   };
+}
+
+function downloadTextFile(filename, content) {
+  const blob = new Blob([content], { type: 'text/plain;charset=ascii' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+}
+
+function requestDump(kind) {
+  if (!solverWorker) {
+    return Promise.resolve({ ok: false, error: 'Solver worker not ready.' });
+  }
+  const requestId = nextDumpId;
+  nextDumpId += 1;
+  solverWorker.postMessage({ requestId, action: 'dump', kind, kdelim: 1 });
+  return new Promise((resolve) => {
+    pendingDumps.set(requestId, resolve);
+  });
+}
+
+function updateDownloadButtons() {
+  const enabled = !!lastSolverPayload?.ok;
+  if (downloadCpButton) {
+    downloadCpButton.disabled = !enabled;
+  }
+  if (downloadBlButton) {
+    downloadBlButton.disabled = !enabled;
+  }
 }
 
 function syncAdvancedControls() {
@@ -1822,6 +1881,7 @@ function update() {
   if (solverInFlight && solverWorker) {
     solverWorker.terminate();
     cancelPendingSolves();
+    cancelPendingDumps();
     spawnSolverWorker();
     solverInFlight = false;
   }
@@ -1934,6 +1994,28 @@ series6Profile.addEventListener('change', () => {
 });
 t6Slider.addEventListener('input', update);
 cl6Input.addEventListener('input', update);
+
+if (downloadCpButton) {
+  downloadCpButton.addEventListener('click', async () => {
+    const payload = await requestDump('cp');
+    if (!payload?.ok || !payload.content) {
+      console.warn(payload?.error || 'CPDUMP unavailable.');
+      return;
+    }
+    downloadTextFile(payload.filename || 'xfoil.cp', payload.content);
+  });
+}
+
+if (downloadBlButton) {
+  downloadBlButton.addEventListener('click', async () => {
+    const payload = await requestDump('bl');
+    if (!payload?.ok || !payload.content) {
+      console.warn(payload?.error || 'BLDUMP unavailable.');
+      return;
+    }
+    downloadTextFile(payload.filename || 'xfoil.bl', payload.content);
+  });
+}
 
 loadDatButton.addEventListener('click', () => {
   datFileInput.click();
@@ -2068,4 +2150,5 @@ if (runCases.length === 0) {
 }
 renderRunCases();
 resizeCanvas();
+updateDownloadButtons();
 update();

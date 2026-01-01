@@ -317,7 +317,6 @@
       display: flex;
       flex: 1 1 0;
       min-height: 0;
-      z-index: 1;
     }
 
     .plot-frame.cp-frame {
@@ -345,6 +344,8 @@
     }
 
     .plot-frame canvas {
+      position: relative;
+      z-index: 1;
       flex: 1 1 auto;
       min-height: 0;
     }
@@ -357,7 +358,7 @@
       position: absolute;
       top: 12px;
       right: 12px;
-      z-index: 3;
+      z-index: 5;
       width: 36px;
       height: 36px;
       display: inline-flex;
@@ -371,6 +372,8 @@
       transition: transform 0.2s ease, background 0.2s ease, opacity 0.2s ease;
       backdrop-filter: blur(6px);
       overflow: visible;
+      pointer-events: auto;
+      touch-action: manipulation;
     }
 
     .plot-download:hover {

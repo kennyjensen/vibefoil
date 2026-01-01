@@ -937,8 +937,21 @@ void qdcalc(XFoilState &ctx) {
     }
 
     if (ctx.SHARP) {
+        const double bwt = 0.1;
+        const double ag1 = std::atan2(-ctx.YP[1], -ctx.XP[1]);
+        const double ag2 = atanc(ctx.YP[ctx.N], ctx.XP[ctx.N], ag1);
+        const double abis = 0.5 * (ag1 + ag2);
+        const double cbis = std::cos(abis);
+        const double sbis = std::sin(abis);
+        const double ds1 = std::sqrt((ctx.X[1] - ctx.X[2]) * (ctx.X[1] - ctx.X[2]) + (ctx.Y[1] - ctx.Y[2]) * (ctx.Y[1] - ctx.Y[2]));
+        const double ds2 = std::sqrt((ctx.X[ctx.N] - ctx.X[ctx.N - 1]) * (ctx.X[ctx.N] - ctx.X[ctx.N - 1])
+                                     + (ctx.Y[ctx.N] - ctx.Y[ctx.N - 1]) * (ctx.Y[ctx.N] - ctx.Y[ctx.N - 1]));
+        const double dsmin = std::min(ds1, ds2);
+        const double xbis = ctx.XTE - bwt * dsmin * cbis;
+        const double ybis = ctx.YTE - bwt * dsmin * sbis;
+        pswlin(ctx, 0, xbis, ybis, -sbis, cbis);
         for (int j = ctx.N + 1; j <= ctx.N + ctx.NW; ++j) {
-            ctx.BIJ[ctx.N][j] = 0.0;
+            ctx.BIJ[ctx.N][j] = -ctx.DQDM[j];
         }
     }
 

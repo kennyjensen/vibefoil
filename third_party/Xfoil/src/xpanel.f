@@ -797,7 +797,7 @@ C
    22 CONTINUE
 C
       RETURN
-      END
+      END ! PSILIN
 
 
       SUBROUTINE PSWLIN(I,XI,YI,NXI,NYI,PSI,PSI_NI)
@@ -980,8 +980,7 @@ C
    20 CONTINUE
 C
       RETURN
-      END
-
+      END ! PSWLIN
 
 
 
@@ -1120,7 +1119,7 @@ C
       LGAMU = .TRUE.
 C
       RETURN
-      END
+      END ! GGCALC
 
 
 
@@ -1186,11 +1185,50 @@ C---- set up Kutta condition (no direct source influence)
         BIJ(N+1,J) = 0.
    32 CONTINUE
 C
-C---- sharp TE gamma extrapolation also has no source influence
       IF(SHARP) THEN
-       DO 34 J=N+1, N+NW
-         BIJ(N,J) = 0.
-   34  CONTINUE
+C
+C----- BUG FIX,  MD  15 Apr 17
+C
+c------ This is the "old" sharp TE treament of extrapolation to TE
+c       DO 34 J=N+1, N+NW
+c         BIJ(N,J) = 0.
+c   34  CONTINUE
+
+C----- This is the "new" sharp TE treatment of  V.s = 0  along TE bisector
+
+C----- distance of internal control point ahead of sharp TE
+C-     (fraction of smaller panel length adjacent to TE)
+C-     must be same as in SUBROUTINE GGCALC
+       BWT = 0.1
+C
+C----- set TE bisector angle
+       AG1 = ATAN2(-YP(1),-XP(1)    )
+       AG2 = ATANC( YP(N), XP(N),AG1)
+       ABIS = 0.5*(AG1+AG2)
+       CBIS = COS(ABIS)
+       SBIS = SIN(ABIS)
+C
+C----- minimum panel length adjacent to TE
+       DS1 = SQRT( (X(1)-X(2)  )**2 + (Y(1)-Y(2)  )**2 )
+       DS2 = SQRT( (X(N)-X(N-1))**2 + (Y(N)-Y(N-1))**2 )
+       DSMIN = MIN( DS1 , DS2 )
+C
+C----- control point on bisector just ahead of TE point
+       XBIS = XTE - BWT*DSMIN*CBIS
+       YBIS = YTE - BWT*DSMIN*SBIS
+ccc       write(*,*) xbis, ybis
+C
+C----- set velocity component along bisector line
+       CALL PSWLIN(0,XBIS,YBIS,-SBIS,CBIS,PSI,QBIS)
+C
+CCC--- RES = DQDGj*Gammaj + DQDMj*Massj + QINF*(COSA*CBIS + SINA*SBIS)
+CCC    RES = QBIS
+C
+C----- -dRes/dMass
+       DO J=N+1, N+NW
+         BIJ(N,J) = -DQDM(J)
+       ENDDO
+C
       ENDIF
 C
 C---- multiply by inverse of factored dPsi/dGam matrix
@@ -1264,7 +1302,8 @@ C
       LWDIJ = .TRUE.
 C
       RETURN
-      END
+      END ! QDCALC
+
 
 
       SUBROUTINE XYWAKE

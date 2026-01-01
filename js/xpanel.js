@@ -1189,7 +1189,23 @@ function qdcalc(ctx) {
     // Kutta condition: no direct source influence.
     for (let j = n; j < total; j += 1) {
       ctx.BIJ[n][j] = 0.0;
-      if (ctx.SHARP) ctx.BIJ[n - 1][j] = 0.0;
+    }
+    if (ctx.SHARP) {
+      const bwt = 0.1;
+      const ag1 = Math.atan2(-ctx.YP[0], -ctx.XP[0]);
+      const ag2 = atanc(ctx.YP[n - 1], ctx.XP[n - 1], ag1);
+      const abis = 0.5 * (ag1 + ag2);
+      const cbis = Math.cos(abis);
+      const sbis = Math.sin(abis);
+      const ds1 = Math.sqrt((ctx.X[0] - ctx.X[1]) ** 2 + (ctx.Y[0] - ctx.Y[1]) ** 2);
+      const ds2 = Math.sqrt((ctx.X[n - 1] - ctx.X[n - 2]) ** 2 + (ctx.Y[n - 1] - ctx.Y[n - 2]) ** 2);
+      const dsmin = Math.min(ds1, ds2);
+      const xbis = ctx.XTE - bwt * dsmin * cbis;
+      const ybis = ctx.YTE - bwt * dsmin * sbis;
+      pswlin(0, xbis, ybis, -sbis, cbis, ctx);
+      for (let j = n; j < total; j += 1) {
+        ctx.BIJ[n - 1][j] = -ctx.DQDM[j];
+      }
     }
 
     for (let j = n; j < total; j += 1) {

@@ -890,8 +890,20 @@ def qdcalc(ctx):
         ctx.BIJ[ctx.N + 1][j] = 0.0
 
     if ctx.SHARP:
+        bwt = 0.1
+        ag1 = math.atan2(-ctx.YP[1], -ctx.XP[1])
+        ag2 = atanc(ctx.YP[ctx.N], ctx.XP[ctx.N], ag1)
+        abis = 0.5 * (ag1 + ag2)
+        cbis = math.cos(abis)
+        sbis = math.sin(abis)
+        ds1 = math.sqrt((ctx.X[1] - ctx.X[2]) ** 2 + (ctx.Y[1] - ctx.Y[2]) ** 2)
+        ds2 = math.sqrt((ctx.X[ctx.N] - ctx.X[ctx.N - 1]) ** 2 + (ctx.Y[ctx.N] - ctx.Y[ctx.N - 1]) ** 2)
+        dsmin = min(ds1, ds2)
+        xbis = ctx.XTE - bwt * dsmin * cbis
+        ybis = ctx.YTE - bwt * dsmin * sbis
+        pswlin(ctx, 0, xbis, ybis, -sbis, cbis)
         for j in range(ctx.N + 1, ctx.N + ctx.NW + 1):
-            ctx.BIJ[ctx.N][j] = 0.0
+            ctx.BIJ[ctx.N][j] = -ctx.DQDM[j]
 
     for j in range(ctx.N + 1, ctx.N + ctx.NW + 1):
         col = [0.0] * (ctx.N + 2)

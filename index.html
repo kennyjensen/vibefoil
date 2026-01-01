@@ -524,19 +524,34 @@
       }
 
       .plot-wrap {
-        height: auto;
-        min-height: 420px;
+        height: calc(100vh - 190px);
+        min-height: 0;
       }
 
       #plot {
         flex: 0 0 auto;
         height: auto;
-        aspect-ratio: 2.4 / 1;
+        aspect-ratio: 5 / 1;
+      }
+
+      .plot-stack {
+        gap: 6px;
+      }
+
+      .plot-frame.cp-frame {
+        flex: 0 0 40%;
+        min-height: 190px;
       }
 
       .side-plots {
-        height: auto;
-        min-height: 420px;
+        height: calc(100vh - 190px);
+        min-height: 0;
+        gap: 10px;
+      }
+
+      .side-plots canvas {
+        flex: 1 1 0;
+        min-height: 180px;
       }
     }
   </style>

@@ -678,8 +678,6 @@ function viscal(
   const turbBot = 100.0 * Math.exp(-(blCtx.ACRIT[2] + 8.43) / 2.4);
   const waklen = ctxPanel.WAKLEN ?? 1.0;
   console.log('');
-  console.log('.OPERv   c>  vpar');
-  console.log('');
   console.log(` Xtr/c     =${blCtx.XSTRIP[1].toFixed(4).padStart(8)}    top    side`);
   console.log(` Xtr/c     =${blCtx.XSTRIP[2].toFixed(4).padStart(8)}    bottom side`);
   console.log(` Ncrit     =${blCtx.ACRIT[1].toFixed(2).padStart(8)}   (${turbTop.toFixed(3).padStart(6)} % turb. level )`);

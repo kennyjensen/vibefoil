@@ -32,6 +32,13 @@ const dataLd = document.getElementById('dataLd');
 const dataNcr = document.getElementById('dataNcr');
 const dataConverged = document.getElementById('dataConverged');
 const dataBox = document.getElementById('dataBox');
+const hoverBox = document.getElementById('hoverBox');
+const hoverName = document.getElementById('hoverName');
+const hoverMach = document.getElementById('hoverMach');
+const hoverRe = document.getElementById('hoverRe');
+const hoverNcr = document.getElementById('hoverNcr');
+const hoverAlpha = document.getElementById('hoverAlpha');
+const hoverFlap = document.getElementById('hoverFlap');
 const DEFAULT_BL_ITER = 20;
 const UIUC_BASE_URL = 'https://raw.githubusercontent.com/kennyjensen/uiuc_airfoil_database/master/';
 const UIUC_TREE_URL = 'https://api.github.com/repos/kennyjensen/uiuc_airfoil_database/git/trees/master?recursive=1';
@@ -54,6 +61,13 @@ let uiucListLoading = false;
 let lastSolverPayload = null;
 let lastGeometrySettings = null;
 let pendingGeometrySettings = null;
+let lastCpPlot = null;
+let cpHoverS = null;
+let alphaPlotState = null;
+let polarPlotState = null;
+let alphaHover = null;
+let polarHover = null;
+let activeHoverSource = null;
 let lastViewportSize = {
   width: window.innerWidth,
   height: window.innerHeight,
@@ -246,6 +260,128 @@ function drawSubLabel(ctx2d, base, sub, x, y) {
   ctx2d.fillText(sub, x + baseWidth + 1, y + 4);
   ctx2d.restore();
   ctx2d.font = baseFont;
+}
+
+function drawHoverLabel(ctx2d, px, py, lines, bounds) {
+  if (!lines.length) return;
+  const pad = 6;
+  const lineHeight = 14;
+  ctx2d.save();
+  const baseFont = '12px Consolas, "Courier New", monospace';
+  const subFont = '10px Consolas, "Courier New", monospace';
+  ctx2d.font = baseFont;
+  const measureLine = (line) => {
+    if (typeof line === 'string') {
+      return ctx2d.measureText(line).width;
+    }
+    ctx2d.font = baseFont;
+    const baseWidth = ctx2d.measureText(line.base).width;
+    ctx2d.font = subFont;
+    const subWidth = ctx2d.measureText(line.sub).width;
+    ctx2d.font = baseFont;
+    const valueWidth = ctx2d.measureText(` ${line.value}`).width;
+    return baseWidth + 1 + subWidth + valueWidth;
+  };
+  const widths = lines.map((line) => measureLine(line));
+  const boxW = Math.max(...widths, 40) + pad * 2;
+  const boxH = lineHeight * lines.length + pad * 2;
+  let bx = px + 12;
+  let by = py - boxH - 12;
+  if (bx + boxW > bounds.w - 6) bx = px - boxW - 12;
+  if (bx < 6) bx = 6;
+  if (by < 6) by = py + 12;
+  if (by + boxH > bounds.h - 6) by = bounds.h - boxH - 6;
+  ctx2d.fillStyle = 'rgba(8, 10, 12, 0.82)';
+  ctx2d.strokeStyle = 'rgba(230, 236, 244, 0.5)';
+  ctx2d.lineWidth = 1.0;
+  ctx2d.beginPath();
+  ctx2d.rect(bx, by, boxW, boxH);
+  ctx2d.fill();
+  ctx2d.stroke();
+  ctx2d.fillStyle = 'rgba(230, 236, 244, 0.92)';
+  lines.forEach((line, idx) => {
+    const textY = by + pad + lineHeight * (idx + 1) - 3;
+    if (typeof line === 'string') {
+      ctx2d.font = baseFont;
+      ctx2d.fillText(line, bx + pad, textY);
+      return;
+    }
+    ctx2d.font = baseFont;
+    const baseX = bx + pad;
+    ctx2d.fillText(line.base, baseX, textY);
+    const baseWidth = ctx2d.measureText(line.base).width;
+    ctx2d.font = subFont;
+    ctx2d.fillText(line.sub, baseX + baseWidth + 1, textY + 3);
+    const subWidth = ctx2d.measureText(line.sub).width;
+    ctx2d.font = baseFont;
+    ctx2d.fillText(` ${line.value}`, baseX + baseWidth + 1 + subWidth, textY);
+  });
+  ctx2d.restore();
+}
+
+function formatHoverValue(value, digits = 2, suffix = '') {
+  if (!Number.isFinite(value)) return '—';
+  return `${value.toFixed(digits)}${suffix}`;
+}
+
+function updateHoverBox(point) {
+  if (!hoverBox) return;
+  if (!point) {
+    if (hoverName) hoverName.textContent = '—';
+    if (hoverMach) hoverMach.textContent = '—';
+    if (hoverRe) hoverRe.textContent = '—';
+    if (hoverNcr) hoverNcr.textContent = '—';
+    if (hoverAlpha) hoverAlpha.textContent = '—';
+    if (hoverFlap) hoverFlap.textContent = '—';
+    return;
+  }
+  if (hoverName) hoverName.textContent = point.airfoil || '—';
+  if (hoverMach) hoverMach.textContent = formatHoverValue(point.mach, 3);
+  if (hoverRe) hoverRe.textContent = Number.isFinite(point.re) ? `${Math.round(point.re)}` : '—';
+  if (hoverNcr) hoverNcr.textContent = formatHoverValue(point.ncr, 2);
+  if (hoverAlpha) hoverAlpha.textContent = formatHoverValue(point.alpha, 2, '°');
+  if (hoverFlap) hoverFlap.textContent = formatHoverValue(point.flapDef, 1, '°');
+}
+
+function setHoverState(source, point) {
+  if (source === 'alpha') {
+    alphaHover = point;
+  } else {
+    polarHover = point;
+  }
+  if (point) {
+    activeHoverSource = source;
+    updateHoverBox(point.data);
+    return;
+  }
+  if (activeHoverSource === source) {
+    const fallback = source === 'alpha' ? polarHover : alphaHover;
+    if (fallback) {
+      activeHoverSource = source === 'alpha' ? 'polar' : 'alpha';
+      updateHoverBox(fallback.data);
+    } else {
+      activeHoverSource = null;
+      updateHoverBox(null);
+    }
+  }
+}
+
+function findNearestPlotPoint(points, mx, my, radius = 10) {
+  if (!points || points.length === 0) return null;
+  const r2 = radius * radius;
+  let best = null;
+  let bestDist = r2;
+  for (let i = 0; i < points.length; i += 1) {
+    const p = points[i];
+    const dx = mx - p.px;
+    const dy = my - p.py;
+    const d2 = dx * dx + dy * dy;
+    if (d2 <= bestDist) {
+      best = p;
+      bestDist = d2;
+    }
+  }
+  return best;
 }
 
 // Clamp and trigger update for alpha changes (slider, buttons, sweep).
@@ -463,12 +599,25 @@ function upsertSweepPoint(alphaDeg, coeffs, converged = true) {
   const history = active.history;
   const eps = 1.0e-6;
   const idx = history.findIndex((p) => Math.abs(p.alpha - alphaDeg) < eps);
+  const machValue = machInput ? parseFloat(machInput.value) : NaN;
+  const reValue = Number.isFinite(coeffs?.REINF1)
+    ? coeffs.REINF1
+    : (reynoldsInput ? parseFloat(reynoldsInput.value) : NaN);
+  const ncrValue = Number.isFinite(coeffs?.ACRIT?.[1])
+    ? coeffs.ACRIT[1]
+    : (ncrInput ? parseFloat(ncrInput.value) : NaN);
+  const flapValue = flapDefInput ? parseFloat(flapDefInput.value) : NaN;
   const point = {
     alpha: alphaDeg,
     cl: coeffs.CL,
     cd: coeffs.CD,
     cm: coeffs.CM,
     converged,
+    airfoil: currentAirfoilName || '—',
+    mach: machValue,
+    re: reValue,
+    ncr: ncrValue,
+    flapDef: flapValue,
   };
   if (idx >= 0) {
     history[idx] = point;
@@ -484,7 +633,10 @@ function drawAlphaSweepPlot() {
   const alphaRect = alphaCanvas.getBoundingClientRect();
   alphaCtx.clearRect(0, 0, alphaRect.width, alphaRect.height);
   const allPoints = runCases.flatMap((c) => c.history);
-  if (allPoints.length === 0) return;
+  if (allPoints.length === 0) {
+    alphaPlotState = null;
+    return;
+  }
 
   const w = alphaRect.width;
   const h = alphaRect.height;
@@ -627,23 +779,23 @@ function drawAlphaSweepPlot() {
     alphaCtx.stroke();
   }
 
-  const drawMarker = (shape, px, py, color, outlineOnly = false) => {
+  const drawMarker = (shape, px, py, color, outlineOnly = false, size = 4) => {
     alphaCtx.fillStyle = color;
     alphaCtx.strokeStyle = color;
     if (shape === 'square') {
       if (outlineOnly) {
         alphaCtx.lineWidth = 1.8;
-        alphaCtx.strokeRect(px - 4, py - 4, 8, 8);
+        alphaCtx.strokeRect(px - size, py - size, size * 2, size * 2);
       } else {
-        alphaCtx.fillRect(px - 4, py - 4, 8, 8);
+        alphaCtx.fillRect(px - size, py - size, size * 2, size * 2);
       }
       return;
     }
     if (shape === 'triangle') {
       alphaCtx.beginPath();
-      alphaCtx.moveTo(px, py - 5);
-      alphaCtx.lineTo(px + 5, py + 4);
-      alphaCtx.lineTo(px - 5, py + 4);
+      alphaCtx.moveTo(px, py - size - 1);
+      alphaCtx.lineTo(px + size + 1, py + size);
+      alphaCtx.lineTo(px - size - 1, py + size);
       alphaCtx.closePath();
       if (outlineOnly) {
         alphaCtx.lineWidth = 1.8;
@@ -654,7 +806,7 @@ function drawAlphaSweepPlot() {
       return;
     }
     alphaCtx.beginPath();
-    alphaCtx.arc(px, py, 4, 0, Math.PI * 2);
+    alphaCtx.arc(px, py, size, 0, Math.PI * 2);
     if (outlineOnly) {
       alphaCtx.lineWidth = 1.8;
       alphaCtx.stroke();
@@ -664,13 +816,45 @@ function drawAlphaSweepPlot() {
   };
 
   const staleColor = 'rgba(154, 160, 168, 0.85)';
+  const hoverPoints = [];
   runCases.forEach((caseItem) => {
     caseItem.history.forEach((p) => {
       const px = xToPx(p.alpha);
       const color = p.converged === false ? staleColor : caseItem.color;
-      drawMarker('circle', px, yToPyLeft(p.cl), color);
-      drawMarker('square', px, yToPyRight(p.cd), color, true);
-      drawMarker('triangle', px, yToPyLeft(p.cm), color);
+      const clPy = yToPyLeft(p.cl);
+      const cdPy = yToPyRight(p.cd);
+      const cmPy = yToPyLeft(p.cm);
+      drawMarker('circle', px, clPy, color);
+      drawMarker('square', px, cdPy, color, true);
+      drawMarker('triangle', px, cmPy, color);
+      const baseKey = `alpha-${caseItem.id}-${p.alpha.toFixed(3)}`;
+      hoverPoints.push({
+        key: `${baseKey}-cl`,
+        px,
+        py: clPy,
+        type: 'cl',
+        shape: 'circle',
+        color,
+        data: p,
+      });
+      hoverPoints.push({
+        key: `${baseKey}-cd`,
+        px,
+        py: cdPy,
+        type: 'cd',
+        shape: 'square',
+        color,
+        data: p,
+      });
+      hoverPoints.push({
+        key: `${baseKey}-cm`,
+        px,
+        py: cmPy,
+        type: 'cm',
+        shape: 'triangle',
+        color,
+        data: p,
+      });
     });
   });
 
@@ -684,7 +868,33 @@ function drawAlphaSweepPlot() {
   drawSubLabel(alphaCtx, 'C', 'L', labelX, legendY + 4);
   drawSubLabel(alphaCtx, 'C', 'D', labelX, legendY + 22);
   drawSubLabel(alphaCtx, 'C', 'M', labelX, legendY + 40);
+
+  const hoverKey = alphaHover?.key;
+  const hoverPoint = hoverKey ? hoverPoints.find((p) => p.key === hoverKey) : null;
+  if (hoverPoint) {
+    alphaCtx.strokeStyle = '#ffffff';
+    alphaCtx.lineWidth = 2.4;
+    drawMarker(hoverPoint.shape, hoverPoint.px, hoverPoint.py, '#ffffff', true, 6);
+    let valueLine = null;
+    if (hoverPoint.type === 'cl') {
+      valueLine = { base: 'C', sub: 'L', value: formatNum(hoverPoint.data.cl, 3) };
+    } else if (hoverPoint.type === 'cd') {
+      valueLine = { base: 'C', sub: 'D', value: formatNum(hoverPoint.data.cd, 4) };
+    } else {
+      valueLine = { base: 'C', sub: 'M', value: formatNum(hoverPoint.data.cm, 3) };
+    }
+    const lines = [
+      `α ${formatHoverValue(hoverPoint.data.alpha, 2, '°')}`,
+      valueLine,
+    ];
+    drawHoverLabel(alphaCtx, hoverPoint.px, hoverPoint.py, lines, { w, h });
+  }
   alphaCtx.restore();
+  alphaPlotState = {
+    points: hoverPoints,
+    w,
+    h,
+  };
 }
 
 // Polar plot: CL vs CD with nonnegative CD axis, point-only styling.
@@ -693,7 +903,10 @@ function drawPolarPlot() {
   const polarRect = polarCanvas.getBoundingClientRect();
   polarCtx.clearRect(0, 0, polarRect.width, polarRect.height);
   const allPoints = runCases.flatMap((c) => c.history);
-  if (allPoints.length === 0) return;
+  if (allPoints.length === 0) {
+    polarPlotState = null;
+    return;
+  }
 
   const w = polarRect.width;
   const h = polarRect.height;
@@ -783,6 +996,7 @@ function drawPolarPlot() {
   }
 
   const staleColor = 'rgba(154, 160, 168, 0.85)';
+  const hoverPoints = [];
   runCases.forEach((caseItem) => {
     caseItem.history.forEach((p) => {
       if (!Number.isFinite(p.cd) || !Number.isFinite(p.cl)) return;
@@ -792,9 +1006,39 @@ function drawPolarPlot() {
       polarCtx.beginPath();
       polarCtx.arc(px, py, 4, 0, Math.PI * 2);
       polarCtx.fill();
+      hoverPoints.push({
+        key: `polar-${caseItem.id}-${p.alpha.toFixed(3)}-${p.cd.toFixed(4)}`,
+        px,
+        py,
+        type: 'polar',
+        shape: 'circle',
+        color: polarCtx.fillStyle,
+        data: p,
+      });
     });
   });
+
+  const hoverKey = polarHover?.key;
+  const hoverPoint = hoverKey ? hoverPoints.find((p) => p.key === hoverKey) : null;
+  if (hoverPoint) {
+    polarCtx.strokeStyle = '#ffffff';
+    polarCtx.lineWidth = 2.4;
+    polarCtx.beginPath();
+    polarCtx.arc(hoverPoint.px, hoverPoint.py, 6, 0, Math.PI * 2);
+    polarCtx.stroke();
+    const lines = [
+      `α ${formatHoverValue(hoverPoint.data.alpha, 2, '°')}`,
+      { base: 'C', sub: 'L', value: formatNum(hoverPoint.data.cl, 3) },
+      { base: 'C', sub: 'D', value: formatNum(hoverPoint.data.cd, 4) },
+    ];
+    drawHoverLabel(polarCtx, hoverPoint.px, hoverPoint.py, lines, { w, h });
+  }
   polarCtx.restore();
+  polarPlotState = {
+    points: hoverPoints,
+    w,
+    h,
+  };
 }
 
 function rotatePoint(x, y, angle, ox, oy) {
@@ -1093,6 +1337,30 @@ function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpW
   const cpToPy = (cp) => top + ((cp - cpMin) / (cpMax - cpMin)) * plotH;
   const chordFrac = (x, y) => ((x - lePt.x) * dxChord + (y - lePt.y) * dyChord) / chord2;
 
+  lastCpPlot = {
+    nb,
+    cpUpper,
+    cpLower,
+    lePt,
+    tePt,
+    bounds,
+    cpInvAll,
+    cpWake,
+    mapping: {
+      left,
+      right,
+      top,
+      bottom,
+      plotW,
+      plotH,
+      leX,
+      teX,
+      span,
+      cpMin,
+      cpMax,
+    },
+  };
+
   cpCtx.save();
   cpCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
   cpCtx.lineWidth = 1.2;
@@ -1209,7 +1477,67 @@ function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpW
     cpCtx.restore();
   }
 
+  if (Number.isFinite(cpHoverS)) {
+    const s = Math.max(0.0, Math.min(1.0, cpHoverS));
+    const hoverX = xToPx(s);
+    const findClosest = (arr) => {
+      let best = null;
+      let bestDist = Infinity;
+      arr.forEach((p) => {
+        const frac = chordFrac(p.x, p.y);
+        const dist = Math.abs(frac - s);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = { p, frac };
+        }
+      });
+      return best;
+    };
+
+    const upperHit = findClosest(cpUpper);
+    const lowerHit = findClosest(cpLower);
+    cpCtx.save();
+    cpCtx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+    cpCtx.lineWidth = 1.0;
+    cpCtx.beginPath();
+    cpCtx.moveTo(hoverX, top);
+    cpCtx.lineTo(hoverX, top + plotH);
+    cpCtx.stroke();
+
+    const drawHit = (hit, color, dyText) => {
+      if (!hit) return;
+      const py = cpToPy(hit.p.cp);
+      cpCtx.fillStyle = color;
+      cpCtx.beginPath();
+      cpCtx.arc(hoverX, py, 4.2, 0, Math.PI * 2);
+      cpCtx.fill();
+      const label = hit.p.cp.toFixed(3);
+      const textX = Math.min(w - 40, Math.max(left + 6, hoverX + 8));
+      const textY = Math.min(top + plotH - 6, Math.max(top + 12, py + dyText));
+      cpCtx.fillStyle = 'rgba(230, 236, 244, 0.9)';
+      cpCtx.fillText(label, textX, textY);
+    };
+
+    drawHit(upperHit, '#2f7bff', -8);
+    drawHit(lowerHit, '#ff4a3d', 14);
+    cpCtx.restore();
+  }
+
   cpCtx.restore();
+}
+
+function renderCpPlotFromCache() {
+  if (!lastCpPlot) return;
+  drawCpPlot(
+    lastCpPlot.nb,
+    lastCpPlot.cpUpper,
+    lastCpPlot.cpLower,
+    lastCpPlot.lePt,
+    lastCpPlot.tePt,
+    lastCpPlot.bounds,
+    lastCpPlot.cpInvAll,
+    lastCpPlot.cpWake,
+  );
 }
 
 function drawContours(bounds, grid, nx, ny, isoValues) {
@@ -1622,6 +1950,7 @@ function applySolverResult(payload) {
   } else if (cpCtx) {
     const cpRect = cpCanvas.getBoundingClientRect();
     cpCtx.clearRect(0, 0, cpRect.width, cpRect.height);
+    lastCpPlot = null;
   }
 
   updateDataBox(alphaRad, coeffs, converged);
@@ -1994,6 +2323,79 @@ series6Profile.addEventListener('change', () => {
 });
 t6Slider.addEventListener('input', update);
 cl6Input.addEventListener('input', update);
+
+if (cpCanvas) {
+  cpCanvas.addEventListener('mousemove', (event) => {
+    if (!lastCpPlot?.mapping) return;
+    const rect = cpCanvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const { top, plotH, leX, teX } = lastCpPlot.mapping;
+    const minX = Math.min(leX, teX);
+    const maxX = Math.max(leX, teX);
+    if (x < minX || x > maxX || y < top || y > top + plotH) {
+      if (cpHoverS !== null) {
+        cpHoverS = null;
+        renderCpPlotFromCache();
+      }
+      return;
+    }
+    const span = teX - leX || 1.0;
+    cpHoverS = (x - leX) / span;
+    renderCpPlotFromCache();
+  });
+
+  cpCanvas.addEventListener('mouseleave', () => {
+    if (cpHoverS !== null) {
+      cpHoverS = null;
+      renderCpPlotFromCache();
+    }
+  });
+}
+
+if (alphaCanvas) {
+  alphaCanvas.addEventListener('mousemove', (event) => {
+    if (!alphaPlotState?.points) return;
+    const rect = alphaCanvas.getBoundingClientRect();
+    const mx = event.clientX - rect.left;
+    const my = event.clientY - rect.top;
+    const hit = findNearestPlotPoint(alphaPlotState.points, mx, my, 10);
+    const nextKey = hit?.key || null;
+    if (nextKey !== alphaHover?.key) {
+      setHoverState('alpha', hit);
+      drawAlphaSweepPlot();
+    }
+  });
+
+  alphaCanvas.addEventListener('mouseleave', () => {
+    if (alphaHover) {
+      setHoverState('alpha', null);
+      drawAlphaSweepPlot();
+    }
+  });
+}
+
+if (polarCanvas) {
+  polarCanvas.addEventListener('mousemove', (event) => {
+    if (!polarPlotState?.points) return;
+    const rect = polarCanvas.getBoundingClientRect();
+    const mx = event.clientX - rect.left;
+    const my = event.clientY - rect.top;
+    const hit = findNearestPlotPoint(polarPlotState.points, mx, my, 10);
+    const nextKey = hit?.key || null;
+    if (nextKey !== polarHover?.key) {
+      setHoverState('polar', hit);
+      drawPolarPlot();
+    }
+  });
+
+  polarCanvas.addEventListener('mouseleave', () => {
+    if (polarHover) {
+      setHoverState('polar', null);
+      drawPolarPlot();
+    }
+  });
+}
 
 if (downloadCpButton) {
   downloadCpButton.addEventListener('click', async () => {

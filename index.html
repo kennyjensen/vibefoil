@@ -450,6 +450,15 @@
       box-shadow: 0 8px 18px var(--shadow);
     }
 
+    .hover-box {
+      background: rgba(8, 10, 12, 0.6);
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      color: var(--ink);
+      box-shadow: 0 8px 18px var(--shadow);
+    }
+
     .data-row {
       display: flex;
       justify-content: space-between;
@@ -840,6 +849,14 @@
     <div class="panel side-plots">
       <canvas id="alphaPlot" width="520" height="320"></canvas>
       <canvas id="polarPlot" width="520" height="320"></canvas>
+      <div class="hover-box" id="hoverBox">
+        <div class="data-row name"><span id="hoverName">—</span></div>
+        <div class="data-row"><span>Mach</span><span id="hoverMach">—</span></div>
+        <div class="data-row"><span>Re</span><span id="hoverRe">—</span></div>
+        <div class="data-row"><span>N<sub>cr</sub></span><span id="hoverNcr">—</span></div>
+        <div class="data-row"><span>α</span><span id="hoverAlpha">—</span></div>
+        <div class="data-row"><span>Flap</span><span id="hoverFlap">—</span></div>
+      </div>
     </div>
   </div>
 

@@ -401,6 +401,42 @@
       right: 12px;
     }
 
+    .plot-edit {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 5;
+      height: 36px;
+      min-width: 44px;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(8, 10, 12, 0.75);
+      color: rgba(230, 236, 244, 0.9);
+      cursor: pointer;
+      transition: transform 0.2s ease, background 0.2s ease, opacity 0.2s ease;
+      backdrop-filter: blur(6px);
+      touch-action: manipulation;
+    }
+
+    .plot-edit:hover {
+      background: rgba(29, 33, 41, 0.85);
+      transform: translateY(-1px);
+    }
+
+    .plot-edit.active {
+      background: rgba(47, 123, 255, 0.9);
+      border-color: rgba(47, 123, 255, 0.9);
+      color: #ffffff;
+    }
+
+    .plot-frame.editing canvas {
+      cursor: default;
+    }
+
     .side-plots {
       height: calc(100vh - 140px);
       min-height: 520px;
@@ -816,8 +852,9 @@
 
     <div class="panel plot-wrap">
       <div class="plot-stack">
-        <div class="plot-frame">
+        <div class="plot-frame" id="airfoilFrame">
           <canvas id="plot" width="900" height="500"></canvas>
+          <button id="editAirfoil" class="plot-edit" type="button" title="Edit airfoil" aria-label="Edit airfoil" aria-pressed="false">Edit</button>
           <button id="downloadBl" class="plot-download bottom-right" type="button" title="Download BLDUMP" aria-label="Download BLDUMP">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path fill="currentColor" d="M12 3a1 1 0 0 1 1 1v9.17l2.59-2.58a1 1 0 1 1 1.41 1.42l-4.3 4.29a1 1 0 0 1-1.4 0l-4.3-4.29a1 1 0 1 1 1.41-1.42L11 13.17V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />

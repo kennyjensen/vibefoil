@@ -8,6 +8,8 @@ const cpCanvas = document.getElementById('cpPlot');
 const cpCtx = cpCanvas.getContext('2d');
 const downloadCpButton = document.getElementById('downloadCp');
 const downloadBlButton = document.getElementById('downloadBl');
+const editAirfoilButton = document.getElementById('editAirfoil');
+const airfoilFrame = document.getElementById('airfoilFrame');
 const alphaCanvas = document.getElementById('alphaPlot');
 const alphaCtx = alphaCanvas ? alphaCanvas.getContext('2d') : null;
 const polarCanvas = document.getElementById('polarPlot');
@@ -68,6 +70,19 @@ let polarPlotState = null;
 let alphaHover = null;
 let polarHover = null;
 let activeHoverSource = null;
+let editMode = false;
+let editDragIndex = null;
+let editHoverIndex = null;
+let lastAirfoilBounds = null;
+let lastAirfoilNb = 0;
+let airfoilZoom = 1.0;
+let cpZoom = 1.0;
+let alphaZoom = 1.0;
+let polarZoom = 1.0;
+let cpZoomCenter = null;
+let alphaZoomCenter = null;
+let polarZoomCenter = null;
+let airfoilZoomCenterScreen = null;
 let lastViewportSize = {
   width: window.innerWidth,
   height: window.innerHeight,
@@ -322,6 +337,139 @@ function drawHoverLabel(ctx2d, px, py, lines, bounds) {
 function formatHoverValue(value, digits = 2, suffix = '') {
   if (!Number.isFinite(value)) return '—';
   return `${value.toFixed(digits)}${suffix}`;
+}
+
+function canvasToWorld(x, y, bounds) {
+  let sx = x;
+  let sy = y;
+  if (bounds.zoom && bounds.zoomCenterScreen) {
+    sx = bounds.zoomCenterScreen.x + (sx - bounds.zoomCenterScreen.x) / bounds.zoom;
+    sy = bounds.zoomCenterScreen.y + (sy - bounds.zoomCenterScreen.y) / bounds.zoom;
+  }
+  const wx = (sx - bounds.offsetX) / bounds.scale + bounds.xmin;
+  const wy = (bounds.height - bounds.offsetY - sy) / bounds.scale + bounds.ymin;
+  if (bounds.angle === 0.0) {
+    return { x: wx, y: wy };
+  }
+  return rotatePoint(wx, wy, -bounds.angle, bounds.ox, bounds.oy);
+}
+
+function canvasToRotatedWorld(x, y, bounds) {
+  let sx = x;
+  let sy = y;
+  if (bounds.zoom && bounds.zoomCenterScreen) {
+    sx = bounds.zoomCenterScreen.x + (sx - bounds.zoomCenterScreen.x) / bounds.zoom;
+    sy = bounds.zoomCenterScreen.y + (sy - bounds.zoomCenterScreen.y) / bounds.zoom;
+  }
+  const wx = (sx - bounds.offsetX) / bounds.scale + bounds.xmin;
+  const wy = (bounds.height - bounds.offsetY - sy) / bounds.scale + bounds.ymin;
+  return { x: wx, y: wy };
+}
+
+function applyZoomToRange(min, max, zoom, clampMin, clampMax, center) {
+  if (!Number.isFinite(zoom) || zoom === 1.0) return { min, max };
+  const mid = Number.isFinite(center) ? center : 0.5 * (min + max);
+  const span = Math.max((max - min) / zoom, 1.0e-6);
+  let nextMin = mid - span * 0.5;
+  let nextMax = mid + span * 0.5;
+  if (Number.isFinite(clampMin) && Number.isFinite(clampMax)) {
+    if (nextMin < clampMin) {
+      nextMax = Math.min(clampMax, nextMax + (clampMin - nextMin));
+      nextMin = clampMin;
+    }
+    if (nextMax > clampMax) {
+      nextMin = Math.max(clampMin, nextMin - (nextMax - clampMax));
+      nextMax = clampMax;
+    }
+  }
+  return { min: nextMin, max: nextMax };
+}
+
+function updateZoomValue(current, delta) {
+  const factor = delta > 0 ? 1 / 1.1 : 1.1;
+  const next = Math.min(6.0, Math.max(1.0, current * factor));
+  return Math.abs(next - current) > 1.0e-4 ? next : current;
+}
+
+function setSourceToCustom() {
+  const customRadio = sourceRadios.find((radio) => radio.value === 'custom');
+  if (customRadio) {
+    customRadio.checked = true;
+  }
+  nacaOptions.hidden = true;
+  customOptions.hidden = false;
+  if (databaseOptions) {
+    databaseOptions.hidden = true;
+  }
+  controls4.hidden = true;
+  controls5.hidden = true;
+  controls6.hidden = true;
+}
+
+function drawAirfoilNodes(nb, bounds, activeIndex = null, hoverIndex = null) {
+  if (!nb || !bounds) return;
+  ctx.save();
+  for (let i = 0; i < nb; i += 1) {
+    const p = worldToCanvas(xb[i], yb[i], bounds);
+    const isActive = i === activeIndex;
+    const isHover = i === hoverIndex;
+    ctx.beginPath();
+    ctx.fillStyle = isActive ? '#2f7bff' : 'rgba(230, 236, 244, 0.85)';
+    ctx.strokeStyle = isActive ? '#ffffff' : 'rgba(230, 236, 244, 0.65)';
+    ctx.lineWidth = isActive ? 2.0 : 1.0;
+    ctx.arc(p.x, p.y, isActive ? 4.8 : 3.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    if (isHover && !isActive) {
+      ctx.strokeStyle = '#2f7bff';
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 6.2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function renderEditAirfoil() {
+  if (!lastAirfoilBounds || !lastAirfoilNb) return;
+  ctx.clearRect(0, 0, lastAirfoilBounds.width, lastAirfoilBounds.height);
+  if (lastSolverPayload?.streamlines) {
+    drawStreamlines(lastAirfoilBounds, lastAirfoilNb, lastSolverPayload.streamlines);
+  }
+  drawAirfoil(lastAirfoilNb, lastAirfoilBounds);
+  if (lastSolverPayload?.hinge) {
+    drawFlapHinge(lastAirfoilBounds, lastSolverPayload.hinge);
+  }
+  drawAirfoilNodes(lastAirfoilNb, lastAirfoilBounds, editDragIndex, editHoverIndex);
+}
+
+function findNearestNodeIndex(nb, bounds, mx, my, radius = 12) {
+  let best = null;
+  let bestDist = radius * radius;
+  for (let i = 0; i < nb; i += 1) {
+    const p = worldToCanvas(xb[i], yb[i], bounds);
+    const dx = mx - p.x;
+    const dy = my - p.y;
+    const dist = dx * dx + dy * dy;
+    if (dist <= bestDist) {
+      best = i;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+function applyEditedAirfoil() {
+  if (!lastAirfoilNb) return;
+  const coords = [];
+  for (let i = 0; i < lastAirfoilNb; i += 1) {
+    coords.push({ x: xb[i], y: yb[i] });
+  }
+  const name = currentAirfoilName || 'Edited Airfoil';
+  loadCustomAirfoil({ name, coords });
+  setSourceToCustom();
+  update();
 }
 
 function updateHoverBox(point) {
@@ -654,6 +802,7 @@ function drawAlphaSweepPlot() {
     xmin -= 1;
     xmax += 1;
   }
+  const baseX = { min: xmin, max: xmax };
 
   const clcmVals = allPoints.flatMap((p) => [p.cl, p.cm]).filter(Number.isFinite);
   const cdVals = allPoints.map((p) => p.cd).filter(Number.isFinite);
@@ -671,6 +820,7 @@ function drawAlphaSweepPlot() {
   ymaxL += padL;
   yminL = Math.max(yminL, -2.0);
   ymaxL = Math.min(ymaxL, 2.0);
+  const baseYL = { min: yminL, max: ymaxL };
 
   let yminR = Math.min(...cdVals);
   let ymaxR = Math.max(...cdVals);
@@ -686,6 +836,7 @@ function drawAlphaSweepPlot() {
   ymaxR += padR;
   yminR = Math.max(yminR, -2.0);
   ymaxR = Math.min(ymaxR, 2.0);
+  const baseYR = { min: yminR, max: ymaxR };
   if (yminR <= 0.0 && ymaxR >= 0.0) {
     const zeroLeft = (0.0 - yminL) / (ymaxL - yminL);
     const zeroRight = (0.0 - yminR) / (ymaxR - yminR);
@@ -694,6 +845,37 @@ function drawAlphaSweepPlot() {
     yminR += shift;
     ymaxR += shift;
   }
+
+  const zoomX = applyZoomToRange(
+    xmin,
+    xmax,
+    alphaZoom,
+    baseX.min,
+    baseX.max,
+    alphaZoomCenter?.x,
+  );
+  xmin = zoomX.min;
+  xmax = zoomX.max;
+  const zoomYL = applyZoomToRange(
+    yminL,
+    ymaxL,
+    alphaZoom,
+    baseYL.min,
+    baseYL.max,
+    alphaZoomCenter?.yL,
+  );
+  yminL = zoomYL.min;
+  ymaxL = zoomYL.max;
+  const zoomYR = applyZoomToRange(
+    yminR,
+    ymaxR,
+    alphaZoom,
+    baseYR.min,
+    baseYR.max,
+    alphaZoomCenter?.yR,
+  );
+  yminR = zoomYR.min;
+  ymaxR = zoomYR.max;
 
   const xToPx = (x) => left + ((x - xmin) / (xmax - xmin)) * plotW;
   const yToPyLeft = (y) => top + (1.0 - (y - yminL) / (ymaxL - yminL)) * plotH;
@@ -894,6 +1076,20 @@ function drawAlphaSweepPlot() {
     points: hoverPoints,
     w,
     h,
+    mapping: {
+      left,
+      right,
+      top,
+      bottom,
+      plotW,
+      plotH,
+      xmin,
+      xmax,
+      yminL,
+      ymaxL,
+      yminR,
+      ymaxR,
+    },
   };
 }
 
@@ -953,6 +1149,29 @@ function drawPolarPlot() {
   xmax = Math.min(xmax, 0.04);
   ymin = Math.max(ymin, -2.0);
   ymax = Math.min(ymax, 2.0);
+  const baseX = { min: xmin, max: xmax };
+  const baseY = { min: ymin, max: ymax };
+
+  const zoomX = applyZoomToRange(
+    xmin,
+    xmax,
+    polarZoom,
+    baseX.min,
+    baseX.max,
+    polarZoomCenter?.x,
+  );
+  xmin = zoomX.min;
+  xmax = zoomX.max;
+  const zoomY = applyZoomToRange(
+    ymin,
+    ymax,
+    polarZoom,
+    baseY.min,
+    baseY.max,
+    polarZoomCenter?.y,
+  );
+  ymin = zoomY.min;
+  ymax = zoomY.max;
 
   const xToPx = (x) => left + ((x - xmin) / (xmax - xmin)) * plotW;
   const yToPy = (y) => top + (1.0 - (y - ymin) / (ymax - ymin)) * plotH;
@@ -1038,6 +1257,18 @@ function drawPolarPlot() {
     points: hoverPoints,
     w,
     h,
+    mapping: {
+      left,
+      right,
+      top,
+      bottom,
+      plotW,
+      plotH,
+      xmin,
+      xmax,
+      ymin,
+      ymax,
+    },
   };
 }
 
@@ -1141,10 +1372,13 @@ function worldToCanvas(x, y, bounds) {
     wx = rotated.x;
     wy = rotated.y;
   }
-  return {
-    x: bounds.offsetX + (wx - bounds.xmin) * bounds.scale,
-    y: bounds.height - bounds.offsetY - (wy - bounds.ymin) * bounds.scale,
-  };
+  let sx = bounds.offsetX + (wx - bounds.xmin) * bounds.scale;
+  let sy = bounds.height - bounds.offsetY - (wy - bounds.ymin) * bounds.scale;
+  if (bounds.zoom && bounds.zoomCenterScreen) {
+    sx = bounds.zoomCenterScreen.x + (sx - bounds.zoomCenterScreen.x) * bounds.zoom;
+    sy = bounds.zoomCenterScreen.y + (sy - bounds.zoomCenterScreen.y) * bounds.zoom;
+  }
+  return { x: sx, y: sy };
 }
 
 // Parse XFOIL-style .dat coordinate files (upper->lower or arbitrary order).
@@ -1312,6 +1546,7 @@ function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpW
     cpMin = 0.5 * Math.floor(minCp / 0.5);
   }
   let cpMax = 1.0;
+  const baseCp = { min: cpMin, max: cpMax };
 
   const w = cpRect.width;
   const h = cpRect.height;
@@ -1333,7 +1568,22 @@ function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpW
   const leX = leScreen ? leScreen.x * scaleX : left;
   const teX = teScreen ? teScreen.x * scaleX : left + plotW;
   const span = teX - leX || plotW;
-  const xToPx = (s) => leX + s * span;
+  let xMin = 0.0;
+  let xMax = 1.0;
+  const baseX = { min: xMin, max: xMax };
+  const zoomX = applyZoomToRange(
+    xMin,
+    xMax,
+    cpZoom,
+    baseX.min,
+    baseX.max,
+    cpZoomCenter?.x,
+  );
+  xMin = zoomX.min;
+  xMax = zoomX.max;
+  cpMin = baseCp.min;
+  cpMax = baseCp.max;
+  const xToPx = (s) => leX + ((s - xMin) / (xMax - xMin)) * span;
   const cpToPy = (cp) => top + ((cp - cpMin) / (cpMax - cpMin)) * plotH;
   const chordFrac = (x, y) => ((x - lePt.x) * dxChord + (y - lePt.y) * dyChord) / chord2;
 
@@ -1356,6 +1606,8 @@ function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpW
       leX,
       teX,
       span,
+      xMin,
+      xMax,
       cpMin,
       cpMax,
     },
@@ -1405,12 +1657,13 @@ function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpW
 
   for (let i = 0; i < tickCount; i += 1) {
     const t = i / (tickCount - 1);
-    const x = xToPx(t);
+    const xv = xMin + t * (xMax - xMin);
+    const x = xToPx(xv);
     cpCtx.beginPath();
     cpCtx.moveTo(x, top + plotH);
     cpCtx.lineTo(x, top + plotH + 8);
     cpCtx.stroke();
-    cpCtx.fillText(t.toFixed(2), x - 10, top + plotH + 22);
+    cpCtx.fillText(xv.toFixed(2), x - 10, top + plotH + 22);
   }
 
   cpCtx.strokeStyle = '#2f7bff';
@@ -1478,7 +1731,7 @@ function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpW
   }
 
   if (Number.isFinite(cpHoverS)) {
-    const s = Math.max(0.0, Math.min(1.0, cpHoverS));
+    const s = Math.max(xMin, Math.min(xMax, cpHoverS));
     const hoverX = xToPx(s);
     const findClosest = (arr) => {
       let best = null;
@@ -1922,6 +2175,13 @@ function applySolverResult(payload) {
 
   if (!nb || !bounds) return;
   const framedBounds = reframeBoundsForCanvas(bounds);
+  const zoomedBounds = {
+    ...framedBounds,
+    zoom: airfoilZoom,
+    zoomCenterScreen: airfoilZoomCenterScreen,
+  };
+  lastAirfoilBounds = zoomedBounds;
+  lastAirfoilNb = nb;
   if (xbResult && ybResult) {
     xb.set(xbResult);
     yb.set(ybResult);
@@ -1933,7 +2193,7 @@ function applySolverResult(payload) {
   ctx.clearRect(0, 0, framedBounds.width, framedBounds.height);
 
   if (streamlines) {
-    drawStreamlines(framedBounds, nb, streamlines);
+    drawStreamlines(zoomedBounds, nb, streamlines);
   }
 
   if (cpData?.upper?.length || cpData?.lower?.length) {
@@ -1943,7 +2203,7 @@ function applySolverResult(payload) {
       cpData.lower,
       cpData.le,
       cpData.te,
-      framedBounds,
+      zoomedBounds,
       cpData.invAll || [],
       cpData.wake || [],
     );
@@ -1958,10 +2218,13 @@ function applySolverResult(payload) {
   drawAlphaSweepPlot();
   drawPolarPlot();
 
-  drawAirfoil(nb, framedBounds);
-  drawFlapHinge(framedBounds, hinge);
+  drawAirfoil(nb, zoomedBounds);
+  drawFlapHinge(zoomedBounds, hinge);
   if (viscous && blLines) {
-    drawBoundaryLayerLines(framedBounds, blLines);
+    drawBoundaryLayerLines(zoomedBounds, blLines);
+  }
+  if (editMode) {
+    drawAirfoilNodes(nb, zoomedBounds, editDragIndex, editHoverIndex);
   }
 
   updateDownloadButtons();
@@ -2325,12 +2588,40 @@ t6Slider.addEventListener('input', update);
 cl6Input.addEventListener('input', update);
 
 if (cpCanvas) {
+  cpCanvas.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    if (lastCpPlot?.mapping) {
+      const rect = cpCanvas.getBoundingClientRect();
+      const mx = event.clientX - rect.left;
+      const my = event.clientY - rect.top;
+      const {
+        leX,
+        top,
+        span,
+        plotH,
+        xMin,
+        xMax,
+        cpMin,
+        cpMax,
+      } = lastCpPlot.mapping;
+      if (mx >= Math.min(leX, leX + span)
+        && mx <= Math.max(leX, leX + span)
+        && my >= top
+        && my <= top + plotH) {
+        const x = xMin + ((mx - leX) / span) * (xMax - xMin);
+        cpZoomCenter = { x };
+      }
+    }
+    cpZoom = updateZoomValue(cpZoom, event.deltaY);
+    renderCpPlotFromCache();
+  }, { passive: false });
+
   cpCanvas.addEventListener('mousemove', (event) => {
     if (!lastCpPlot?.mapping) return;
     const rect = cpCanvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    const { top, plotH, leX, teX } = lastCpPlot.mapping;
+    const { top, plotH, leX, teX, xMin, xMax } = lastCpPlot.mapping;
     const minX = Math.min(leX, teX);
     const maxX = Math.max(leX, teX);
     if (x < minX || x > maxX || y < top || y > top + plotH) {
@@ -2341,7 +2632,7 @@ if (cpCanvas) {
       return;
     }
     const span = teX - leX || 1.0;
-    cpHoverS = (x - leX) / span;
+    cpHoverS = xMin + ((x - leX) / span) * (xMax - xMin);
     renderCpPlotFromCache();
   });
 
@@ -2354,6 +2645,35 @@ if (cpCanvas) {
 }
 
 if (alphaCanvas) {
+  alphaCanvas.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    if (alphaPlotState?.mapping) {
+      const rect = alphaCanvas.getBoundingClientRect();
+      const mx = event.clientX - rect.left;
+      const my = event.clientY - rect.top;
+      const {
+        left,
+        top,
+        plotW,
+        plotH,
+        xmin,
+        xmax,
+        yminL,
+        ymaxL,
+        yminR,
+        ymaxR,
+      } = alphaPlotState.mapping;
+      if (mx >= left && mx <= left + plotW && my >= top && my <= top + plotH) {
+        const x = xmin + ((mx - left) / plotW) * (xmax - xmin);
+        const yL = ymaxL - ((my - top) / plotH) * (ymaxL - yminL);
+        const yR = ymaxR - ((my - top) / plotH) * (ymaxR - yminR);
+        alphaZoomCenter = { x, yL, yR };
+      }
+    }
+    alphaZoom = updateZoomValue(alphaZoom, event.deltaY);
+    drawAlphaSweepPlot();
+  }, { passive: false });
+
   alphaCanvas.addEventListener('mousemove', (event) => {
     if (!alphaPlotState?.points) return;
     const rect = alphaCanvas.getBoundingClientRect();
@@ -2376,6 +2696,32 @@ if (alphaCanvas) {
 }
 
 if (polarCanvas) {
+  polarCanvas.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    if (polarPlotState?.mapping) {
+      const rect = polarCanvas.getBoundingClientRect();
+      const mx = event.clientX - rect.left;
+      const my = event.clientY - rect.top;
+      const {
+        left,
+        top,
+        plotW,
+        plotH,
+        xmin,
+        xmax,
+        ymin,
+        ymax,
+      } = polarPlotState.mapping;
+      if (mx >= left && mx <= left + plotW && my >= top && my <= top + plotH) {
+        const x = xmin + ((mx - left) / plotW) * (xmax - xmin);
+        const y = ymax - ((my - top) / plotH) * (ymax - ymin);
+        polarZoomCenter = { x, y };
+      }
+    }
+    polarZoom = updateZoomValue(polarZoom, event.deltaY);
+    drawPolarPlot();
+  }, { passive: false });
+
   polarCanvas.addEventListener('mousemove', (event) => {
     if (!polarPlotState?.points) return;
     const rect = polarCanvas.getBoundingClientRect();
@@ -2529,6 +2875,91 @@ window.addEventListener('resize', () => {
   }
   updatePageIndicator();
 });
+
+if (editAirfoilButton) {
+  editAirfoilButton.addEventListener('click', () => {
+    editMode = !editMode;
+    editAirfoilButton.classList.toggle('active', editMode);
+    editAirfoilButton.setAttribute('aria-pressed', editMode ? 'true' : 'false');
+    if (airfoilFrame) {
+      airfoilFrame.classList.toggle('editing', editMode);
+    }
+    editDragIndex = null;
+    if (editMode) {
+      renderEditAirfoil();
+    } else if (lastSolverPayload) {
+      applySolverResult(lastSolverPayload);
+    }
+  });
+}
+
+if (canvas) {
+  canvas.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    if (lastAirfoilBounds) {
+      const rect = canvas.getBoundingClientRect();
+      const mx = event.clientX - rect.left;
+      const my = event.clientY - rect.top;
+      airfoilZoomCenterScreen = { x: mx, y: my };
+    }
+    airfoilZoom = updateZoomValue(airfoilZoom, event.deltaY);
+    if (lastSolverPayload) {
+      applySolverResult(lastSolverPayload);
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('mousedown', (event) => {
+    if (!editMode || !lastAirfoilBounds) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = event.clientX - rect.left;
+    const my = event.clientY - rect.top;
+    const idx = findNearestNodeIndex(lastAirfoilNb, lastAirfoilBounds, mx, my, 12);
+    if (idx == null) return;
+    event.preventDefault();
+    editDragIndex = idx;
+    editHoverIndex = idx;
+    renderEditAirfoil();
+  });
+
+  canvas.addEventListener('mousemove', (event) => {
+    if (!editMode || !lastAirfoilBounds) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = event.clientX - rect.left;
+    const my = event.clientY - rect.top;
+    if (editDragIndex != null) {
+      const { x, y } = canvasToWorld(mx, my, lastAirfoilBounds);
+      xb[editDragIndex] = x;
+      yb[editDragIndex] = y;
+      renderEditAirfoil();
+      return;
+    }
+    const hoverIdx = findNearestNodeIndex(lastAirfoilNb, lastAirfoilBounds, mx, my, 12);
+    if (hoverIdx !== editHoverIndex) {
+      editHoverIndex = hoverIdx;
+      renderEditAirfoil();
+    }
+  });
+
+  const finishDrag = () => {
+    if (!editMode || editDragIndex == null) return;
+    editDragIndex = null;
+    editHoverIndex = null;
+    applyEditedAirfoil();
+  };
+
+  canvas.addEventListener('mouseup', finishDrag);
+  canvas.addEventListener('mouseleave', () => {
+    if (!editMode) return;
+    if (editDragIndex != null) {
+      finishDrag();
+      return;
+    }
+    if (editHoverIndex != null) {
+      editHoverIndex = null;
+      renderEditAirfoil();
+    }
+  });
+}
 
 const initSource = sourceRadios.find((item) => item.checked)?.value || 'naca';
 nacaOptions.hidden = initSource !== 'naca';

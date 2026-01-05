@@ -13,6 +13,8 @@ import { createMatrix } from './arrays.js';
 import { flap as applyFlap } from './xgdes.js';
 import { MIXED } from './xqdes.js';
 
+const DEBUG_QDES = false;
+
 const nside = 123;
 const xx = new Float64Array(nside);
 const yt = new Float64Array(nside);
@@ -412,37 +414,39 @@ function runQdesFromCp(cpSpec, niter = 10) {
       }
       ctx.GAM[i] = base;
     }
-    ctx.QDES_DEBUG = true;
+    ctx.QDES_DEBUG = DEBUG_QDES;
     ctx.QDES_PASS = passLabel;
     MIXED(ctx, 0, niter);
     ctx.QDES_DEBUG = false;
   };
 
-  console.log('[QDES] start', {
-    nb,
-    niter,
-    alfa,
-    minf,
-    qinf: ctx.QINF ?? 1.0,
-    psio: ctx.PSIO,
-    cpMin,
-    cpMax,
-    useQinv,
-    qBaseMin,
-    qBaseMax,
-    qMin,
-    qMax,
-    qDeltaMax,
-    iq1: ctx.IQ1,
-    iq2: ctx.IQ2,
-    leIdx,
-    upperStart,
-    upperEnd,
-    lowerStart,
-    lowerEnd,
-    xcMin,
-    xcMax,
-  });
+  if (DEBUG_QDES) {
+    console.log('[QDES] start', {
+      nb,
+      niter,
+      alfa,
+      minf,
+      qinf: ctx.QINF ?? 1.0,
+      psio: ctx.PSIO,
+      cpMin,
+      cpMax,
+      useQinv,
+      qBaseMin,
+      qBaseMax,
+      qMin,
+      qMax,
+      qDeltaMax,
+      iq1: ctx.IQ1,
+      iq2: ctx.IQ2,
+      leIdx,
+      upperStart,
+      upperEnd,
+      lowerStart,
+      lowerEnd,
+      xcMin,
+      xcMax,
+    });
+  }
 
   ctx.QDES_MAXSTEP = 0.01;
   if (hasUpper && hasLower) {

@@ -82,6 +82,9 @@ let cpEditHoverIndex = null;
 let cpEditPoints = null;
 let cpPanActive = false;
 let cpPanStart = null;
+let airfoilPanActive = false;
+let airfoilPanStart = null;
+let airfoilPan = { x: 0.0, y: 0.0 };
 let airfoilTouchTimer = null;
 let cpTouchTimer = null;
 let touchAirfoilDrag = false;
@@ -357,6 +360,10 @@ function formatHoverValue(value, digits = 2, suffix = '') {
 function canvasToWorld(x, y, bounds) {
   let sx = x;
   let sy = y;
+  if (bounds.panX || bounds.panY) {
+    sx -= bounds.panX || 0.0;
+    sy -= bounds.panY || 0.0;
+  }
   if (bounds.zoom && bounds.zoomCenterScreen) {
     sx = bounds.zoomCenterScreen.x + (sx - bounds.zoomCenterScreen.x) / bounds.zoom;
     sy = bounds.zoomCenterScreen.y + (sy - bounds.zoomCenterScreen.y) / bounds.zoom;
@@ -372,6 +379,10 @@ function canvasToWorld(x, y, bounds) {
 function canvasToRotatedWorld(x, y, bounds) {
   let sx = x;
   let sy = y;
+  if (bounds.panX || bounds.panY) {
+    sx -= bounds.panX || 0.0;
+    sy -= bounds.panY || 0.0;
+  }
   if (bounds.zoom && bounds.zoomCenterScreen) {
     sx = bounds.zoomCenterScreen.x + (sx - bounds.zoomCenterScreen.x) / bounds.zoom;
     sy = bounds.zoomCenterScreen.y + (sy - bounds.zoomCenterScreen.y) / bounds.zoom;
@@ -382,7 +393,8 @@ function canvasToRotatedWorld(x, y, bounds) {
 }
 
 function applyZoomToRange(min, max, zoom, clampMin, clampMax, center) {
-  if (!Number.isFinite(zoom) || zoom === 1.0) return { min, max };
+  if (!Number.isFinite(zoom)) return { min, max };
+  if (zoom === 1.0 && !Number.isFinite(center)) return { min, max };
   const mid = Number.isFinite(center) ? center : 0.5 * (min + max);
   const span = Math.max((max - min) / zoom, 1.0e-6);
   let nextMin = mid - span * 0.5;
@@ -404,6 +416,23 @@ function updateZoomValue(current, delta) {
   const factor = delta > 0 ? 1 / 1.1 : 1.1;
   const next = Math.min(6.0, Math.max(1.0, current * factor));
   return Math.abs(next - current) > 1.0e-4 ? next : current;
+}
+
+function zoomCenterForAnchor(min, max, zoom, frac) {
+  const span = Math.max((max - min) / zoom, 1.0e-6);
+  return min + frac * (max - min) + (0.5 - frac) * span;
+}
+
+function recenterPanOnZoomOut(delta, atMinZoom) {
+  if (delta <= 0 || !atMinZoom) return;
+  const damp = 0.75;
+  airfoilPan = {
+    x: Math.abs(airfoilPan.x) < 0.05 ? 0.0 : airfoilPan.x * damp,
+    y: Math.abs(airfoilPan.y) < 0.05 ? 0.0 : airfoilPan.y * damp,
+  };
+  if (airfoilPan.x === 0.0 && airfoilPan.y === 0.0) {
+    airfoilZoomCenterScreen = null;
+  }
 }
 
 function setSourceToCustom() {
@@ -1494,6 +1523,10 @@ function worldToCanvas(x, y, bounds) {
     sx = bounds.zoomCenterScreen.x + (sx - bounds.zoomCenterScreen.x) * bounds.zoom;
     sy = bounds.zoomCenterScreen.y + (sy - bounds.zoomCenterScreen.y) * bounds.zoom;
   }
+  if (bounds.panX || bounds.panY) {
+    sx += bounds.panX || 0.0;
+    sy += bounds.panY || 0.0;
+  }
   return { x: sx, y: sy };
 }
 
@@ -1718,19 +1751,8 @@ function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpW
   const leX = leScreen ? leScreen.x * scaleX : left;
   const teX = teScreen ? teScreen.x * scaleX : left + plotW;
   const span = teX - leX || plotW;
-  let xMin = 0.0;
-  let xMax = 1.0;
-  const baseX = { min: xMin, max: xMax };
-  const zoomX = applyZoomToRange(
-    xMin,
-    xMax,
-    cpZoom,
-    baseX.min,
-    baseX.max,
-    cpZoomCenter?.x,
-  );
-  xMin = zoomX.min;
-  xMax = zoomX.max;
+  const xMin = 0.0;
+  const xMax = 1.0;
   cpMin = baseCp.min;
   cpMax = baseCp.max;
   const xToPx = (s) => leX + ((s - xMin) / (xMax - xMin)) * span;
@@ -2408,6 +2430,8 @@ function applySolverResult(payload) {
     ...framedBounds,
     zoom: airfoilZoom,
     zoomCenterScreen: airfoilZoomCenterScreen,
+    panX: airfoilPan.x,
+    panY: airfoilPan.y,
   };
   lastAirfoilBounds = zoomedBounds;
   lastAirfoilNb = nb;
@@ -2855,7 +2879,7 @@ cl6Input.addEventListener('input', update);
 if (cpCanvas) {
   cpCanvas.addEventListener('wheel', (event) => {
     event.preventDefault();
-    let cpAnchor = null;
+    const zoomingIn = event.deltaY < 0;
     if (lastCpPlot?.mapping) {
       const rect = cpCanvas.getBoundingClientRect();
       const mx = event.clientX - rect.left;
@@ -2873,32 +2897,29 @@ if (cpCanvas) {
         && my >= top
         && my <= top + plotH) {
         const x = xMin + ((mx - leX) / span) * (xMax - xMin);
-        cpZoomCenter = { x };
-        cpAnchor = { x, mx };
-        if (lastCpPlot.lePt && lastCpPlot.tePt && lastAirfoilBounds) {
+        if (zoomingIn && lastCpPlot.lePt && lastCpPlot.tePt && lastAirfoilBounds) {
           const dx = lastCpPlot.tePt.x - lastCpPlot.lePt.x;
           const dy = lastCpPlot.tePt.y - lastCpPlot.lePt.y;
           const chord2 = dx * dx + dy * dy || 1.0;
+          const xClamped = Math.max(0.0, Math.min(1.0, x));
           const world = {
-            x: lastCpPlot.lePt.x + dx * x,
-            y: lastCpPlot.lePt.y + dy * x,
+            x: lastCpPlot.lePt.x + dx * xClamped,
+            y: lastCpPlot.lePt.y + dy * xClamped,
           };
           const screen = worldToCanvas(world.x, world.y, lastAirfoilBounds);
-          airfoilZoomCenterScreen = { x: screen.x, y: screen.y };
+          airfoilZoomCenterScreen = {
+            x: screen.x - airfoilPan.x,
+            y: screen.y - airfoilPan.y,
+          };
         }
       }
     }
-    cpZoom = updateZoomValue(cpZoom, event.deltaY);
-    airfoilZoom = cpZoom;
+    const prevZoom = airfoilZoom;
+    airfoilZoom = updateZoomValue(airfoilZoom, event.deltaY);
+    const atMinZoom = Math.abs(airfoilZoom - prevZoom) < 1.0e-6 && airfoilZoom <= 1.0 + 1.0e-6;
+    recenterPanOnZoomOut(event.deltaY, atMinZoom);
     if (lastSolverPayload) {
       applySolverResult(lastSolverPayload);
-      if (cpAnchor && lastCpPlot?.mapping) {
-        const { leX, span } = lastCpPlot.mapping;
-        const f = span !== 0 ? (cpAnchor.mx - leX) / span : 0.5;
-        const center = cpAnchor.x + (0.5 - f) / cpZoom;
-        cpZoomCenter = { x: Math.max(0.0, Math.min(1.0, center)) };
-        renderCpPlotFromCache();
-      }
     } else {
       renderCpPlotFromCache();
     }
@@ -2907,10 +2928,13 @@ if (cpCanvas) {
   cpCanvas.addEventListener('mousedown', (event) => {
     if (event.ctrlKey && lastCpPlot?.mapping) {
       const rect = cpCanvas.getBoundingClientRect();
+      const mainRect = canvas.getBoundingClientRect();
+      const scaleX = mainRect.width ? rect.width / mainRect.width : 1.0;
       cpPanActive = true;
       cpPanStart = {
         x: event.clientX - rect.left,
-        center: cpZoomCenter?.x ?? null,
+        airfoilPanX: airfoilPan.x,
+        scaleX,
       };
       event.preventDefault();
       return;
@@ -2936,12 +2960,18 @@ if (cpCanvas) {
     const minX = Math.min(leX, teX);
     const maxX = Math.max(leX, teX);
     if (cpPanActive && cpPanStart) {
-      const span = teX - leX || 1.0;
       const dx = x - cpPanStart.x;
-      const baseCenter = cpPanStart.center ?? 0.5 * (xMin + xMax);
-      const delta = (dx / span) * (xMax - xMin);
-      cpZoomCenter = { x: baseCenter - delta };
-      renderCpPlotFromCache();
+      if (cpPanStart.scaleX) {
+        airfoilPan = {
+          x: cpPanStart.airfoilPanX + dx / cpPanStart.scaleX,
+          y: airfoilPan.y,
+        };
+      }
+      if (lastSolverPayload) {
+        applySolverResult(lastSolverPayload);
+      } else {
+        renderCpPlotFromCache();
+      }
       return;
     }
     if (cpEditMode && cpEditPoints) {
@@ -3073,15 +3103,19 @@ if (alphaCanvas) {
         yminR,
         ymaxR,
       } = alphaPlotState.mapping;
-      if (mx >= left && mx <= left + plotW && my >= top && my <= top + plotH) {
-        const x = xmin + ((mx - left) / plotW) * (xmax - xmin);
-        const yL = ymaxL - ((my - top) / plotH) * (ymaxL - yminL);
-        const yR = ymaxR - ((my - top) / plotH) * (ymaxR - yminR);
-        alphaZoomCenter = { x, yL, yR };
+      if (mx < left || mx > left + plotW || my < top || my > top + plotH) {
+        return;
       }
+      const fx = (mx - left) / plotW;
+      const fy = (my - top) / plotH;
+      const nextZoom = updateZoomValue(alphaZoom, event.deltaY);
+      const x = zoomCenterForAnchor(xmin, xmax, nextZoom, fx);
+      const yL = zoomCenterForAnchor(yminL, ymaxL, nextZoom, 1.0 - fy);
+      const yR = zoomCenterForAnchor(yminR, ymaxR, nextZoom, 1.0 - fy);
+      alphaZoomCenter = { x, yL, yR };
+      alphaZoom = nextZoom;
+      drawAlphaSweepPlot();
     }
-    alphaZoom = updateZoomValue(alphaZoom, event.deltaY);
-    drawAlphaSweepPlot();
   }, { passive: false });
 
   alphaCanvas.addEventListener('mousemove', (event) => {
@@ -3122,14 +3156,18 @@ if (polarCanvas) {
         ymin,
         ymax,
       } = polarPlotState.mapping;
-      if (mx >= left && mx <= left + plotW && my >= top && my <= top + plotH) {
-        const x = xmin + ((mx - left) / plotW) * (xmax - xmin);
-        const y = ymax - ((my - top) / plotH) * (ymax - ymin);
-        polarZoomCenter = { x, y };
+      if (mx < left || mx > left + plotW || my < top || my > top + plotH) {
+        return;
       }
+      const fx = (mx - left) / plotW;
+      const fy = (my - top) / plotH;
+      const nextZoom = updateZoomValue(polarZoom, event.deltaY);
+      const x = zoomCenterForAnchor(xmin, xmax, nextZoom, fx);
+      const y = zoomCenterForAnchor(ymin, ymax, nextZoom, 1.0 - fy);
+      polarZoomCenter = { x, y };
+      polarZoom = nextZoom;
+      drawPolarPlot();
     }
-    polarZoom = updateZoomValue(polarZoom, event.deltaY);
-    drawPolarPlot();
   }, { passive: false });
 
   polarCanvas.addEventListener('mousemove', (event) => {
@@ -3333,28 +3371,40 @@ if (smoothCpButton) {
 if (canvas) {
   canvas.addEventListener('wheel', (event) => {
     event.preventDefault();
+    const zoomingIn = event.deltaY < 0;
     if (lastAirfoilBounds) {
       const rect = canvas.getBoundingClientRect();
       const mx = event.clientX - rect.left;
       const my = event.clientY - rect.top;
-      airfoilZoomCenterScreen = { x: mx, y: my };
-      if (lastCpPlot?.lePt && lastCpPlot?.tePt) {
-        const world = canvasToWorld(mx, my, lastAirfoilBounds);
-        const dx = lastCpPlot.tePt.x - lastCpPlot.lePt.x;
-        const dy = lastCpPlot.tePt.y - lastCpPlot.lePt.y;
-        const chord2 = dx * dx + dy * dy || 1.0;
-        const s = ((world.x - lastCpPlot.lePt.x) * dx + (world.y - lastCpPlot.lePt.y) * dy) / chord2;
-        cpZoomCenter = { x: s };
+      if (zoomingIn) {
+        airfoilZoomCenterScreen = {
+          x: mx - airfoilPan.x,
+          y: my - airfoilPan.y,
+        };
       }
     }
+    const prevZoom = airfoilZoom;
     airfoilZoom = updateZoomValue(airfoilZoom, event.deltaY);
-    cpZoom = airfoilZoom;
+    const atMinZoom = Math.abs(airfoilZoom - prevZoom) < 1.0e-6 && airfoilZoom <= 1.0 + 1.0e-6;
+    recenterPanOnZoomOut(event.deltaY, atMinZoom);
     if (lastSolverPayload) {
       applySolverResult(lastSolverPayload);
     }
   }, { passive: false });
 
   canvas.addEventListener('mousedown', (event) => {
+    if (event.ctrlKey && lastAirfoilBounds) {
+      const rect = canvas.getBoundingClientRect();
+      airfoilPanActive = true;
+      airfoilPanStart = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+        panX: airfoilPan.x,
+        panY: airfoilPan.y,
+      };
+      event.preventDefault();
+      return;
+    }
     if (!editMode || !lastAirfoilBounds) return;
     const rect = canvas.getBoundingClientRect();
     const mx = event.clientX - rect.left;
@@ -3368,10 +3418,23 @@ if (canvas) {
   });
 
   canvas.addEventListener('mousemove', (event) => {
-    if (!editMode || !lastAirfoilBounds) return;
+    if (!lastAirfoilBounds) return;
     const rect = canvas.getBoundingClientRect();
     const mx = event.clientX - rect.left;
     const my = event.clientY - rect.top;
+    if (airfoilPanActive && airfoilPanStart) {
+      const dx = mx - airfoilPanStart.x;
+      const dy = my - airfoilPanStart.y;
+      airfoilPan = {
+        x: airfoilPanStart.panX + dx,
+        y: airfoilPanStart.panY + dy,
+      };
+      if (lastSolverPayload) {
+        applySolverResult(lastSolverPayload);
+      }
+      return;
+    }
+    if (!editMode) return;
     if (editDragIndex != null) {
       const { x, y } = canvasToWorld(mx, my, lastAirfoilBounds);
       xb[editDragIndex] = x;
@@ -3387,6 +3450,11 @@ if (canvas) {
   });
 
   const finishDrag = () => {
+    if (airfoilPanActive) {
+      airfoilPanActive = false;
+      airfoilPanStart = null;
+      return;
+    }
     if (!editMode || editDragIndex == null) return;
     editDragIndex = null;
     editHoverIndex = null;
@@ -3395,6 +3463,11 @@ if (canvas) {
 
   canvas.addEventListener('mouseup', finishDrag);
   canvas.addEventListener('mouseleave', () => {
+    if (airfoilPanActive) {
+      airfoilPanActive = false;
+      airfoilPanStart = null;
+      return;
+    }
     if (!editMode) return;
     if (editDragIndex != null) {
       finishDrag();

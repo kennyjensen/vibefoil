@@ -75,11 +75,15 @@ class XFoilState:
 
         self.ALFA = 0.0
         self.ADEG = 0.0
+        self.COSA = 1.0
+        self.SINA = 0.0
         self.DTOR = math.pi / 180.0
         self.AVISC = 0.0
         self.MVISC = 0.0
         self.XCMREF = 0.0
         self.YCMREF = 0.0
+        self.PSIO = 0.0
+        self.CIRC = 0.0
 
         self.N = 0
         self.IST = 0
@@ -185,6 +189,8 @@ class XFoilState:
         self.VDEL = make_3d(3, 2, IZX)
         self.VZ = make_2d(3, 2)
         self.AIJPIV = [0] * (IQX + 1)
+        self.Q = make_2d(IQX, IQX)
+        self.DQ = make_1d(IQX)
 
         self.QINV = make_1d(IZX)
         self.QVIS = make_1d(IZX)
@@ -192,6 +198,25 @@ class XFoilState:
         self.CPV = make_1d(IZX)
         self.QINVU = make_2d(IZX, 2)
         self.QINV_A = make_1d(IZX)
+        self.SSPLE = 0.0
+        self.SSPEC = make_1d(IBX)
+        self.XSPOC = make_1d(IBX)
+        self.YSPOC = make_1d(IBX)
+        self.QGAMM = make_1d(IBX)
+        self.QSPEC = make_2d(IBX, IPX)
+        self.QSPECP = make_2d(IBX, IPX)
+        self.ALGAM = 0.0
+        self.CLGAM = 0.0
+        self.CMGAM = 0.0
+        self.ALQSP = make_1d(IPX)
+        self.CLQSP = make_1d(IPX)
+        self.CMQSP = make_1d(IPX)
+        self.QDOF0 = 0.0
+        self.QDOF1 = 0.0
+        self.QDOF2 = 0.0
+        self.QDOF3 = 0.0
+        self.CLSPEC = 0.0
+        self.FFILT = 0.0
 
         self.GAM = make_1d(IQX)
         self.GAMU = make_2d(IQX, 2)
@@ -252,7 +277,22 @@ class XFoilState:
         self.LQSPEC = False
         self.LGSAME = False
         self.LSCINI = False
+        self.LCPXX = False
+        self.LQVDES = False
+        self.LQREFL = False
+        self.LQSYM = False
+        self.LQSLOP = False
+        self.LQSPPL = False
+        self.LIQSET = False
         self.AWAKE = 0.0
+
+        self.IQ1 = 0
+        self.IQ2 = 0
+        self.NSP = 0
+        self.NQSP = 0
+        self.KQTARG = 0
+        self.IACQSP = 0
+        self.NC1 = 0
 
         self.XOF = 0.0
         self.YOF = 0.0

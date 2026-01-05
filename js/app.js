@@ -9,6 +9,7 @@ const cpCtx = cpCanvas.getContext('2d');
 const downloadCpButton = document.getElementById('downloadCp');
 const downloadBlButton = document.getElementById('downloadBl');
 const editAirfoilButton = document.getElementById('editAirfoil');
+const editCpButton = document.getElementById('editCp');
 const airfoilFrame = document.getElementById('airfoilFrame');
 const alphaCanvas = document.getElementById('alphaPlot');
 const alphaCtx = alphaCanvas ? alphaCanvas.getContext('2d') : null;
@@ -73,6 +74,12 @@ let activeHoverSource = null;
 let editMode = false;
 let editDragIndex = null;
 let editHoverIndex = null;
+let cpEditMode = false;
+let cpEditDragIndex = null;
+let cpEditHoverIndex = null;
+let cpEditPoints = null;
+let cpPanActive = false;
+let cpPanStart = null;
 let lastAirfoilBounds = null;
 let lastAirfoilNb = 0;
 let airfoilZoom = 1.0;
@@ -164,7 +171,9 @@ let latestSolverId = 0;
 let solverInFlight = false;
 const pendingSolves = new Map();
 const pendingDumps = new Map();
+const pendingQdes = new Map();
 let nextDumpId = 1;
+let nextQdesId = 1;
 
 // NACA 4-digit designation formatting for UI/overlay.
 function updateLabels(m, p, t) {
@@ -467,6 +476,32 @@ function applyEditedAirfoil() {
     coords.push({ x: xb[i], y: yb[i] });
   }
   const name = currentAirfoilName || 'Edited Airfoil';
+  loadCustomAirfoil({ name, coords });
+  setSourceToCustom();
+  update();
+}
+
+async function applyCpEdit() {
+  if (!cpEditPoints || !cpEditPoints.length) return;
+  if (solverInFlight) return;
+  const cpSpec = cpEditPoints.map((point) => point.cp);
+  const result = await requestQdes(cpSpec, 10);
+  if (!result?.ok) {
+    console.warn(result?.error || 'QDES update failed.');
+    return;
+  }
+  if (result.debug) {
+    console.log('[QDES] result', result.debug);
+  }
+  if (!result.xb || !result.yb || !result.nb) {
+    console.warn('QDES update missing airfoil geometry.');
+    return;
+  }
+  const coords = [];
+  for (let i = 0; i < result.nb; i += 1) {
+    coords.push({ x: result.xb[i], y: result.yb[i] });
+  }
+  const name = currentAirfoilName || 'QDES Airfoil';
   loadCustomAirfoil({ name, coords });
   setSourceToCustom();
   update();
@@ -1529,6 +1564,40 @@ async function fetchUiucAirfoil() {
 
 
 // Cp plot in XFOIL style: viscous Cp with optional inviscid overlay.
+function buildCpEditPoints(nb, cpData) {
+  if (!cpData) return null;
+  const invAll = Array.isArray(cpData.invAll) ? cpData.invAll : [];
+  const source = invAll.length ? invAll : cpData.upper.concat(cpData.lower);
+  if (!source.length) return null;
+  const count = Math.min(nb, source.length);
+  const lePt = cpData.le;
+  const tePt = cpData.te;
+  if (!lePt || !tePt) return null;
+  const dxChord = tePt.x - lePt.x;
+  const dyChord = tePt.y - lePt.y;
+  const chord2 = dxChord * dxChord + dyChord * dyChord || 1.0;
+  let leIdx = 0;
+  let leDist = Infinity;
+  for (let i = 0; i < count; i += 1) {
+    const p = source[i];
+    const dx = p.x - lePt.x;
+    const dy = p.y - lePt.y;
+    const dist = dx * dx + dy * dy;
+    if (dist < leDist) {
+      leDist = dist;
+      leIdx = i;
+    }
+  }
+  const points = new Array(count);
+  for (let i = 0; i < count; i += 1) {
+    const p = source[i];
+    const s = ((p.x - lePt.x) * dxChord + (p.y - lePt.y) * dyChord) / chord2;
+    const side = i <= leIdx ? 'upper' : 'lower';
+    points[i] = { index: i, s, cp: p.cp, side };
+  }
+  return points;
+}
+
 function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpWake = []) {
   if (!cpCanvas) return;
   const cpRect = cpCanvas.getBoundingClientRect();
@@ -1776,7 +1845,84 @@ function drawCpPlot(nb, cpUpper, cpLower, lePt, tePt, bounds, cpInvAll = [], cpW
     cpCtx.restore();
   }
 
+  if (cpEditMode && Array.isArray(cpEditPoints)) {
+    cpCtx.save();
+    cpCtx.lineWidth = 1.2;
+    cpEditPoints.forEach((point, idx) => {
+      const px = xToPx(point.s);
+      const py = cpToPy(point.cp);
+      const isActive = idx === cpEditDragIndex;
+      const isHover = idx === cpEditHoverIndex;
+      const color = point.side === 'lower' ? '#ff4a3d' : '#2f7bff';
+      cpCtx.strokeStyle = 'rgba(18, 22, 27, 0.9)';
+      cpCtx.fillStyle = color;
+      const r = isActive ? 5.5 : 4.0;
+      cpCtx.beginPath();
+      cpCtx.arc(px, py, r, 0, Math.PI * 2);
+      cpCtx.fill();
+      cpCtx.stroke();
+      if (isHover && !isActive) {
+        cpCtx.strokeStyle = color;
+        cpCtx.lineWidth = 2.0;
+        cpCtx.beginPath();
+        cpCtx.arc(px, py, r + 2.4, 0, Math.PI * 2);
+        cpCtx.stroke();
+        cpCtx.strokeStyle = 'rgba(18, 22, 27, 0.9)';
+        cpCtx.lineWidth = 1.2;
+      }
+    });
+    cpCtx.restore();
+  }
+
   cpCtx.restore();
+}
+
+function rebuildCpEditPoints(nb, cpData, force = false) {
+  if (!cpEditMode) {
+    cpEditPoints = null;
+    cpEditDragIndex = null;
+    cpEditHoverIndex = null;
+    return;
+  }
+  if (!force && cpEditPoints) {
+    return;
+  }
+  cpEditPoints = buildCpEditPoints(nb, cpData);
+  cpEditDragIndex = null;
+  cpEditHoverIndex = null;
+}
+
+function getCpEditPointScreen(point, mapping) {
+  if (!mapping) return null;
+  const { leX, span, xMin, xMax, top, plotH, cpMin, cpMax } = mapping;
+  const px = leX + ((point.s - xMin) / (xMax - xMin)) * span;
+  const py = top + ((point.cp - cpMin) / (cpMax - cpMin)) * plotH;
+  return { x: px, y: py };
+}
+
+function findClosestCpEditPoint(mx, my, mapping, radius = 10) {
+  if (!cpEditPoints || !mapping) return null;
+  let best = null;
+  let bestDist = radius * radius;
+  cpEditPoints.forEach((point, idx) => {
+    const screen = getCpEditPointScreen(point, mapping);
+    if (!screen) return;
+    const dx = mx - screen.x;
+    const dy = my - screen.y;
+    const dist = dx * dx + dy * dy;
+    if (dist <= bestDist) {
+      best = idx;
+      bestDist = dist;
+    }
+  });
+  return best;
+}
+
+function screenToCpValue(my, mapping) {
+  if (!mapping) return null;
+  const { top, plotH, cpMin, cpMax } = mapping;
+  const clamped = Math.max(top, Math.min(top + plotH, my));
+  return cpMin + ((clamped - top) / plotH) * (cpMax - cpMin);
 }
 
 function renderCpPlotFromCache() {
@@ -2152,6 +2298,8 @@ function drawFlapHinge(bounds, hinge) {
 
 function applySolverResult(payload) {
   if (!payload?.ok) return;
+  const prevPayload = lastSolverPayload;
+  const samePayload = prevPayload === payload;
   lastSolverPayload = payload;
   if (pendingGeometrySettings) {
     lastGeometrySettings = pendingGeometrySettings;
@@ -2197,6 +2345,7 @@ function applySolverResult(payload) {
   }
 
   if (cpData?.upper?.length || cpData?.lower?.length) {
+    rebuildCpEditPoints(nb, cpData, !samePayload);
     drawCpPlot(
       nb,
       cpData.upper,
@@ -2211,6 +2360,7 @@ function applySolverResult(payload) {
     const cpRect = cpCanvas.getBoundingClientRect();
     cpCtx.clearRect(0, 0, cpRect.width, cpRect.height);
     lastCpPlot = null;
+    rebuildCpEditPoints(0, null);
   }
 
   updateDataBox(alphaRad, coeffs, converged);
@@ -2243,6 +2393,19 @@ function cancelPendingSolves() {
   pendingSolves.clear();
 }
 
+function resolvePendingQdes(id, payload) {
+  const resolve = pendingQdes.get(id);
+  if (resolve) {
+    resolve(payload);
+    pendingQdes.delete(id);
+  }
+}
+
+function cancelPendingQdes() {
+  pendingQdes.forEach((resolve) => resolve({ canceled: true }));
+  pendingQdes.clear();
+}
+
 function resolvePendingDump(id, payload) {
   const resolve = pendingDumps.get(id);
   if (resolve) {
@@ -2262,6 +2425,10 @@ function spawnSolverWorker() {
     const payload = event.data;
     if (payload?.type === 'dump') {
       resolvePendingDump(payload.requestId, payload);
+      return;
+    }
+    if (payload?.type === 'qdes') {
+      resolvePendingQdes(payload.requestId, payload);
       return;
     }
     resolvePendingSolve(payload.requestId, payload);
@@ -2284,12 +2451,14 @@ function spawnSolverWorker() {
   solverWorker.onerror = (event) => {
     solverInFlight = false;
     cancelPendingSolves();
+    cancelPendingQdes();
     cancelPendingDumps();
     console.warn('Solver worker error:', event);
   };
   solverWorker.onmessageerror = (event) => {
     solverInFlight = false;
     cancelPendingSolves();
+    cancelPendingQdes();
     cancelPendingDumps();
     console.warn('Solver worker message error:', event);
   };
@@ -2316,6 +2485,21 @@ function requestDump(kind) {
   solverWorker.postMessage({ requestId, action: 'dump', kind, kdelim: 1 });
   return new Promise((resolve) => {
     pendingDumps.set(requestId, resolve);
+  });
+}
+
+function requestQdes(cpSpec, niter = 10) {
+  if (!solverWorker) {
+    return Promise.resolve({ ok: false, error: 'Solver worker not ready.' });
+  }
+  if (!Array.isArray(cpSpec) || cpSpec.length === 0) {
+    return Promise.resolve({ ok: false, error: 'Cp edit points are missing.' });
+  }
+  const requestId = nextQdesId;
+  nextQdesId += 1;
+  solverWorker.postMessage({ requestId, action: 'qdes', cpSpec, niter });
+  return new Promise((resolve) => {
+    pendingQdes.set(requestId, resolve);
   });
 }
 
@@ -2590,6 +2774,7 @@ cl6Input.addEventListener('input', update);
 if (cpCanvas) {
   cpCanvas.addEventListener('wheel', (event) => {
     event.preventDefault();
+    let cpAnchor = null;
     if (lastCpPlot?.mapping) {
       const rect = cpCanvas.getBoundingClientRect();
       const mx = event.clientX - rect.left;
@@ -2601,8 +2786,6 @@ if (cpCanvas) {
         plotH,
         xMin,
         xMax,
-        cpMin,
-        cpMax,
       } = lastCpPlot.mapping;
       if (mx >= Math.min(leX, leX + span)
         && mx <= Math.max(leX, leX + span)
@@ -2610,11 +2793,58 @@ if (cpCanvas) {
         && my <= top + plotH) {
         const x = xMin + ((mx - leX) / span) * (xMax - xMin);
         cpZoomCenter = { x };
+        cpAnchor = { x, mx };
+        if (lastCpPlot.lePt && lastCpPlot.tePt && lastAirfoilBounds) {
+          const dx = lastCpPlot.tePt.x - lastCpPlot.lePt.x;
+          const dy = lastCpPlot.tePt.y - lastCpPlot.lePt.y;
+          const chord2 = dx * dx + dy * dy || 1.0;
+          const world = {
+            x: lastCpPlot.lePt.x + dx * x,
+            y: lastCpPlot.lePt.y + dy * x,
+          };
+          const screen = worldToCanvas(world.x, world.y, lastAirfoilBounds);
+          airfoilZoomCenterScreen = { x: screen.x, y: screen.y };
+        }
       }
     }
     cpZoom = updateZoomValue(cpZoom, event.deltaY);
-    renderCpPlotFromCache();
+    airfoilZoom = cpZoom;
+    if (lastSolverPayload) {
+      applySolverResult(lastSolverPayload);
+      if (cpAnchor && lastCpPlot?.mapping) {
+        const { leX, span } = lastCpPlot.mapping;
+        const f = span !== 0 ? (cpAnchor.mx - leX) / span : 0.5;
+        const center = cpAnchor.x + (0.5 - f) / cpZoom;
+        cpZoomCenter = { x: Math.max(0.0, Math.min(1.0, center)) };
+        renderCpPlotFromCache();
+      }
+    } else {
+      renderCpPlotFromCache();
+    }
   }, { passive: false });
+
+  cpCanvas.addEventListener('mousedown', (event) => {
+    if (event.ctrlKey && lastCpPlot?.mapping) {
+      const rect = cpCanvas.getBoundingClientRect();
+      cpPanActive = true;
+      cpPanStart = {
+        x: event.clientX - rect.left,
+        center: cpZoomCenter?.x ?? null,
+      };
+      event.preventDefault();
+      return;
+    }
+    if (!cpEditMode || !lastCpPlot?.mapping) return;
+    const rect = cpCanvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const idx = findClosestCpEditPoint(x, y, lastCpPlot.mapping, 12);
+    if (idx == null) return;
+    event.preventDefault();
+    cpEditDragIndex = idx;
+    cpEditHoverIndex = idx;
+    renderCpPlotFromCache();
+  });
 
   cpCanvas.addEventListener('mousemove', (event) => {
     if (!lastCpPlot?.mapping) return;
@@ -2624,6 +2854,30 @@ if (cpCanvas) {
     const { top, plotH, leX, teX, xMin, xMax } = lastCpPlot.mapping;
     const minX = Math.min(leX, teX);
     const maxX = Math.max(leX, teX);
+    if (cpPanActive && cpPanStart) {
+      const span = teX - leX || 1.0;
+      const dx = x - cpPanStart.x;
+      const baseCenter = cpPanStart.center ?? 0.5 * (xMin + xMax);
+      const delta = (dx / span) * (xMax - xMin);
+      cpZoomCenter = { x: baseCenter - delta };
+      renderCpPlotFromCache();
+      return;
+    }
+    if (cpEditMode && cpEditPoints) {
+      if (cpEditDragIndex != null) {
+        const cpVal = screenToCpValue(y, lastCpPlot.mapping);
+        if (Number.isFinite(cpVal)) {
+          cpEditPoints[cpEditDragIndex].cp = cpVal;
+        }
+        renderCpPlotFromCache();
+        return;
+      }
+      const hoverIdx = findClosestCpEditPoint(x, y, lastCpPlot.mapping, 12);
+      if (hoverIdx !== cpEditHoverIndex) {
+        cpEditHoverIndex = hoverIdx;
+        renderCpPlotFromCache();
+      }
+    }
     if (x < minX || x > maxX || y < top || y > top + plotH) {
       if (cpHoverS !== null) {
         cpHoverS = null;
@@ -2637,10 +2891,36 @@ if (cpCanvas) {
   });
 
   cpCanvas.addEventListener('mouseleave', () => {
+    if (cpPanActive) {
+      cpPanActive = false;
+      cpPanStart = null;
+    }
+    if (cpEditMode && cpEditDragIndex != null) {
+      cpEditDragIndex = null;
+      cpEditHoverIndex = null;
+      applyCpEdit();
+      return;
+    }
+    if (cpEditHoverIndex != null) {
+      cpEditHoverIndex = null;
+      renderCpPlotFromCache();
+    }
     if (cpHoverS !== null) {
       cpHoverS = null;
       renderCpPlotFromCache();
     }
+  });
+
+  cpCanvas.addEventListener('mouseup', () => {
+    if (cpPanActive) {
+      cpPanActive = false;
+      cpPanStart = null;
+      return;
+    }
+    if (!cpEditMode || cpEditDragIndex == null) return;
+    cpEditDragIndex = null;
+    cpEditHoverIndex = null;
+    applyCpEdit();
   });
 }
 
@@ -2893,6 +3173,19 @@ if (editAirfoilButton) {
   });
 }
 
+if (editCpButton) {
+  editCpButton.addEventListener('click', () => {
+    cpEditMode = !cpEditMode;
+    editCpButton.classList.toggle('active', cpEditMode);
+    editCpButton.setAttribute('aria-pressed', cpEditMode ? 'true' : 'false');
+    if (cpCanvas) {
+      cpCanvas.parentElement?.classList.toggle('editing', cpEditMode);
+    }
+    rebuildCpEditPoints(lastCpPlot?.nb ?? 0, lastSolverPayload?.cpData ?? null);
+    renderCpPlotFromCache();
+  });
+}
+
 if (canvas) {
   canvas.addEventListener('wheel', (event) => {
     event.preventDefault();
@@ -2901,8 +3194,17 @@ if (canvas) {
       const mx = event.clientX - rect.left;
       const my = event.clientY - rect.top;
       airfoilZoomCenterScreen = { x: mx, y: my };
+      if (lastCpPlot?.lePt && lastCpPlot?.tePt) {
+        const world = canvasToWorld(mx, my, lastAirfoilBounds);
+        const dx = lastCpPlot.tePt.x - lastCpPlot.lePt.x;
+        const dy = lastCpPlot.tePt.y - lastCpPlot.lePt.y;
+        const chord2 = dx * dx + dy * dy || 1.0;
+        const s = ((world.x - lastCpPlot.lePt.x) * dx + (world.y - lastCpPlot.lePt.y) * dy) / chord2;
+        cpZoomCenter = { x: s };
+      }
     }
     airfoilZoom = updateZoomValue(airfoilZoom, event.deltaY);
+    cpZoom = airfoilZoom;
     if (lastSolverPayload) {
       applySolverResult(lastSolverPayload);
     }

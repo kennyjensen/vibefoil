@@ -81,6 +81,8 @@ struct XFoilState {
     double MVISC;
     double XCMREF;
     double YCMREF;
+    double PSIO;
+    double CIRC;
 
     int N;
     int IST;
@@ -179,6 +181,8 @@ struct XFoilState {
     std::vector<std::vector<std::vector<double>>> VDEL;
     std::vector<std::vector<double>> VZ;
     std::vector<int> AIJPIV;
+    std::vector<std::vector<double>> Q;
+    std::vector<double> DQ;
 
     std::vector<double> QINV;
     std::vector<double> QVIS;
@@ -186,6 +190,25 @@ struct XFoilState {
     std::vector<double> CPV;
     std::vector<std::vector<double>> QINVU;
     std::vector<double> QINV_A;
+    double SSPLE;
+    std::vector<double> SSPEC;
+    std::vector<double> XSPOC;
+    std::vector<double> YSPOC;
+    std::vector<double> QGAMM;
+    std::vector<std::vector<double>> QSPEC;
+    std::vector<std::vector<double>> QSPECP;
+    double ALGAM;
+    double CLGAM;
+    double CMGAM;
+    std::vector<double> ALQSP;
+    std::vector<double> CLQSP;
+    std::vector<double> CMQSP;
+    double QDOF0;
+    double QDOF1;
+    double QDOF2;
+    double QDOF3;
+    double CLSPEC;
+    double FFILT;
 
     std::vector<double> GAM;
     std::vector<std::vector<double>> GAMU;
@@ -243,6 +266,13 @@ struct XFoilState {
     bool LQSPEC;
     bool LGSAME;
     bool LSCINI;
+    bool LCPXX;
+    bool LQVDES;
+    bool LQREFL;
+    bool LQSYM;
+    bool LQSLOP;
+    bool LQSPPL;
+    bool LIQSET;
     bool LIPAN;
     double AWAKE;
 
@@ -268,6 +298,14 @@ struct XFoilState {
     int NNAME;
 
     std::vector<std::vector<double>> HTARG;
+
+    int IQ1;
+    int IQ2;
+    int NSP;
+    int NQSP;
+    int KQTARG;
+    int IACQSP;
+    int NC1;
 };
 
 struct XBlState {

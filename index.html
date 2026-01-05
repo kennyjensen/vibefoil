@@ -407,8 +407,8 @@
       left: 12px;
       z-index: 5;
       height: 36px;
-      min-width: 44px;
-      padding: 0 10px;
+      min-width: 36px;
+      padding: 0 8px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -431,6 +431,22 @@
       background: rgba(47, 123, 255, 0.9);
       border-color: rgba(47, 123, 255, 0.9);
       color: #ffffff;
+    }
+
+    .plot-edit svg {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+
+    .plot-edit.right {
+      left: auto;
+      right: 64px;
+    }
+
+    .plot-edit.bottom-right {
+      top: auto;
+      bottom: 12px;
     }
 
     .plot-frame.editing canvas {
@@ -854,7 +870,11 @@
       <div class="plot-stack">
         <div class="plot-frame" id="airfoilFrame">
           <canvas id="plot" width="900" height="500"></canvas>
-          <button id="editAirfoil" class="plot-edit" type="button" title="Edit airfoil" aria-label="Edit airfoil" aria-pressed="false">Edit</button>
+          <button id="editAirfoil" class="plot-edit right bottom-right" type="button" title="Edit airfoil" aria-label="Edit airfoil" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="currentColor" d="M16.9 3.2a1.5 1.5 0 0 1 2.1 0l1.8 1.8a1.5 1.5 0 0 1 0 2.1l-9.9 9.9-3.6.7.7-3.6 9.9-9.9zM4 20h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2z"/>
+            </svg>
+          </button>
           <button id="downloadBl" class="plot-download bottom-right" type="button" title="Download BLDUMP" aria-label="Download BLDUMP">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path fill="currentColor" d="M12 3a1 1 0 0 1 1 1v9.17l2.59-2.58a1 1 0 1 1 1.41 1.42l-4.3 4.29a1 1 0 0 1-1.4 0l-4.3-4.29a1 1 0 1 1 1.41-1.42L11 13.17V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
@@ -862,6 +882,11 @@
           </button>
         </div>
         <div class="plot-frame cp-frame">
+          <button id="editCp" class="plot-edit right" type="button" title="Edit Cp" aria-label="Edit Cp" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="currentColor" d="M16.9 3.2a1.5 1.5 0 0 1 2.1 0l1.8 1.8a1.5 1.5 0 0 1 0 2.1l-9.9 9.9-3.6.7.7-3.6 9.9-9.9zM4 20h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2z"/>
+            </svg>
+          </button>
           <canvas id="cpPlot" class="cp-plot" width="900" height="280"></canvas>
           <button id="downloadCp" class="plot-download" type="button" title="Download CPDUMP" aria-label="Download CPDUMP">
             <svg viewBox="0 0 24 24" aria-hidden="true">

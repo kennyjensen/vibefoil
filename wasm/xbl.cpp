@@ -67,6 +67,8 @@ XFoilState::XFoilState() {
     MVISC = 0.0;
     XCMREF = 0.0;
     YCMREF = 0.0;
+    PSIO = 0.0;
+    CIRC = 0.0;
 
     N = 0;
     IST = 0;
@@ -165,6 +167,8 @@ XFoilState::XFoilState() {
     VDEL = make_3d(3, 2, IZX);
     VZ = make_2d(3, 2);
     AIJPIV = std::vector<int>(IQX + 1, 0);
+    Q = make_2d(IQX, IQX);
+    DQ = make_1d(IQX);
 
     QINV = make_1d(IZX);
     QVIS = make_1d(IZX);
@@ -172,6 +176,25 @@ XFoilState::XFoilState() {
     CPV = make_1d(IZX);
     QINVU = make_2d(IZX, 2);
     QINV_A = make_1d(IZX);
+    SSPLE = 0.0;
+    SSPEC = make_1d(IBX);
+    XSPOC = make_1d(IBX);
+    YSPOC = make_1d(IBX);
+    QGAMM = make_1d(IBX);
+    QSPEC = make_2d(IBX, IPX);
+    QSPECP = make_2d(IBX, IPX);
+    ALGAM = 0.0;
+    CLGAM = 0.0;
+    CMGAM = 0.0;
+    ALQSP = make_1d(IPX);
+    CLQSP = make_1d(IPX);
+    CMQSP = make_1d(IPX);
+    QDOF0 = 0.0;
+    QDOF1 = 0.0;
+    QDOF2 = 0.0;
+    QDOF3 = 0.0;
+    CLSPEC = 0.0;
+    FFILT = 0.0;
 
     GAM = make_1d(IQX);
     GAMU = make_2d(IQX, 2);
@@ -229,6 +252,13 @@ XFoilState::XFoilState() {
     LQSPEC = false;
     LGSAME = false;
     LSCINI = false;
+    LCPXX = false;
+    LQVDES = false;
+    LQREFL = false;
+    LQSYM = false;
+    LQSLOP = false;
+    LQSPPL = false;
+    LIQSET = false;
     LIPAN = false;
     AWAKE = 0.0;
 
@@ -254,6 +284,14 @@ XFoilState::XFoilState() {
     NNAME = 0;
 
     HTARG = std::vector<std::vector<double>>();
+
+    IQ1 = 0;
+    IQ2 = 0;
+    NSP = 0;
+    NQSP = 0;
+    KQTARG = 0;
+    IACQSP = 0;
+    NC1 = 0;
 }
 
 XBlState::XBlState() {

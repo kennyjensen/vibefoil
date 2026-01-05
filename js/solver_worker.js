@@ -11,6 +11,7 @@ import { computeCoefficients, cpcalc, tecalc, pangen } from './xfoil.js';
 import { buildBlContext, bldump, cpdump, computeQvisFromUedg, specal, viscal } from './xoper.js';
 import { createMatrix } from './arrays.js';
 import { flap as applyFlap } from './xgdes.js';
+import { MIXED } from './xqdes.js';
 
 const nside = 123;
 const xx = new Float64Array(nside);
@@ -240,6 +241,289 @@ function buildPanelContext(nb, alphaRad, opts = {}) {
     }
   }
   return panelCtx;
+}
+
+function ensureQdesContext(ctx, nb) {
+  ctx.NSP = nb;
+  if (!ctx.SSPEC || ctx.SSPEC.length !== nb) {
+    ctx.SSPEC = new Float64Array(nb);
+  }
+  if (!ctx.QSPEC || ctx.QSPEC.length !== nb) {
+    ctx.QSPEC = createMatrix(nb, 1);
+  }
+  if (!ctx.QSPECP || ctx.QSPECP.length !== nb) {
+    ctx.QSPECP = createMatrix(nb, 1);
+  }
+  if (!ctx.Q || ctx.Q.length !== nb + 5) {
+    ctx.Q = createMatrix(nb + 5, nb + 5);
+  }
+  if (!ctx.DQ || ctx.DQ.length !== nb + 5) {
+    ctx.DQ = new Float64Array(nb + 5);
+  }
+  if (!ctx.W1 || ctx.W1.length !== nb) {
+    ctx.W1 = new Float64Array(nb);
+    ctx.W2 = new Float64Array(nb);
+    ctx.W3 = new Float64Array(nb);
+    ctx.W8 = new Float64Array(nb);
+  }
+  ctx.QDOF0 = 0.0;
+  ctx.QDOF1 = 0.0;
+  ctx.QDOF2 = 0.0;
+  ctx.QDOF3 = 0.0;
+  ctx.IQ1 = 0;
+  ctx.IQ2 = nb - 1;
+  ctx.LCPXX = false;
+  ctx.LQSLOP = false;
+  if (!Number.isFinite(ctx.PSIO)) {
+    ctx.PSIO = 0.0;
+  }
+}
+
+function cpToQspec(cp, qinf, minf) {
+  const minf2 = minf * minf;
+  const beta = Math.sqrt(Math.max(0.0, 1.0 - minf2));
+  const bfac = 0.5 * minf2 / (1.0 + beta);
+  const denom = 1.0 - bfac * cp;
+  const cpinc = denom !== 0.0 ? (cp * beta) / denom : cp;
+  const qterm = Math.max(0.0, 1.0 - cpinc);
+  return qinf * Math.sqrt(qterm);
+}
+
+function runQdesFromCp(cpSpec, niter = 10) {
+  if (!lastDumpState?.ctxPanel) {
+    throw new Error('No solved case available for QDES.');
+  }
+  const ctx = lastDumpState.ctxPanel;
+  const nb = ctx.N;
+  if (!Array.isArray(cpSpec) || cpSpec.length < nb) {
+    throw new Error('Cp specification length does not match panel count.');
+  }
+  ensureQdesContext(ctx, nb);
+
+  const alfa = ctx.ALFA ?? 0.0;
+  if (ctx.GAMU && ctx.GAMU.length > nb) {
+    ctx.PSIO = Math.cos(alfa) * ctx.GAMU[nb][0] + Math.sin(alfa) * ctx.GAMU[nb][1];
+  }
+
+  let sEnd = ctx.S[nb - 1] || 1.0;
+  const minf = Number.isFinite(ctx.MINF)
+    ? ctx.MINF
+    : (Number.isFinite(lastDumpState?.blCtx?.MINF) ? lastDumpState.blCtx.MINF : 0.0);
+  let leIdx = 0;
+  let leX = ctx.X[0];
+  for (let i = 1; i < nb; i += 1) {
+    if (ctx.X[i] < leX) {
+      leX = ctx.X[i];
+      leIdx = i;
+    }
+  }
+  const teX = 0.5 * (ctx.X[0] + ctx.X[nb - 1]);
+  const teY = 0.5 * (ctx.Y[0] + ctx.Y[nb - 1]);
+  const leY = ctx.Y[leIdx];
+  const chordDx = teX - leX;
+  const chordDy = teY - leY;
+  const chord2 = chordDx * chordDx + chordDy * chordDy || 1.0;
+  let iq1 = null;
+  let iq2 = null;
+  let xcMin = Infinity;
+  let xcMax = -Infinity;
+  let upperStart = null;
+  let upperEnd = null;
+  let lowerStart = null;
+  let lowerEnd = null;
+  const upperMinIdx = 0;
+  const upperMaxIdx = Math.max(0, leIdx - 1);
+  for (let i = 0; i <= leIdx; i += 1) {
+    const dx = ctx.X[i] - leX;
+    const dy = ctx.Y[i] - leY;
+    const xc = (dx * chordDx + dy * chordDy) / chord2;
+    xcMin = Math.min(xcMin, xc);
+    xcMax = Math.max(xcMax, xc);
+    if (i >= upperMinIdx && i <= upperMaxIdx) {
+      if (upperStart == null) upperStart = i;
+      upperEnd = i;
+    }
+  }
+  const lowerMinIdx = Math.min(nb - 1, leIdx + 1);
+  const lowerMaxIdx = nb - 1;
+  for (let i = leIdx; i < nb; i += 1) {
+    const dx = ctx.X[i] - leX;
+    const dy = ctx.Y[i] - leY;
+    const xc = (dx * chordDx + dy * chordDy) / chord2;
+    xcMin = Math.min(xcMin, xc);
+    xcMax = Math.max(xcMax, xc);
+    if (i >= lowerMinIdx && i <= lowerMaxIdx) {
+      if (lowerStart == null) lowerStart = i;
+      lowerEnd = i;
+    }
+  }
+  const hasUpper = upperStart != null && upperEnd != null;
+  const hasLower = lowerStart != null && lowerEnd != null;
+  if (hasUpper) {
+    iq1 = upperStart;
+    iq2 = upperEnd;
+  } else if (hasLower) {
+    iq1 = lowerStart;
+    iq2 = lowerEnd;
+  } else {
+    iq1 = 0;
+    iq2 = nb - 1;
+  }
+  ctx.IQ1 = iq1;
+  ctx.IQ2 = iq2;
+  let cpMin = Infinity;
+  let cpMax = -Infinity;
+  let qMin = Infinity;
+  let qMax = -Infinity;
+  let qDeltaMax = 0.0;
+  let qBaseMin = Infinity;
+  let qBaseMax = -Infinity;
+  const useQinv = !!(ctx.QINV && ctx.QINV.length >= nb + 1);
+  const initBase = new Float64Array(nb);
+  for (let i = 0; i < nb; i += 1) {
+    initBase[i] = useQinv ? ctx.QINV[i + 1] : ctx.GAM[i];
+  }
+
+  const applyQspecForSegment = (startIdx, endIdx, baseSource, passLabel) => {
+    sEnd = ctx.S[nb - 1] || 1.0;
+    ctx.IQ1 = startIdx;
+    ctx.IQ2 = endIdx;
+    ctx.QDOF0 = 0.0;
+    ctx.QDOF1 = 0.0;
+    ctx.QDOF2 = 0.0;
+    ctx.QDOF3 = 0.0;
+    for (let i = 0; i < nb; i += 1) {
+      ctx.SSPEC[i] = ctx.S[i] / sEnd;
+      const base = baseSource[i];
+      const sign = base >= 0.0 ? 1.0 : -1.0;
+      qBaseMin = Math.min(qBaseMin, base);
+      qBaseMax = Math.max(qBaseMax, base);
+      cpMin = Math.min(cpMin, cpSpec[i]);
+      cpMax = Math.max(cpMax, cpSpec[i]);
+      const qmag = cpToQspec(cpSpec[i], ctx.QINF ?? 1.0, minf);
+      qMin = Math.min(qMin, sign * qmag);
+      qMax = Math.max(qMax, sign * qmag);
+      const target = sign * qmag;
+      qDeltaMax = Math.max(qDeltaMax, Math.abs(target - base));
+      ctx.QSPEC[i][0] = base;
+      if (i >= startIdx && i <= endIdx) {
+        ctx.QSPEC[i][0] = target;
+      }
+      ctx.GAM[i] = base;
+    }
+    ctx.QDES_DEBUG = true;
+    ctx.QDES_PASS = passLabel;
+    MIXED(ctx, 0, niter);
+    ctx.QDES_DEBUG = false;
+  };
+
+  console.log('[QDES] start', {
+    nb,
+    niter,
+    alfa,
+    minf,
+    qinf: ctx.QINF ?? 1.0,
+    psio: ctx.PSIO,
+    cpMin,
+    cpMax,
+    useQinv,
+    qBaseMin,
+    qBaseMax,
+    qMin,
+    qMax,
+    qDeltaMax,
+    iq1: ctx.IQ1,
+    iq2: ctx.IQ2,
+    leIdx,
+    upperStart,
+    upperEnd,
+    lowerStart,
+    lowerEnd,
+    xcMin,
+    xcMax,
+  });
+
+  ctx.QDES_MAXSTEP = 0.01;
+  if (hasUpper && hasLower) {
+    applyQspecForSegment(upperStart, upperEnd, initBase, 'upper');
+    const baseAfterUpper = new Float64Array(nb);
+    for (let i = 0; i < nb; i += 1) {
+      baseAfterUpper[i] = ctx.GAM[i];
+    }
+    applyQspecForSegment(lowerStart, lowerEnd, baseAfterUpper, 'lower');
+  } else if (hasUpper) {
+    applyQspecForSegment(upperStart, upperEnd, initBase, 'upper');
+  } else if (hasLower) {
+    applyQspecForSegment(lowerStart, lowerEnd, initBase, 'lower');
+  } else {
+    applyQspecForSegment(0, nb - 1, initBase, 'full');
+  }
+
+  const qtemp = new Float64Array(nb + 1);
+  for (let i = 0; i < nb; i += 1) {
+    qtemp[i + 1] = ctx.GAM[i];
+  }
+  const cpAfter = cpcalc(qtemp, ctx.QINF ?? 1.0, minf);
+  let cpErrMax = 0.0;
+  let cpErrSum = 0.0;
+  for (let i = 0; i < nb; i += 1) {
+    const err = (cpAfter[i + 1] ?? 0.0) - cpSpec[i];
+    cpErrMax = Math.max(cpErrMax, Math.abs(err));
+    cpErrSum += err * err;
+  }
+  const cpErrRms = Math.sqrt(cpErrSum / Math.max(1, nb));
+
+  let nanCount = 0;
+  let xMin = Infinity;
+  let xMax = -Infinity;
+  let yMin = Infinity;
+  let yMax = -Infinity;
+  let gamMin = Infinity;
+  let gamMax = -Infinity;
+  for (let i = 0; i < nb; i += 1) {
+    const xi = ctx.X[i];
+    const yi = ctx.Y[i];
+    const gi = ctx.GAM[i];
+    if (!Number.isFinite(xi) || !Number.isFinite(yi) || !Number.isFinite(gi)) {
+      nanCount += 1;
+      continue;
+    }
+    xMin = Math.min(xMin, xi);
+    xMax = Math.max(xMax, xi);
+    yMin = Math.min(yMin, yi);
+    yMax = Math.max(yMax, yi);
+    gamMin = Math.min(gamMin, gi);
+    gamMax = Math.max(gamMax, gi);
+  }
+
+  return {
+    nb,
+    xb: ctx.X.slice(0, nb),
+    yb: ctx.Y.slice(0, nb),
+    debug: {
+      cpMin,
+      cpMax,
+      qBaseMin,
+      qBaseMax,
+      qMin,
+      qMax,
+      qDeltaMax,
+      psio: ctx.PSIO,
+      qdof: [ctx.QDOF0, ctx.QDOF1, ctx.QDOF2, ctx.QDOF3],
+      cl: ctx.CL,
+      cm: ctx.CM,
+      cdp: ctx.CDP,
+      nanCount,
+      xMin,
+      xMax,
+      yMin,
+      yMax,
+      gamMin,
+      gamMax,
+      cpErrRms,
+      cpErrMax,
+    },
+  };
 }
 
 function cloneFloat64Array(arr) {
@@ -891,10 +1175,8 @@ function computeCase(settings) {
     }
 
     const cpInvAll = [];
-    if (viscous && blCtx) {
-      for (let i = 1; i <= total; i += 1) {
-        cpInvAll.push({ x: ctxPanel.X[i - 1], y: ctxPanel.Y[i - 1], cp: cpInv[i] });
-      }
+    for (let i = 1; i <= nb; i += 1) {
+      cpInvAll.push({ x: ctxPanel.X[i - 1], y: ctxPanel.Y[i - 1], cp: cpInv[i] });
     }
 
     let lePt = { x: ctxPanel.XLE, y: ctxPanel.YLE };
@@ -1042,6 +1324,8 @@ self.onmessage = (event) => {
     action,
     kind,
     kdelim,
+    cpSpec,
+    niter,
   } = event.data;
 
   if (action === 'dump') {
@@ -1052,6 +1336,22 @@ self.onmessage = (event) => {
       self.postMessage({
         requestId,
         type: 'dump',
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+        errorStack: err instanceof Error ? err.stack : null,
+      });
+    }
+    return;
+  }
+
+  if (action === 'qdes') {
+    try {
+      const result = runQdesFromCp(cpSpec, Number.isFinite(niter) ? niter : 10);
+      self.postMessage({ requestId, type: 'qdes', ok: true, ...result });
+    } catch (err) {
+      self.postMessage({
+        requestId,
+        type: 'qdes',
         ok: false,
         error: err instanceof Error ? err.message : String(err),
         errorStack: err instanceof Error ? err.stack : null,

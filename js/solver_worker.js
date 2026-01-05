@@ -331,8 +331,9 @@ function runQdesFromCp(cpSpec, niter = 10) {
   let upperEnd = null;
   let lowerStart = null;
   let lowerEnd = null;
-  const upperMinIdx = 0;
-  const upperMaxIdx = Math.max(0, leIdx - 1);
+  const guard = 1;
+  const upperMinIdx = Math.min(leIdx, guard);
+  const upperMaxIdx = Math.max(upperMinIdx, leIdx - guard);
   for (let i = 0; i <= leIdx; i += 1) {
     const dx = ctx.X[i] - leX;
     const dy = ctx.Y[i] - leY;
@@ -344,8 +345,8 @@ function runQdesFromCp(cpSpec, niter = 10) {
       upperEnd = i;
     }
   }
-  const lowerMinIdx = Math.min(nb - 1, leIdx + 1);
-  const lowerMaxIdx = nb - 1;
+  const lowerMaxIdx = Math.max(leIdx, nb - 1 - guard);
+  const lowerMinIdx = Math.min(lowerMaxIdx, leIdx + guard);
   for (let i = leIdx; i < nb; i += 1) {
     const dx = ctx.X[i] - leX;
     const dy = ctx.Y[i] - leY;

@@ -1025,8 +1025,10 @@ function thickness6(family, toc, x, y, yp) {
   } = cached;
 
   const tol = 1.0e-6;
+  const splineFailures = [];
   for (let i = 0; i < x.length; i += 1) {
     const { xbar, errCode } = splineZero(sLower, xLower, xpLower, x[i], tol);
+    if (errCode !== 0) splineFailures.push(i);
     const sx = errCode === 0 ? xbar : sLower[0];
     const xRes = pcLookup(sLower, xLower, xpLower, sx);
     const yRes = pcLookup(sLower, yLower, ypLower, sx);
@@ -1034,6 +1036,11 @@ function thickness6(family, toc, x, y, yp) {
     if (yp) {
       yp[i] = xRes.fp === 0.0 ? 0.0 : yRes.fp / xRes.fp;
     }
+  }
+  if (splineFailures.length > 0) {
+    console.warn(
+      `6-series splineZero failures (family=${family}, toc=${toc.toFixed(4)}): indices=${splineFailures.join(',')}`
+    );
   }
 }
 
@@ -1215,6 +1222,15 @@ function naca6(config, xx, yt, yc, nside, xb, yb) {
 
   const { xupper, yupper, xlower, ylower } = combineThicknessAndCamber(xx, yt, ym, ymp);
 
+  const crossoverIdx = [];
+  const crossEps = 1.0e-12;
+  for (let i = 0; i < nside; i += 1) {
+    if (yupper[i] <= ylower[i] - crossEps) crossoverIdx.push(i);
+  }
+  if (crossoverIdx.length > 0) {
+    console.warn(`6-series upper/lower crossover indices: ${crossoverIdx.join(',')}`);
+  }
+
   let ib = 0;
   for (let i = nside - 1; i >= 0; i -= 1) {
     xb[ib] = xupper[i];
@@ -1228,6 +1244,16 @@ function naca6(config, xx, yt, yc, nside, xb, yb) {
   }
 
   const nb = ib;
+  const zeroPanels = [];
+  const zeroEps2 = 1.0e-24;
+  for (let i = 1; i < nb; i += 1) {
+    const dx = xb[i] - xb[i - 1];
+    const dy = yb[i] - yb[i - 1];
+    if (dx * dx + dy * dy <= zeroEps2) zeroPanels.push(i - 1);
+  }
+  if (zeroPanels.length > 0) {
+    console.warn(`6-series zero-length panels at indices: ${zeroPanels.join(',')}`);
+  }
   const name = `NACA ${profile}-${clCode}${tocCode}`;
   return { nb, name, ok: true };
 }

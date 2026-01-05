@@ -9,7 +9,9 @@ const cpCtx = cpCanvas.getContext('2d');
 const downloadCpButton = document.getElementById('downloadCp');
 const downloadBlButton = document.getElementById('downloadBl');
 const editAirfoilButton = document.getElementById('editAirfoil');
+const smoothAirfoilButton = document.getElementById('smoothAirfoil');
 const editCpButton = document.getElementById('editCp');
+const smoothCpButton = document.getElementById('smoothCp');
 const airfoilFrame = document.getElementById('airfoilFrame');
 const alphaCanvas = document.getElementById('alphaPlot');
 const alphaCtx = alphaCanvas ? alphaCanvas.getContext('2d') : null;
@@ -492,7 +494,7 @@ function applyEditedAirfoil() {
   for (let i = 0; i < lastAirfoilNb; i += 1) {
     coords.push({ x: xb[i], y: yb[i] });
   }
-  const name = currentAirfoilName || 'Edited Airfoil';
+  const name = markAirfoilModified(currentAirfoilName || 'Edited Airfoil');
   loadCustomAirfoil({ name, coords });
   setSourceToCustom();
   update();
@@ -518,10 +520,72 @@ async function applyCpEdit() {
   for (let i = 0; i < result.nb; i += 1) {
     coords.push({ x: result.xb[i], y: result.yb[i] });
   }
-  const name = currentAirfoilName || 'QDES Airfoil';
+  const name = markAirfoilModified(currentAirfoilName || 'QDES Airfoil');
   loadCustomAirfoil({ name, coords });
   setSourceToCustom();
   update();
+}
+
+function markAirfoilModified(name) {
+  const base = String(name || 'Modified Airfoil').trim();
+  if (base.toLowerCase().endsWith('-mod')) return base;
+  return `${base}-mod`;
+}
+
+function smoothCpEditPoints() {
+  if (!cpEditPoints || cpEditPoints.length < 3) return;
+  const smoothSide = (side) => {
+    const idxs = [];
+    for (let i = 0; i < cpEditPoints.length; i += 1) {
+      if (cpEditPoints[i].side === side) idxs.push(i);
+    }
+    if (idxs.length < 3) return;
+    const nextVals = new Array(idxs.length);
+    for (let i = 0; i < idxs.length; i += 1) {
+      const idx = idxs[i];
+      if (i === 0 || i === idxs.length - 1) {
+        nextVals[i] = cpEditPoints[idx].cp;
+        continue;
+      }
+      const prev = cpEditPoints[idxs[i - 1]].cp;
+      const cur = cpEditPoints[idx].cp;
+      const next = cpEditPoints[idxs[i + 1]].cp;
+      nextVals[i] = (prev + 2.0 * cur + next) * 0.25;
+    }
+    for (let i = 0; i < idxs.length; i += 1) {
+      cpEditPoints[idxs[i]].cp = nextVals[i];
+    }
+  };
+  smoothSide('upper');
+  smoothSide('lower');
+  renderCpPlotFromCache();
+  applyCpEdit();
+}
+
+function smoothAirfoilGeometry() {
+  if (!lastAirfoilNb) return;
+  const nb = lastAirfoilNb;
+  let leIdx = 0;
+  let minX = xb[0];
+  for (let i = 1; i < nb; i += 1) {
+    if (xb[i] < minX) {
+      minX = xb[i];
+      leIdx = i;
+    }
+  }
+  const nextX = xb.slice(0, nb);
+  const nextY = yb.slice(0, nb);
+  for (let i = 1; i < nb - 1; i += 1) {
+    if (i === leIdx) continue;
+    nextX[i] = (xb[i - 1] + 2.0 * xb[i] + xb[i + 1]) * 0.25;
+    nextY[i] = (yb[i - 1] + 2.0 * yb[i] + yb[i + 1]) * 0.25;
+  }
+  for (let i = 1; i < nb - 1; i += 1) {
+    xb[i] = nextX[i];
+    yb[i] = nextY[i];
+  }
+  renderEditAirfoil();
+  applyEditedAirfoil();
 }
 
 function updateHoverBox(point) {
@@ -3239,6 +3303,13 @@ if (editAirfoilButton) {
   });
 }
 
+if (smoothAirfoilButton) {
+  smoothAirfoilButton.addEventListener('click', () => {
+    if (!editMode) return;
+    smoothAirfoilGeometry();
+  });
+}
+
 if (editCpButton) {
   editCpButton.addEventListener('click', () => {
     cpEditMode = !cpEditMode;
@@ -3249,6 +3320,13 @@ if (editCpButton) {
     }
     rebuildCpEditPoints(lastCpPlot?.nb ?? 0, lastSolverPayload?.cpData ?? null);
     renderCpPlotFromCache();
+  });
+}
+
+if (smoothCpButton) {
+  smoothCpButton.addEventListener('click', () => {
+    if (!cpEditMode) return;
+    smoothCpEditPoints();
   });
 }
 

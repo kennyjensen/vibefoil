@@ -439,14 +439,38 @@
       display: block;
     }
 
+    .plot-edit svg.stroke {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2px;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
     .plot-edit.right {
       left: auto;
       right: 64px;
     }
 
+    .plot-edit.right.second {
+      right: 112px;
+    }
+
     .plot-edit.bottom-right {
       top: auto;
       bottom: 12px;
+    }
+
+    .plot-smooth {
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.96);
+    }
+
+    .plot-frame.editing .plot-smooth {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0);
     }
 
     .plot-frame.editing canvas {
@@ -870,6 +894,12 @@
       <div class="plot-stack">
         <div class="plot-frame" id="airfoilFrame">
           <canvas id="plot" width="900" height="500"></canvas>
+          <button id="smoothAirfoil" class="plot-edit plot-smooth right second bottom-right" type="button" title="Smooth airfoil" aria-label="Smooth airfoil">
+            <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 9c3-4 6-4 9 0s6 4 9 0" />
+              <path d="M3 15c3-4 6-4 9 0s6 4 9 0" />
+            </svg>
+          </button>
           <button id="editAirfoil" class="plot-edit right bottom-right" type="button" title="Edit airfoil" aria-label="Edit airfoil" aria-pressed="false">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path fill="currentColor" d="M16.9 3.2a1.5 1.5 0 0 1 2.1 0l1.8 1.8a1.5 1.5 0 0 1 0 2.1l-9.9 9.9-3.6.7.7-3.6 9.9-9.9zM4 20h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2z"/>
@@ -882,6 +912,12 @@
           </button>
         </div>
         <div class="plot-frame cp-frame">
+          <button id="smoothCp" class="plot-edit plot-smooth right second" type="button" title="Smooth Cp" aria-label="Smooth Cp">
+            <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 9c3-4 6-4 9 0s6 4 9 0" />
+              <path d="M3 15c3-4 6-4 9 0s6 4 9 0" />
+            </svg>
+          </button>
           <button id="editCp" class="plot-edit right" type="button" title="Edit Cp" aria-label="Edit Cp" aria-pressed="false">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path fill="currentColor" d="M16.9 3.2a1.5 1.5 0 0 1 2.1 0l1.8 1.8a1.5 1.5 0 0 1 0 2.1l-9.9 9.9-3.6.7.7-3.6 9.9-9.9zM4 20h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2z"/>

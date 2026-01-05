@@ -80,6 +80,10 @@ let cpEditHoverIndex = null;
 let cpEditPoints = null;
 let cpPanActive = false;
 let cpPanStart = null;
+let airfoilTouchTimer = null;
+let cpTouchTimer = null;
+let touchAirfoilDrag = false;
+let touchCpDrag = false;
 let lastAirfoilBounds = null;
 let lastAirfoilNb = 0;
 let airfoilZoom = 1.0;
@@ -438,6 +442,19 @@ function drawAirfoilNodes(nb, bounds, activeIndex = null, hoverIndex = null) {
     }
   }
   ctx.restore();
+}
+
+function isTouchInput() {
+  return ('ontouchstart' in window) || (navigator.maxTouchPoints ?? 0) > 0;
+}
+
+function getTouchPoint(event, rect) {
+  if (!event.touches || event.touches.length === 0) return null;
+  const touch = event.touches[0];
+  return {
+    x: touch.clientX - rect.left,
+    y: touch.clientY - rect.top,
+  };
 }
 
 function renderEditAirfoil() {
@@ -2922,6 +2939,55 @@ if (cpCanvas) {
     cpEditHoverIndex = null;
     applyCpEdit();
   });
+
+  if (isTouchInput()) {
+    cpCanvas.addEventListener('touchstart', (event) => {
+      if (!cpEditMode || !lastCpPlot?.mapping) return;
+      const rect = cpCanvas.getBoundingClientRect();
+      const point = getTouchPoint(event, rect);
+      if (!point) return;
+      const idx = findClosestCpEditPoint(point.x, point.y, lastCpPlot.mapping, 18);
+      if (idx == null) return;
+      event.preventDefault();
+      cpEditHoverIndex = idx;
+      renderCpPlotFromCache();
+      if (cpTouchTimer) clearTimeout(cpTouchTimer);
+      cpTouchTimer = setTimeout(() => {
+        cpEditDragIndex = idx;
+        touchCpDrag = true;
+        renderCpPlotFromCache();
+      }, 250);
+    }, { passive: false });
+
+    cpCanvas.addEventListener('touchmove', (event) => {
+      if (!cpEditMode || !lastCpPlot?.mapping) return;
+      const rect = cpCanvas.getBoundingClientRect();
+      const point = getTouchPoint(event, rect);
+      if (!point) return;
+      if (touchCpDrag && cpEditDragIndex != null) {
+        event.preventDefault();
+        const cpVal = screenToCpValue(point.y, lastCpPlot.mapping);
+        if (Number.isFinite(cpVal)) {
+          cpEditPoints[cpEditDragIndex].cp = cpVal;
+        }
+        renderCpPlotFromCache();
+      }
+    }, { passive: false });
+
+    cpCanvas.addEventListener('touchend', () => {
+      if (cpTouchTimer) {
+        clearTimeout(cpTouchTimer);
+        cpTouchTimer = null;
+      }
+      if (!cpEditMode) return;
+      if (touchCpDrag && cpEditDragIndex != null) {
+        cpEditDragIndex = null;
+        cpEditHoverIndex = null;
+        touchCpDrag = false;
+        applyCpEdit();
+      }
+    });
+  }
 }
 
 if (alphaCanvas) {
@@ -3261,6 +3327,54 @@ if (canvas) {
       renderEditAirfoil();
     }
   });
+
+  if (isTouchInput()) {
+    canvas.addEventListener('touchstart', (event) => {
+      if (!editMode || !lastAirfoilBounds) return;
+      const rect = canvas.getBoundingClientRect();
+      const point = getTouchPoint(event, rect);
+      if (!point) return;
+      const idx = findNearestNodeIndex(lastAirfoilNb, lastAirfoilBounds, point.x, point.y, 18);
+      if (idx == null) return;
+      event.preventDefault();
+      editHoverIndex = idx;
+      renderEditAirfoil();
+      if (airfoilTouchTimer) clearTimeout(airfoilTouchTimer);
+      airfoilTouchTimer = setTimeout(() => {
+        editDragIndex = idx;
+        touchAirfoilDrag = true;
+        renderEditAirfoil();
+      }, 250);
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (event) => {
+      if (!editMode || !lastAirfoilBounds) return;
+      const rect = canvas.getBoundingClientRect();
+      const point = getTouchPoint(event, rect);
+      if (!point) return;
+      if (touchAirfoilDrag && editDragIndex != null) {
+        event.preventDefault();
+        const { x, y } = canvasToWorld(point.x, point.y, lastAirfoilBounds);
+        xb[editDragIndex] = x;
+        yb[editDragIndex] = y;
+        renderEditAirfoil();
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', () => {
+      if (airfoilTouchTimer) {
+        clearTimeout(airfoilTouchTimer);
+        airfoilTouchTimer = null;
+      }
+      if (!editMode) return;
+      if (touchAirfoilDrag && editDragIndex != null) {
+        editDragIndex = null;
+        editHoverIndex = null;
+        touchAirfoilDrag = false;
+        applyEditedAirfoil();
+      }
+    });
+  }
 }
 
 const initSource = sourceRadios.find((item) => item.checked)?.value || 'naca';

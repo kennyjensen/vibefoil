@@ -457,11 +457,11 @@
 
     .plot-edit.right {
       left: auto;
-      right: 64px;
+      right: 60px;
     }
 
     .plot-edit.right.second {
-      right: 112px;
+      right: 108px;
     }
 
     .plot-edit.bottom-right {
@@ -648,6 +648,18 @@
         min-height: 190px;
       }
 
+      .plot-download {
+        display: none;
+      }
+
+      .plot-edit.right {
+        right: 12px;
+      }
+
+      .plot-edit.right.second {
+        right: calc(12px + 36px + 12px);
+      }
+
       .side-plots {
         height: calc(100vh - 190px);
         min-height: 0;
@@ -809,7 +821,7 @@
         <label for="viscous">
           <span>Boundary Layer</span>
         </label>
-        <label><input id="viscous" type="checkbox" /> Viscous mode</label>
+        <label><input id="viscous" type="checkbox" checked /> Viscous mode</label>
         <div class="viscous-row">
           <label for="mach">Mach</label>
           <input id="mach" type="number" min="0" max="0.99" step="0.01" value="0.00" />

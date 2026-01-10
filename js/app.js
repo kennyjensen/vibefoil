@@ -3284,6 +3284,16 @@ function updatePageIndicator() {
   setActivePageButton(index);
 }
 
+function setDefaultMobileTab() {
+  if (!layoutPanel) return;
+  if (!window.matchMedia('(max-width: 900px)').matches) return;
+  const pageWidth = layoutPanel.clientWidth;
+  if (!pageWidth) return;
+  const defaultIndex = 1;
+  layoutPanel.scrollLeft = pageWidth * defaultIndex;
+  setActivePageButton(defaultIndex);
+}
+
 if (layoutPanel && pageButtons.length > 0) {
   let scrollFrame = null;
   layoutPanel.addEventListener('scroll', () => {
@@ -3304,6 +3314,10 @@ if (layoutPanel && pageButtons.length > 0) {
       });
       setActivePageButton(index);
     });
+  });
+
+  window.requestAnimationFrame(() => {
+    setDefaultMobileTab();
   });
 }
 

@@ -56,6 +56,15 @@
       letter-spacing: 0.5px;
     }
 
+    h1 a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    h1 a:visited {
+      color: inherit;
+    }
+
     .subtitle {
       color: var(--ink-soft);
       margin: 0;
@@ -675,7 +684,7 @@
 </head>
 <body>
   <header>
-    <h1>Vibefoil</h1>
+    <h1><a href="https://github.com/kennyjensen/vibefoil" target="_blank" rel="noopener">Vibefoil</a></h1>
     <p class="subtitle">An interactive airfoil explorer based on <a href="https://web.mit.edu/drela/Public/web/xfoil/" target="_blank" rel="noopener">XFOIL</a>.</p>
   </header>
 
@@ -917,6 +926,7 @@
           <button id="addRunCase" type="button">Add run case</button>
         </div>
       </div>
+      <p class="subtitle">Please submit bugs and feature requests <a href="https://github.com/kennyjensen/vibefoil/issues" target="_blank" rel="noopener">here</a>.</p>
     </div>
 
     <div class="panel plot-wrap">

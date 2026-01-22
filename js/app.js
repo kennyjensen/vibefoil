@@ -178,6 +178,8 @@ let solverWorker = null;
 let solverRequestId = 0;
 let latestSolverId = 0;
 let solverInFlight = false;
+let queuedUpdate = false;
+let queuedUpdateResolvers = [];
 const pendingSolves = new Map();
 const pendingDumps = new Map();
 const pendingQdes = new Map();
@@ -2519,6 +2521,23 @@ function resolvePendingDump(id, payload) {
   }
 }
 
+function queueUpdatePromise() {
+  queuedUpdate = true;
+  return new Promise((resolve) => {
+    queuedUpdateResolvers.push(resolve);
+  });
+}
+
+function flushQueuedUpdate() {
+  if (!queuedUpdate) return;
+  const resolves = queuedUpdateResolvers.slice();
+  queuedUpdateResolvers = [];
+  queuedUpdate = false;
+  update().then((payload) => {
+    resolves.forEach((resolve) => resolve(payload));
+  });
+}
+
 function cancelPendingDumps() {
   pendingDumps.forEach((resolve) => resolve({ canceled: true }));
   pendingDumps.clear();
@@ -2546,12 +2565,14 @@ function spawnSolverWorker() {
       if (payload.errorStack) {
         console.warn(payload.errorStack);
       }
+      flushQueuedUpdate();
       return;
     }
     if (payload.reuseState) {
       reuseState = payload.reuseState;
     }
     applySolverResult(payload);
+    flushQueuedUpdate();
   };
   solverWorker.onerror = (event) => {
     solverInFlight = false;
@@ -2559,6 +2580,7 @@ function spawnSolverWorker() {
     cancelPendingQdes();
     cancelPendingDumps();
     console.warn('Solver worker error:', event);
+    flushQueuedUpdate();
   };
   solverWorker.onmessageerror = (event) => {
     solverInFlight = false;
@@ -2566,6 +2588,7 @@ function spawnSolverWorker() {
     cancelPendingQdes();
     cancelPendingDumps();
     console.warn('Solver worker message error:', event);
+    flushQueuedUpdate();
   };
 }
 
@@ -2759,12 +2782,8 @@ function update() {
   if (!solverWorker) {
     spawnSolverWorker();
   }
-  if (solverInFlight && solverWorker) {
-    solverWorker.terminate();
-    cancelPendingSolves();
-    cancelPendingDumps();
-    spawnSolverWorker();
-    solverInFlight = false;
+  if (solverInFlight) {
+    return queueUpdatePromise();
   }
 
   solverRequestId += 1;

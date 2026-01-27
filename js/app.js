@@ -1,4 +1,5 @@
 import { buildBlContext, computeQvisFromUedg, specal, viscal } from './xoper.js';
+import { computeAlphaAxisRanges } from './alpha_axes.js';
 
 // High-level orchestrator for the XFOIL port: UI, geometry generation,
 // inviscid panel solve, viscous BL coupling, and plotting.
@@ -73,6 +74,12 @@ let polarPlotState = null;
 let alphaHover = null;
 let polarHover = null;
 let activeHoverSource = null;
+const alphaLegendVisibility = {
+  cl: true,
+  cd: true,
+  cm: true,
+  ld: false,
+};
 let editMode = false;
 let editDragIndex = null;
 let editHoverIndex = null;
@@ -294,6 +301,41 @@ function drawSubLabel(ctx2d, base, sub, x, y) {
   ctx2d.font = '10px Consolas, "Courier New", monospace';
   ctx2d.fillText(sub, x + baseWidth + 1, y + 4);
   ctx2d.restore();
+  ctx2d.font = baseFont;
+}
+
+function measureSubLabelWidth(ctx2d, base, sub) {
+  const baseFont = ctx2d.font;
+  const baseWidth = ctx2d.measureText(base).width;
+  ctx2d.save();
+  ctx2d.font = '10px Consolas, "Courier New", monospace';
+  const subWidth = ctx2d.measureText(sub).width;
+  ctx2d.restore();
+  ctx2d.font = baseFont;
+  return baseWidth + 1 + subWidth;
+}
+
+// Ratio labeling for C_L/C_D in legends and axis tags.
+function drawRatioLabel(ctx2d, x, y) {
+  const baseFont = ctx2d.font;
+  const subFont = '10px Consolas, "Courier New", monospace';
+  const drawTerm = (sub, px) => {
+    ctx2d.fillText('C', px, y);
+    const baseWidth = ctx2d.measureText('C').width;
+    ctx2d.save();
+    ctx2d.font = subFont;
+    ctx2d.fillText(sub, px + baseWidth + 1, y + 4);
+    const subWidth = ctx2d.measureText(sub).width;
+    ctx2d.restore();
+    ctx2d.font = baseFont;
+    return baseWidth + 1 + subWidth;
+  };
+  let cursor = x;
+  cursor += drawTerm('L', cursor);
+  ctx2d.fillText('/', cursor + 2, y);
+  const slashWidth = ctx2d.measureText('/').width;
+  cursor += slashWidth + 6;
+  drawTerm('D', cursor);
   ctx2d.font = baseFont;
 }
 
@@ -937,7 +979,7 @@ function drawAlphaSweepPlot() {
   const h = alphaRect.height;
   const left = 58;
   const right = 72;
-  const top = 18;
+  const top = 30;
   const bottom = 36;
   const plotW = w - left - right;
   const plotH = h - top - bottom;
@@ -951,47 +993,19 @@ function drawAlphaSweepPlot() {
   }
   const baseX = { min: xmin, max: xmax };
 
-  const clcmVals = allPoints.flatMap((p) => [p.cl, p.cm]).filter(Number.isFinite);
-  const cdVals = allPoints.map((p) => p.cd).filter(Number.isFinite);
-  let yminL = Math.min(...clcmVals);
-  let ymaxL = Math.max(...clcmVals);
-  if (!Number.isFinite(yminL) || !Number.isFinite(ymaxL)) {
-    yminL = -1.0;
-    ymaxL = 1.0;
-  } else if (yminL === ymaxL) {
-    yminL -= 0.1;
-    ymaxL += 0.1;
-  }
-  const padL = 0.12 * (ymaxL - yminL || 1.0);
-  yminL -= padL;
-  ymaxL += padL;
-  yminL = Math.max(yminL, -2.0);
-  ymaxL = Math.min(ymaxL, 2.0);
-  const baseYL = { min: yminL, max: ymaxL };
-
-  let yminR = Math.min(...cdVals);
-  let ymaxR = Math.max(...cdVals);
-  if (!Number.isFinite(yminR) || !Number.isFinite(ymaxR)) {
-    yminR = -0.1;
-    ymaxR = 0.1;
-  } else if (yminR === ymaxR) {
-    yminR -= 0.01;
-    ymaxR += 0.01;
-  }
-  const padR = 0.2 * (ymaxR - yminR || 1.0);
-  yminR -= padR;
-  ymaxR += padR;
-  yminR = Math.max(yminR, -2.0);
-  ymaxR = Math.min(ymaxR, 2.0);
-  const baseYR = { min: yminR, max: ymaxR };
-  if (yminR <= 0.0 && ymaxR >= 0.0) {
-    const zeroLeft = (0.0 - yminL) / (ymaxL - yminL);
-    const zeroRight = (0.0 - yminR) / (ymaxR - yminR);
-    const span = ymaxR - yminR || 1.0;
-    const shift = (zeroRight - zeroLeft) * span;
-    yminR += shift;
-    ymaxR += shift;
-  }
+  let {
+    yminL,
+    ymaxL,
+    yminR,
+    ymaxR,
+    hasLeftSeries,
+    hasRightSeries,
+  } = computeAlphaAxisRanges({
+    points: allPoints,
+    visibility: alphaLegendVisibility,
+    zoom: alphaZoom,
+    zoomCenter: alphaZoomCenter,
+  });
 
   const zoomX = applyZoomToRange(
     xmin,
@@ -1003,26 +1017,6 @@ function drawAlphaSweepPlot() {
   );
   xmin = zoomX.min;
   xmax = zoomX.max;
-  const zoomYL = applyZoomToRange(
-    yminL,
-    ymaxL,
-    alphaZoom,
-    baseYL.min,
-    baseYL.max,
-    alphaZoomCenter?.yL,
-  );
-  yminL = zoomYL.min;
-  ymaxL = zoomYL.max;
-  const zoomYR = applyZoomToRange(
-    yminR,
-    ymaxR,
-    alphaZoom,
-    baseYR.min,
-    baseYR.max,
-    alphaZoomCenter?.yR,
-  );
-  yminR = zoomYR.min;
-  ymaxR = zoomYR.max;
 
   const xToPx = (x) => left + ((x - xmin) / (xmax - xmin)) * plotW;
   const yToPyLeft = (y) => top + (1.0 - (y - yminL) / (ymaxL - yminL)) * plotH;
@@ -1037,15 +1031,50 @@ function drawAlphaSweepPlot() {
   alphaCtx.lineTo(left + plotW, top + plotH);
   alphaCtx.stroke();
 
-  alphaCtx.fillStyle = 'rgba(230, 236, 244, 0.85)';
+  const axisActiveColor = 'rgba(230, 236, 244, 0.85)';
+  const axisInactiveColor = 'rgba(154, 160, 168, 0.65)';
+  const leftAxisActive = alphaLegendVisibility.cl || alphaLegendVisibility.cm;
+  const rightCdActive = alphaLegendVisibility.cd;
+  const rightLdActive = alphaLegendVisibility.ld;
+  const rightAxisActive = rightCdActive || rightLdActive;
+  const xAxisActive = leftAxisActive || rightAxisActive;
+  if (rightAxisActive) {
+    alphaCtx.beginPath();
+    alphaCtx.moveTo(left + plotW, top);
+    alphaCtx.lineTo(left + plotW, top + plotH);
+    alphaCtx.stroke();
+  }
+
   alphaCtx.font = '13px Consolas, "Courier New", monospace';
-  drawSubLabel(alphaCtx, 'C', 'L', 12, 8);
-  drawSubLabel(alphaCtx, 'C', 'M', 12, 22);
+  alphaCtx.fillStyle = leftAxisActive ? axisActiveColor : axisInactiveColor;
+  const leftLabelY = 12;
+  const leftLabelX = 12;
+  if (alphaLegendVisibility.cl && alphaLegendVisibility.cm) {
+    drawSubLabel(alphaCtx, 'C', 'L', leftLabelX, leftLabelY);
+    const clWidth = measureSubLabelWidth(alphaCtx, 'C', 'L');
+    alphaCtx.fillText(', ', leftLabelX + clWidth + 2, leftLabelY);
+    const commaWidth = alphaCtx.measureText(', ').width;
+    drawSubLabel(alphaCtx, 'C', 'M', leftLabelX + clWidth + commaWidth + 4, leftLabelY);
+  } else if (alphaLegendVisibility.cl) {
+    drawSubLabel(alphaCtx, 'C', 'L', leftLabelX, leftLabelY);
+  } else if (alphaLegendVisibility.cm) {
+    drawSubLabel(alphaCtx, 'C', 'M', leftLabelX, leftLabelY);
+  }
+  alphaCtx.fillStyle = xAxisActive ? axisActiveColor : axisInactiveColor;
   alphaCtx.fillText('α', w - 22, h - 8);
-  drawSubLabel(alphaCtx, 'C', 'D', w - 40, 8);
+  const rightLabelX = w - 78;
+  if (rightCdActive) {
+    alphaCtx.fillStyle = axisActiveColor;
+    drawSubLabel(alphaCtx, 'C', 'D', rightLabelX, leftLabelY);
+  }
+  if (rightLdActive) {
+    alphaCtx.fillStyle = axisActiveColor;
+    drawRatioLabel(alphaCtx, rightLabelX, leftLabelY);
+  }
 
   const ticks = 5;
-  alphaCtx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+  alphaCtx.strokeStyle = xAxisActive ? 'rgba(255, 255, 255, 0.4)' : 'rgba(154, 160, 168, 0.55)';
+  alphaCtx.fillStyle = xAxisActive ? axisActiveColor : axisInactiveColor;
   for (let i = 0; i < ticks; i += 1) {
     const t = i / (ticks - 1);
     const xv = xmin + t * (xmax - xmin);
@@ -1071,6 +1100,8 @@ function drawAlphaSweepPlot() {
   };
   const yStepL = niceStep(ymaxL - yminL, 6);
   const yStartL = Math.ceil(yminL / yStepL) * yStepL;
+  alphaCtx.strokeStyle = leftAxisActive ? 'rgba(255, 255, 255, 0.4)' : 'rgba(154, 160, 168, 0.55)';
+  alphaCtx.fillStyle = leftAxisActive ? axisActiveColor : axisInactiveColor;
   for (let yv = yStartL; yv <= ymaxL + 1.0e-6; yv += yStepL) {
     const py = yToPyLeft(yv);
     alphaCtx.beginPath();
@@ -1082,13 +1113,19 @@ function drawAlphaSweepPlot() {
 
   const yStepR = niceStep(ymaxR - yminR, 6);
   const yStartR = Math.ceil(yminR / yStepR) * yStepR;
-  for (let yv = yStartR; yv <= ymaxR + 1.0e-6; yv += yStepR) {
-    const py = yToPyRight(yv);
-    alphaCtx.beginPath();
-    alphaCtx.moveTo(left + plotW, py);
-    alphaCtx.lineTo(left + plotW + 10, py);
-    alphaCtx.stroke();
-    alphaCtx.fillText(yv.toFixed(3), left + plotW + 12, py + 4);
+  const rangeR = Math.abs(ymaxR - yminR);
+  const rightDigits = rangeR > 50 ? 0 : rangeR > 10 ? 1 : rangeR > 2 ? 2 : 3;
+  alphaCtx.strokeStyle = rightAxisActive ? 'rgba(255, 255, 255, 0.4)' : 'rgba(154, 160, 168, 0.55)';
+  alphaCtx.fillStyle = rightAxisActive ? axisActiveColor : axisInactiveColor;
+  if (rightAxisActive) {
+    for (let yv = yStartR; yv <= ymaxR + 1.0e-6; yv += yStepR) {
+      const py = yToPyRight(yv);
+      alphaCtx.beginPath();
+      alphaCtx.moveTo(left + plotW, py);
+      alphaCtx.lineTo(left + plotW + 10, py);
+      alphaCtx.stroke();
+      alphaCtx.fillText(yv.toFixed(rightDigits), left + plotW + 12, py + 4);
+    }
   }
 
   if (xmin <= 0.0 && xmax >= 0.0) {
@@ -1111,6 +1148,16 @@ function drawAlphaSweepPlot() {
   const drawMarker = (shape, px, py, color, outlineOnly = false, size = 4) => {
     alphaCtx.fillStyle = color;
     alphaCtx.strokeStyle = color;
+    if (shape === 'plus') {
+      alphaCtx.lineWidth = 1.8;
+      alphaCtx.beginPath();
+      alphaCtx.moveTo(px - size - 1, py);
+      alphaCtx.lineTo(px + size + 1, py);
+      alphaCtx.moveTo(px, py - size - 1);
+      alphaCtx.lineTo(px, py + size + 1);
+      alphaCtx.stroke();
+      return;
+    }
     if (shape === 'square') {
       if (outlineOnly) {
         alphaCtx.lineWidth = 1.8;
@@ -1153,50 +1200,101 @@ function drawAlphaSweepPlot() {
       const clPy = yToPyLeft(p.cl);
       const cdPy = yToPyRight(p.cd);
       const cmPy = yToPyLeft(p.cm);
-      drawMarker('circle', px, clPy, color);
-      drawMarker('square', px, cdPy, color, true);
-      drawMarker('triangle', px, cmPy, color);
+      const ldVal = Number.isFinite(p.cl) && Number.isFinite(p.cd) && p.cd !== 0.0
+        ? p.cl / p.cd
+        : null;
+      const ldPy = ldVal != null ? yToPyRight(ldVal) : null;
+      if (alphaLegendVisibility.cl) {
+        drawMarker('circle', px, clPy, color);
+      }
+      if (alphaLegendVisibility.cd) {
+        drawMarker('square', px, cdPy, color, true);
+      }
+      if (alphaLegendVisibility.cm) {
+        drawMarker('triangle', px, cmPy, color);
+      }
+      if (alphaLegendVisibility.ld && ldPy != null) {
+        drawMarker('plus', px, ldPy, color);
+      }
       const baseKey = `alpha-${caseItem.id}-${p.alpha.toFixed(3)}`;
-      hoverPoints.push({
-        key: `${baseKey}-cl`,
-        px,
-        py: clPy,
-        type: 'cl',
-        shape: 'circle',
-        color,
-        data: p,
-      });
-      hoverPoints.push({
-        key: `${baseKey}-cd`,
-        px,
-        py: cdPy,
-        type: 'cd',
-        shape: 'square',
-        color,
-        data: p,
-      });
-      hoverPoints.push({
-        key: `${baseKey}-cm`,
-        px,
-        py: cmPy,
-        type: 'cm',
-        shape: 'triangle',
-        color,
-        data: p,
-      });
+      if (alphaLegendVisibility.cl) {
+        hoverPoints.push({
+          key: `${baseKey}-cl`,
+          px,
+          py: clPy,
+          type: 'cl',
+          shape: 'circle',
+          color,
+          data: p,
+        });
+      }
+      if (alphaLegendVisibility.cd) {
+        hoverPoints.push({
+          key: `${baseKey}-cd`,
+          px,
+          py: cdPy,
+          type: 'cd',
+          shape: 'square',
+          color,
+          data: p,
+        });
+      }
+      if (alphaLegendVisibility.cm) {
+        hoverPoints.push({
+          key: `${baseKey}-cm`,
+          px,
+          py: cmPy,
+          type: 'cm',
+          shape: 'triangle',
+          color,
+          data: p,
+        });
+      }
+      if (alphaLegendVisibility.ld && ldPy != null && ldVal != null) {
+        hoverPoints.push({
+          key: `${baseKey}-ld`,
+          px,
+          py: ldPy,
+          type: 'ld',
+          shape: 'plus',
+          color,
+          data: p,
+          ld: ldVal,
+        });
+      }
     });
   });
 
   const legendX = left + plotW - 70;
-  const legendY = top + plotH - 50;
+  const legendY = top + plotH - 70;
   const labelX = legendX + 12;
-  alphaCtx.fillStyle = 'rgba(230, 236, 244, 0.85)';
-  drawMarker('circle', legendX, legendY, alphaCtx.fillStyle);
-  drawMarker('square', legendX, legendY + 18, alphaCtx.fillStyle, true);
-  drawMarker('triangle', legendX, legendY + 36, alphaCtx.fillStyle);
-  drawSubLabel(alphaCtx, 'C', 'L', labelX, legendY + 4);
-  drawSubLabel(alphaCtx, 'C', 'D', labelX, legendY + 22);
-  drawSubLabel(alphaCtx, 'C', 'M', labelX, legendY + 40);
+  const legendActiveColor = 'rgba(230, 236, 244, 0.85)';
+  const legendInactiveColor = 'rgba(154, 160, 168, 0.65)';
+  const legendItems = [
+    { type: 'cl', shape: 'circle', sub: 'L', y: legendY },
+    { type: 'cd', shape: 'square', sub: 'D', y: legendY + 18, outlineOnly: true },
+    { type: 'cm', shape: 'triangle', sub: 'M', y: legendY + 36 },
+    { type: 'ld', shape: 'plus', y: legendY + 54, ratio: true },
+  ];
+  const legendHitboxes = [];
+  legendItems.forEach((item) => {
+    const isVisible = alphaLegendVisibility[item.type];
+    const color = isVisible ? legendActiveColor : legendInactiveColor;
+    drawMarker(item.shape, legendX, item.y, color, item.outlineOnly === true);
+    alphaCtx.fillStyle = color;
+    if (item.ratio) {
+      drawRatioLabel(alphaCtx, labelX, item.y + 4);
+    } else {
+      drawSubLabel(alphaCtx, 'C', item.sub, labelX, item.y + 4);
+    }
+    legendHitboxes.push({
+      type: item.type,
+      x0: legendX - 10,
+      y0: item.y - 12,
+      x1: legendX + 92,
+      y1: item.y + 12,
+    });
+  });
 
   const hoverKey = alphaHover?.key;
   const hoverPoint = hoverKey ? hoverPoints.find((p) => p.key === hoverKey) : null;
@@ -1209,6 +1307,8 @@ function drawAlphaSweepPlot() {
       valueLine = { base: 'C', sub: 'L', value: formatNum(hoverPoint.data.cl, 3) };
     } else if (hoverPoint.type === 'cd') {
       valueLine = { base: 'C', sub: 'D', value: formatNum(hoverPoint.data.cd, 4) };
+    } else if (hoverPoint.type === 'ld') {
+      valueLine = `C_L/C_D ${formatNum(hoverPoint.ld, 2)}`;
     } else {
       valueLine = { base: 'C', sub: 'M', value: formatNum(hoverPoint.data.cm, 3) };
     }
@@ -1237,6 +1337,7 @@ function drawAlphaSweepPlot() {
       yminR,
       ymaxR,
     },
+    legendItems: legendHitboxes,
   };
 }
 
@@ -3136,6 +3237,29 @@ if (alphaCanvas) {
       drawAlphaSweepPlot();
     }
   }, { passive: false });
+
+  alphaCanvas.addEventListener('click', (event) => {
+    if (!alphaPlotState?.legendItems?.length) return;
+    const rect = alphaCanvas.getBoundingClientRect();
+    const mx = event.clientX - rect.left;
+    const my = event.clientY - rect.top;
+    const hit = alphaPlotState.legendItems.find(
+      (item) => mx >= item.x0 && mx <= item.x1 && my >= item.y0 && my <= item.y1,
+    );
+    if (!hit) return;
+    const nextVisible = !alphaLegendVisibility[hit.type];
+    alphaLegendVisibility[hit.type] = nextVisible;
+    // CD and CL/CD are mutually exclusive on the right axis.
+    if (hit.type === 'cd' && nextVisible) {
+      alphaLegendVisibility.ld = false;
+    } else if (hit.type === 'ld' && nextVisible) {
+      alphaLegendVisibility.cd = false;
+    }
+    // Reset zoom centers so axis alignment uses current visible series.
+    alphaZoomCenter = null;
+    setHoverState('alpha', null);
+    drawAlphaSweepPlot();
+  });
 
   alphaCanvas.addEventListener('mousemove', (event) => {
     if (!alphaPlotState?.points) return;

@@ -9,6 +9,7 @@ const cpCanvas = document.getElementById('cpPlot');
 const cpCtx = cpCanvas.getContext('2d');
 const downloadCpButton = document.getElementById('downloadCp');
 const downloadBlButton = document.getElementById('downloadBl');
+const downloadDatAirfoilButton = document.getElementById('downloadDatAirfoil');
 const editAirfoilButton = document.getElementById('editAirfoil');
 const smoothAirfoilButton = document.getElementById('smoothAirfoil');
 const editCpButton = document.getElementById('editCp');
@@ -2688,6 +2689,36 @@ function downloadTextFile(filename, content) {
   URL.revokeObjectURL(url);
 }
 
+function ensureDatFilename(name) {
+  const base = String(name || 'airfoil')
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/-/g, '_')
+    .replace(/[\\/:*?"<>|]+/g, '_');
+  if (!base) return 'airfoil.dat';
+  const lower = base.toLowerCase();
+  return lower.endsWith('.dat') ? lower : `${lower}.dat`;
+}
+
+function formatFlapDeflectionSuffix() {
+  const deflection = flapDefInput ? parseFloat(flapDefInput.value) : NaN;
+  if (!Number.isFinite(deflection) || Math.abs(deflection) < 1.0e-6) return '';
+  const defStr = deflection.toFixed(1).replace('.', 'p');
+  return `_d${defStr}`;
+}
+
+function buildAirfoilDatContent() {
+  if (!lastAirfoilNb) return null;
+  const lines = [];
+  lines.push(currentAirfoilName || 'Airfoil');
+  for (let i = 0; i < lastAirfoilNb; i += 1) {
+    const x = Number.isFinite(xb[i]) ? xb[i] : 0.0;
+    const y = Number.isFinite(yb[i]) ? yb[i] : 0.0;
+    lines.push(`${x.toFixed(6)} ${y.toFixed(6)}`);
+  }
+  return lines.join('\n');
+}
+
 function requestDump(kind) {
   if (!solverWorker) {
     return Promise.resolve({ ok: false, error: 'Solver worker not ready.' });
@@ -3325,6 +3356,19 @@ if (downloadCpButton) {
       return;
     }
     downloadTextFile(payload.filename || 'xfoil.cp', payload.content);
+  });
+}
+
+if (downloadDatAirfoilButton) {
+  downloadDatAirfoilButton.addEventListener('click', () => {
+    const content = buildAirfoilDatContent();
+    if (!content) {
+      console.warn('Airfoil download unavailable: no geometry.');
+      return;
+    }
+    const baseName = `${currentAirfoilName || 'airfoil'}${formatFlapDeflectionSuffix()}`;
+    const filename = ensureDatFilename(baseName);
+    downloadTextFile(filename, content);
   });
 }
 

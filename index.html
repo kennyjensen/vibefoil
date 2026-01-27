@@ -144,6 +144,38 @@
       align-self: start;
     }
 
+    .airfoil-source-box {
+      position: relative;
+    }
+
+    .panel-icon-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      border: 1px solid var(--panel-border);
+      background: rgba(8, 10, 12, 0.6);
+      color: var(--ink);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .panel-icon-btn:hover {
+      border-color: rgba(127, 179, 255, 0.8);
+      box-shadow: 0 0 0 1px rgba(127, 179, 255, 0.35);
+    }
+
+    .panel-icon-btn svg {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+
     .control-group {
       margin-bottom: 16px;
     }
@@ -742,10 +774,21 @@
 
   <div class="layout">
     <div class="panel settings-panel">
-      <div class="control-group viscous-box">
+      <div class="control-group viscous-box airfoil-source-box">
         <label>
           <span>Airfoil Source</span>
         </label>
+        <button
+          id="downloadDatAirfoil"
+          class="panel-icon-btn"
+          type="button"
+          title="Download airfoil (.dat)"
+          aria-label="Download airfoil (.dat)"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M12 3a1 1 0 0 1 1 1v9.17l2.59-2.58a1 1 0 1 1 1.41 1.42l-4.3 4.29a1 1 0 0 1-1.4 0l-4.3-4.29a1 1 0 1 1 1.41-1.42L11 13.17V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
+          </svg>
+        </button>
         <div class="mode-toggle">
           <label><input type="radio" name="source" value="naca" checked /> NACA</label>
           <label><input type="radio" name="source" value="database" /> Database</label>

@@ -238,6 +238,9 @@ function buildPanelContext(nb, alphaRad, opts = {}) {
   if (reuseState && reuseState.panel) {
     const restored = applyPanelSnapshot(panelCtx, reuseState.panel);
     if (restored) {
+      // Ensure the restored panel state honors the requested alpha.
+      panelCtx.ALFA = alphaRad;
+      ggcalc(panelCtx);
       panelCache.ctx = panelCtx;
       panelCache.key = geometryKey;
     }
@@ -1058,12 +1061,16 @@ function computeCase(settings) {
   const displayAngle = -alphaRad;
   const bounds = computeBounds(nb, displayAngle, canvasWidth, canvasHeight);
 
-  const matchedReuseState = reuseState && reuseState.geometryKey === geometryKey
+  // Never let viscous reuse state bleed into inviscid solves.
+  const canReuseViscous = !!viscous;
+  const matchedReuseState = canReuseViscous && reuseState && reuseState.geometryKey === geometryKey
     ? reuseState
     : null;
-  const prevConverged = matchedReuseState?.bl?.LVCONV === true
-    || (blCache.ctx && blCache.key === geometryKey && blCache.ctx.LVCONV === true);
-  const reuseAttempt = advancedMode ? reuseSolution : prevConverged;
+  const prevConverged = canReuseViscous && (
+    matchedReuseState?.bl?.LVCONV === true
+    || (blCache.ctx && blCache.key === geometryKey && blCache.ctx.LVCONV === true)
+  );
+  const reuseAttempt = canReuseViscous && (advancedMode ? reuseSolution : prevConverged);
   const panelReuse = reusePanel && (advancedMode ? reuseSolution : reuseAttempt);
   let ctxPanel = buildPanelContext(nb, alphaRad, {
     reusePanel: panelReuse,

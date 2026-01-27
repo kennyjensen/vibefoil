@@ -50,6 +50,25 @@
       backdrop-filter: blur(6px);
     }
 
+    .github-star-desktop {
+      position: absolute;
+      top: 24px;
+      right: 28px;
+      display: inline-block;
+    }
+
+    .github-star-mobile {
+      display: none;
+      margin-top: 14px;
+    }
+
+    .bugs-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
     h1 {
       margin: 0 0 6px 0;
       font-size: 28px;
@@ -585,6 +604,15 @@
         gap: 12px;
       }
 
+      .github-star-desktop {
+        display: none;
+      }
+
+      .github-star-mobile {
+        display: inline-block;
+        margin-top: 0;
+      }
+
       header h1 {
         margin-bottom: 0;
         white-space: nowrap;
@@ -686,6 +714,17 @@
   <header>
     <h1><a href="https://github.com/kennyjensen/vibefoil" target="_blank" rel="noopener">Vibefoil</a></h1>
     <p class="subtitle">An interactive airfoil explorer based on <a href="https://web.mit.edu/drela/Public/web/xfoil/" target="_blank" rel="noopener">XFOIL</a>.</p>
+    <div class="github-star-desktop">
+      <a
+        class="github-button"
+        href="https://github.com/kennyjensen/vibefoil"
+        data-color-scheme="no-preference: dark; light: dark; dark: dark;"
+        data-icon="octicon-star"
+        data-size="large"
+        data-show-count="true"
+        aria-label="Star kennyjensen/vibefoil on GitHub"
+      >Star</a>
+    </div>
   </header>
 
   <div class="page-indicator" role="tablist" aria-label="Panels">
@@ -922,11 +961,24 @@
           <span>Run case</span>
         </label>
         <div id="runCaseList" class="run-cases"></div>
-        <div class="sweep-actions">
-          <button id="addRunCase" type="button">Add run case</button>
+      <div class="sweep-actions">
+        <button id="addRunCase" type="button">Add run case</button>
+      </div>
+    </div>
+      <div class="bugs-row">
+        <p class="subtitle">Please submit bugs and feature requests <a href="https://github.com/kennyjensen/vibefoil/issues" target="_blank" rel="noopener">here</a>.</p>
+        <div class="github-star-mobile">
+          <a
+            class="github-button"
+            href="https://github.com/kennyjensen/vibefoil"
+            data-color-scheme="no-preference: dark; light: dark; dark: dark;"
+            data-icon="octicon-star"
+            data-size="large"
+            data-show-count="true"
+            aria-label="Star kennyjensen/vibefoil on GitHub"
+          >Star</a>
         </div>
       </div>
-      <p class="subtitle">Please submit bugs and feature requests <a href="https://github.com/kennyjensen/vibefoil/issues" target="_blank" rel="noopener">here</a>.</p>
     </div>
 
     <div class="panel plot-wrap">
@@ -999,5 +1051,6 @@
 
   <script src="./js/naca.js"></script>
   <script type="module" src="./js/app.js"></script>
+  <script async defer src="https://buttons.github.io/buttons.js"></script>
 </body>
 </html>

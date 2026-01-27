@@ -315,27 +315,10 @@ function measureSubLabelWidth(ctx2d, base, sub) {
   return baseWidth + 1 + subWidth;
 }
 
-// Ratio labeling for C_L/C_D in legends and axis tags.
-function drawRatioLabel(ctx2d, x, y) {
+// L/D labeling for legends and axis tags.
+function drawLdLabel(ctx2d, x, y) {
   const baseFont = ctx2d.font;
-  const subFont = '10px Consolas, "Courier New", monospace';
-  const drawTerm = (sub, px) => {
-    ctx2d.fillText('C', px, y);
-    const baseWidth = ctx2d.measureText('C').width;
-    ctx2d.save();
-    ctx2d.font = subFont;
-    ctx2d.fillText(sub, px + baseWidth + 1, y + 4);
-    const subWidth = ctx2d.measureText(sub).width;
-    ctx2d.restore();
-    ctx2d.font = baseFont;
-    return baseWidth + 1 + subWidth;
-  };
-  let cursor = x;
-  cursor += drawTerm('L', cursor);
-  ctx2d.fillText('/', cursor + 2, y);
-  const slashWidth = ctx2d.measureText('/').width;
-  cursor += slashWidth + 6;
-  drawTerm('D', cursor);
+  ctx2d.fillText('L/D', x, y);
   ctx2d.font = baseFont;
 }
 
@@ -1069,7 +1052,7 @@ function drawAlphaSweepPlot() {
   }
   if (rightLdActive) {
     alphaCtx.fillStyle = axisActiveColor;
-    drawRatioLabel(alphaCtx, rightLabelX, leftLabelY);
+    drawLdLabel(alphaCtx, rightLabelX, leftLabelY);
   }
 
   const ticks = 5;
@@ -1283,7 +1266,7 @@ function drawAlphaSweepPlot() {
     drawMarker(item.shape, legendX, item.y, color, item.outlineOnly === true);
     alphaCtx.fillStyle = color;
     if (item.ratio) {
-      drawRatioLabel(alphaCtx, labelX, item.y + 4);
+      drawLdLabel(alphaCtx, labelX, item.y + 4);
     } else {
       drawSubLabel(alphaCtx, 'C', item.sub, labelX, item.y + 4);
     }
@@ -1308,7 +1291,7 @@ function drawAlphaSweepPlot() {
     } else if (hoverPoint.type === 'cd') {
       valueLine = { base: 'C', sub: 'D', value: formatNum(hoverPoint.data.cd, 4) };
     } else if (hoverPoint.type === 'ld') {
-      valueLine = `C_L/C_D ${formatNum(hoverPoint.ld, 2)}`;
+      valueLine = `L/D ${formatNum(hoverPoint.ld, 2)}`;
     } else {
       valueLine = { base: 'C', sub: 'M', value: formatNum(hoverPoint.data.cm, 3) };
     }

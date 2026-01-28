@@ -159,6 +159,7 @@ const sweepEndInput = document.getElementById('sweepEnd');
 const sweepIncInput = document.getElementById('sweepInc');
 const runCaseList = document.getElementById('runCaseList');
 const addRunCaseButton = document.getElementById('addRunCase');
+const downloadRunCasesButton = document.getElementById('downloadRunCases');
 
 // Geometry buffers (airfoil surface and custom inputs); sizes follow XFOIL nside.
 const nside = 123;
@@ -724,6 +725,7 @@ function createRunCase() {
   return {
     id,
     name: `${foilLabel} Run ${id}`,
+    nameEdited: false,
     color,
     history: [],
     sweep: null,
@@ -755,6 +757,7 @@ function renderRunCases() {
     titleInput.className = 'run-case-title';
     titleInput.addEventListener('input', (event) => {
       caseItem.name = event.target.value;
+      caseItem.nameEdited = true;
     });
     titleInput.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -817,6 +820,10 @@ async function sweepAlpha() {
   const direction = start <= end ? 1 : -1;
   const active = getActiveCase();
   if (active) {
+    if (!active.nameEdited) {
+      const foilLabel = currentAirfoilName || 'Airfoil';
+      active.name = `${foilLabel} Run ${active.id}`;
+    }
     active.sweep = {
       start: Number.isFinite(start) ? start : -10,
       end: Number.isFinite(end) ? end : 10,
@@ -907,7 +914,7 @@ function reframeBoundsForCanvas(bounds) {
 }
 
 // Insert or replace sweep point (alpha-indexed) to keep plots ordered.
-function upsertSweepPoint(alphaDeg, coeffs, converged = true) {
+function upsertSweepPoint(alphaDeg, coeffs, converged = true, viscous = false) {
   const active = getActiveCase();
   if (!active) return;
   if (!Number.isFinite(alphaDeg)
@@ -935,10 +942,13 @@ function upsertSweepPoint(alphaDeg, coeffs, converged = true) {
     cm: coeffs.CM,
     converged,
     airfoil: currentAirfoilName || '—',
+    viscous: !!viscous,
     mach: machValue,
     re: reValue,
     ncr: ncrValue,
     flapDef: flapValue,
+    xtrTop: coeffs?.XTRT,
+    xtrBottom: coeffs?.XTRB,
   };
   if (idx >= 0) {
     history[idx] = point;
@@ -2556,7 +2566,7 @@ function applySolverResult(payload) {
   }
 
   updateDataBox(alphaRad, coeffs, converged);
-  upsertSweepPoint(alphaDeg, coeffs, converged);
+  upsertSweepPoint(alphaDeg, coeffs, converged, viscous);
   drawAlphaSweepPlot();
   drawPolarPlot();
 
@@ -2687,6 +2697,83 @@ function downloadTextFile(filename, content) {
   anchor.click();
   document.body.removeChild(anchor);
   URL.revokeObjectURL(url);
+}
+
+function toCsvValue(value) {
+  if (value == null) return '';
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? `${value}` : '';
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  const text = String(value);
+  if (!text) return '';
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function formatCsvNumber(value) {
+  if (!Number.isFinite(value)) return null;
+  return value;
+}
+
+function buildRunCasesCsv() {
+  const headers = [
+    'case_index',
+    'case_name',
+    'airfoil',
+    'viscous',
+    'mach',
+    're',
+    'ncr',
+    'alpha_deg',
+    'flap_def',
+    'cl',
+    'cd',
+    'cm',
+    'ld',
+    'xtr_top',
+    'xtr_bot',
+    'converged',
+  ];
+  const lines = [headers.join(',')];
+  runCases.forEach((caseItem, idx) => {
+    const caseIndex = idx + 1;
+    if (!caseItem.history || caseItem.history.length === 0) {
+      lines.push([
+        caseIndex,
+        caseItem.name,
+        ...Array.from({ length: headers.length - 2 }, () => ''),
+      ].map(toCsvValue).join(','));
+      return;
+    }
+    caseItem.history.forEach((point) => {
+      const ldValue = Number.isFinite(point?.cl)
+        && Number.isFinite(point?.cd)
+        && point.cd !== 0.0
+        ? point.cl / point.cd
+        : NaN;
+      lines.push([
+        caseIndex,
+        caseItem.name,
+        point?.airfoil ?? '',
+        point?.viscous ?? '',
+        formatCsvNumber(point?.mach),
+        formatCsvNumber(point?.re),
+        formatCsvNumber(point?.ncr),
+        formatCsvNumber(point?.alpha),
+        formatCsvNumber(point?.flapDef),
+        formatCsvNumber(point?.cl),
+        formatCsvNumber(point?.cd),
+        formatCsvNumber(point?.cm),
+        formatCsvNumber(ldValue),
+        formatCsvNumber(point?.xtrTop),
+        formatCsvNumber(point?.xtrBottom),
+        point?.converged ?? '',
+      ].map(toCsvValue).join(','));
+    });
+  });
+  return lines.join('\n');
 }
 
 function ensureDatFilename(name) {
@@ -2959,6 +3046,12 @@ if (addRunCaseButton) {
     renderRunCases();
     drawAlphaSweepPlot();
     drawPolarPlot();
+  });
+}
+if (downloadRunCasesButton) {
+  downloadRunCasesButton.addEventListener('click', () => {
+    const csv = buildRunCasesCsv();
+    downloadTextFile('run_cases.csv', csv);
   });
 }
 

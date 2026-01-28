@@ -1222,6 +1222,8 @@ function computeCase(settings) {
       CDP: coeffs.cdp,
       ACRIT: blCtx?.ACRIT,
       REINF1: blCtx?.REINF1,
+      XTRT: blCtx?.XSSITR?.[1],
+      XTRB: blCtx?.XSSITR?.[2],
     };
     if (!viscous) {
       coeffsDisplay.CD = coeffs.cdp;

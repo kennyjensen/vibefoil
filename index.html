@@ -62,6 +62,7 @@
       top: 24px;
       right: 28px;
       display: inline-block;
+      text-align: right;
     }
 
     .github-star-mobile {
@@ -69,11 +70,31 @@
       margin-top: 14px;
     }
 
+    .github-note {
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--ink-soft);
+      white-space: nowrap;
+    }
+
+    .github-star-mobile .github-note {
+      white-space: normal;
+      max-width: 220px;
+    }
+
+    .mobile-note {
+      display: none;
+    }
+
     .bugs-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
+    }
+
+    .bugs-row .subtitle {
+      flex: 1 1 auto;
     }
 
     h1 {
@@ -656,6 +677,14 @@
         margin-top: 0;
       }
 
+      .mobile-note {
+        display: inline;
+        margin-left: 6px;
+        font-size: 11px;
+        color: var(--ink-soft);
+        white-space: normal;
+      }
+
       header h1 {
         margin-bottom: 0;
         white-space: nowrap;
@@ -767,6 +796,7 @@
         data-show-count="true"
         aria-label="Star kennyjensen/vibefoil on GitHub"
       >Star</a>
+      <div class="github-note">AVL port released at 100 stars!</div>
     </div>
   </header>
 
@@ -1021,7 +1051,10 @@
         </div>
       </div>
       <div class="bugs-row">
-        <p class="subtitle">Please submit bugs and feature requests <a href="https://github.com/kennyjensen/vibefoil/issues" target="_blank" rel="noopener">here</a>.</p>
+        <p class="subtitle">
+          Please submit bugs and feature requests <a href="https://github.com/kennyjensen/vibefoil/issues" target="_blank" rel="noopener">here</a>.
+          <span class="mobile-note">AVL port released at 100 stars!</span>
+        </p>
         <div class="github-star-mobile">
           <a
             class="github-button"

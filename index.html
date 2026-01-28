@@ -11,7 +11,37 @@
   </script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Vibefoil is an interactive airfoil explorer based on XFOIL for visualizing aerodynamic polars, pressure distributions, and boundary layer behavior." />
+  <meta name="author" content="Kenny Jensen" />
+  <meta name="robots" content="index,follow" />
+  <link rel="canonical" href="https://kennyjensen.github.io/vibefoil/" />
+  <meta property="og:title" content="Vibefoil — Interactive Airfoil Explorer" />
+  <meta property="og:description" content="Explore airfoil aerodynamics with an interactive XFOIL-based tool: polars, Cp plots, and boundary layer insights." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://kennyjensen.github.io/vibefoil/" />
+  <meta property="og:image" content="favicon.ico" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Vibefoil — Interactive Airfoil Explorer" />
+  <meta name="twitter:description" content="Explore airfoil aerodynamics with an interactive XFOIL-based tool: polars, Cp plots, and boundary layer insights." />
+  <meta name="twitter:image" content="favicon.ico" />
+  <link rel="icon" href="favicon.ico" />
+  <link rel="apple-touch-icon" href="favicon.ico" />
   <title>Vibefoil</title>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Vibefoil",
+      "description": "Interactive airfoil explorer based on XFOIL for polars, Cp plots, and boundary layer visualization.",
+      "applicationCategory": "EducationalApplication",
+      "operatingSystem": "Web",
+      "url": "https://kennyjensen.github.io/vibefoil/",
+      "author": {
+        "@type": "Person",
+        "name": "Kenny Jensen"
+      }
+    }
+  </script>
   <style>
     :root {
       --bg-1: #0c0f14;
@@ -29,6 +59,18 @@
 
     * {
       box-sizing: border-box;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
 
     sub {
@@ -785,6 +827,7 @@
 <body>
   <header>
     <h1><a href="https://github.com/kennyjensen/vibefoil" target="_blank" rel="noopener">Vibefoil</a></h1>
+    <h2 class="sr-only">Interactive airfoil explorer based on XFOIL</h2>
     <p class="subtitle">An interactive airfoil explorer based on <a href="https://web.mit.edu/drela/Public/web/xfoil/" target="_blank" rel="noopener">XFOIL</a>.</p>
     <div class="github-star-desktop">
       <a

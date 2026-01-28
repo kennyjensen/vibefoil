@@ -1,5 +1,5 @@
 import './naca.js';
-import { scalc, segspl } from './spline.js';
+import { scalc, segspl, seval } from './spline.js';
 import {
   apcalc,
   ncalc,
@@ -42,6 +42,22 @@ function rotatePoint(x, y, angle, ox, oy) {
     x: ox + dx * ca - dy * sa,
     y: oy + dx * sa + dy * ca,
   };
+}
+
+function transitionXc(blCtx, ctxPanel, is) {
+  const xoc = blCtx?.XOCTR?.[is];
+  if (Number.isFinite(xoc) && xoc > 0.0) {
+    return xoc;
+  }
+  const xt = blCtx?.XSSITR?.[is] ?? 0.0;
+  if (!Number.isFinite(xt) || xt <= 0.0) return NaN;
+  const str = is === 1 ? blCtx.SST - xt : blCtx.SST + xt;
+  const xtr = seval(str, ctxPanel.X, ctxPanel.XP, ctxPanel.S, ctxPanel.N);
+  const ytr = seval(str, ctxPanel.Y, ctxPanel.YP, ctxPanel.S, ctxPanel.N);
+  const chx = blCtx.XTE - blCtx.XLE;
+  const chy = blCtx.YTE - blCtx.YLE;
+  const chsq = chx * chx + chy * chy || 1.0;
+  return ((xtr - blCtx.XLE) * chx + (ytr - blCtx.YLE) * chy) / chsq;
 }
 
 function computeBounds(nb, angle, width, height) {
@@ -1214,6 +1230,8 @@ function computeCase(settings) {
     ? computeCoefficients(nb, ctxPanel, blCtx, alphaRad, qinvA, viscous)
     : null;
   if (coeffs) {
+    const xtrTop = blCtx && ctxPanel ? transitionXc(blCtx, ctxPanel, 1) : NaN;
+    const xtrBottom = blCtx && ctxPanel ? transitionXc(blCtx, ctxPanel, 2) : NaN;
     coeffsDisplay = {
       CL: coeffs.cl,
       CM: coeffs.cm,
@@ -1222,8 +1240,8 @@ function computeCase(settings) {
       CDP: coeffs.cdp,
       ACRIT: blCtx?.ACRIT,
       REINF1: blCtx?.REINF1,
-      XTRT: blCtx?.XSSITR?.[1],
-      XTRB: blCtx?.XSSITR?.[2],
+      XTRT: xtrTop,
+      XTRB: xtrBottom,
     };
     if (!viscous) {
       coeffsDisplay.CD = coeffs.cdp;

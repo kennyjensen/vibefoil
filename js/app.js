@@ -118,6 +118,7 @@ const tSlider = document.getElementById('t');
 const t5Slider = document.getElementById('t5');
 const series5Select = document.getElementById('series5');
 const t6Slider = document.getElementById('t6');
+const a6Slider = document.getElementById('a6');
 const series6Profile = document.getElementById('series6Profile');
 const cl6Input = document.getElementById('cl6');
 
@@ -126,6 +127,7 @@ const pValue = document.getElementById('pValue');
 const tValue = document.getElementById('tValue');
 const t5Value = document.getElementById('t5Value');
 const t6Value = document.getElementById('t6Value');
+const a6Value = document.getElementById('a6Value');
 const dataName = document.getElementById('dataName');
 const viscousToggle = document.getElementById('viscous');
 const machInput = document.getElementById('mach');
@@ -249,9 +251,7 @@ function updateLabels6(profile, t, camber, cl) {
 
 // Standard location of minimum pressure for 6-series (second digit).
 function defaultSixSeriesA(profile) {
-  const digit = parseInt(String(profile).charAt(1), 10);
-  if (!Number.isFinite(digit)) return 0.8;
-  return Math.min(0.9, Math.max(0.1, digit / 10));
+  return 0.6;
 }
 
 // Camber-line selection inferred from CL and 6A suffix.
@@ -2880,6 +2880,10 @@ function update() {
       const cl = parseFloat(cl6Input.value);
       const camber = inferSixSeriesCamber(profile, cl);
       const fallbackA = defaultSixSeriesA(profile);
+      const a = a6Slider ? parseFloat(a6Slider.value) : fallbackA;
+      if (a6Value) {
+        a6Value.textContent = Number.isFinite(a) ? a.toFixed(2) : fallbackA.toFixed(2);
+      }
 
       updateLabels6(profile, t, camber, cl);
     }
@@ -2889,6 +2893,7 @@ function update() {
   const cl = parseFloat(cl6Input.value);
   const camber = inferSixSeriesCamber(profile, cl);
   const fallbackA = defaultSixSeriesA(profile);
+  const a6 = a6Slider ? parseFloat(a6Slider.value) : fallbackA;
 
   const uiGeometry = {
     mode,
@@ -2902,7 +2907,7 @@ function update() {
     t6: parseInt(t6Slider.value, 10),
     cl6: Number.isFinite(cl) ? cl : 0.0,
     camber6: camber,
-    fallbackA6: fallbackA,
+    a6: Number.isFinite(a6) ? a6 : fallbackA,
     custom: customAirfoil
       ? {
         name: customAirfoil.name,
@@ -2935,7 +2940,7 @@ function update() {
   } else if (geometry.mode === '5') {
     geometryKey = `naca5:${geometry.series5}:${geometry.t5}`;
   } else {
-    geometryKey = `naca6:${geometry.profile6}:${geometry.t6}:${geometry.cl6}`;
+    geometryKey = `naca6:${geometry.profile6}:${geometry.t6}:${geometry.cl6}:${geometry.a6}`;
   }
   const flapKey = `${flapXInput?.value ?? '0.75'}:${flapYInput?.value ?? '0.5'}:${flapDefInput?.value ?? '0'}`;
   geometryKey = `${geometryKey}:flap:${flapKey}`;
@@ -2958,7 +2963,7 @@ function update() {
     t6: geometry.t6,
     cl6: geometry.cl6,
     camber6: geometry.camber6,
-    fallbackA6: geometry.fallbackA6,
+    a6: geometry.a6,
     flap: {
       x: parseFloat(flapXInput?.value),
       yrel: parseFloat(flapYInput?.value),
@@ -3101,6 +3106,7 @@ series6Profile.addEventListener('change', () => {
   update();
 });
 t6Slider.addEventListener('input', update);
+a6Slider?.addEventListener('input', update);
 cl6Input.addEventListener('input', update);
 
 if (cpCanvas) {

@@ -1033,7 +1033,7 @@ function generateGeometry(settings) {
       toc: t6 / 100,
       camber: settings.camber6,
       cl: Number.isFinite(cl6) ? cl6 : 0.0,
-      a: settings.fallbackA6,
+      a: settings.a6,
     },
     xx,
     yt,

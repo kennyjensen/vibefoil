@@ -1275,7 +1275,7 @@ function naca6(config, xx, yt, yc, nside, xb, yb) {
   const toc = config.toc ?? 0.12;
   const camber = (config.camber || '0').toUpperCase();
   const cl = config.cl ?? 0.0;
-  const a = config.a ?? 0.8;
+  const a = config.a ?? 0.6;
   const tocCode = Math.round(toc * 100).toString().padStart(2, '0');
   let clCode = '0';
   if (camber !== '0' && Number.isFinite(cl)) {

@@ -249,9 +249,9 @@ function updateLabels6(profile, t, camber, cl) {
   currentAirfoilName = `NACA ${profile}-${clCode}${tocCode}`;
 }
 
-// Standard location of minimum pressure for 6-series (second digit).
+// Uniform loading (a) for 6-series camber line.
 function defaultSixSeriesA(profile) {
-  return 0.6;
+  return 1.0;
 }
 
 // Camber-line selection inferred from CL and 6A suffix.

@@ -1054,10 +1054,10 @@ function meanLine6(a, cl, x, ym, ymp) {
   const pi = Math.PI;
   const twopi = 2.0 * pi;
   const oma = one - a;
-  for (let k = 0; k < x.length; k += 1) {
-    let xx = x[k];
-    let omx = one - xx;
-    if (Math.abs(oma) < eps) {
+  if (Math.abs(oma) < eps) {
+    for (let k = 0; k < x.length; k += 1) {
+      const xx = x[k];
+      const omx = one - xx;
       if (xx < eps || omx < eps) {
         ym[k] = 0.0;
         ymp[k] = 0.0;
@@ -1065,8 +1065,16 @@ function meanLine6(a, cl, x, ym, ymp) {
       }
       ym[k] = omx * Math.log(omx) + xx * Math.log(xx);
       ymp[k] = Math.log(omx) - Math.log(xx);
-      continue;
     }
+    for (let k = 0; k < x.length; k += 1) {
+      ym[k] = -ym[k] * cl * (fourth / pi);
+      ymp[k] = ymp[k] * cl * (fourth / pi);
+    }
+    return;
+  }
+  for (let k = 0; k < x.length; k += 1) {
+    const xx = x[k];
+    const omx = one - xx;
     if (xx < eps || Math.abs(omx) < eps) {
       ym[k] = 0.0;
       ymp[k] = 0.0;
@@ -1099,6 +1107,90 @@ function meanLine6(a, cl, x, ym, ymp) {
     ym[k] = cl * ym[k] / (twopi * (a + one));
     ymp[k] = cl * ymp[k] / (twopi * (a + one));
   }
+}
+
+function addTrailingEdgePointIfNeeded(x, y) {
+  const n = x.length;
+  if (n < 2) return { x, y };
+  if (x[n - 1] >= 1.0) return { x, y };
+  const dx = x[n - 1] - x[n - 2];
+  const dy = y[n - 1] - y[n - 2];
+  const slope = dx === 0.0 ? 0.0 : dy / dx;
+  const xNew = new Float64Array(n + 1);
+  const yNew = new Float64Array(n + 1);
+  for (let i = 0; i < n; i += 1) {
+    xNew[i] = x[i];
+    yNew[i] = y[i];
+  }
+  xNew[n] = 1.0;
+  yNew[n] = y[n - 1] + slope * (1.0 - x[n - 1]);
+  return { x: xNew, y: yNew };
+}
+
+// Interpolate combined thickness/camber back to the x-grid (naca456 behavior).
+function interpolateCombinedAirfoil(x, thick, ym, ymp) {
+  const combined = combineThicknessAndCamber(x, thick, ym, ymp);
+  const upperTE = addTrailingEdgePointIfNeeded(combined.xupper, combined.yupper);
+  const lowerTE = addTrailingEdgePointIfNeeded(combined.xlower, combined.ylower);
+
+  const { s: sLocal, x: xLocal, y: yLocal } = parametrizeAirfoil(
+    upperTE.x,
+    upperTE.y,
+    lowerTE.x,
+    lowerTE.y
+  );
+  const xpLocal = fmmSpline(sLocal, xLocal);
+  const ypLocal = fmmSpline(sLocal, yLocal);
+
+  const nupper = upperTE.x.length;
+  const nn = sLocal.length;
+  const upperStart = 0;
+  const upperEnd = nupper;
+  const lowerStart = nupper - 1;
+  const lowerEnd = nn;
+
+  const sUpper = sLocal.subarray(upperStart, upperEnd);
+  const xUpper = xLocal.subarray(upperStart, upperEnd);
+  const yUpper = yLocal.subarray(upperStart, upperEnd);
+  const xpUpper = xpLocal.subarray(upperStart, upperEnd);
+  const ypUpper = ypLocal.subarray(upperStart, upperEnd);
+
+  const sLower = sLocal.subarray(lowerStart, lowerEnd);
+  const xLower = xLocal.subarray(lowerStart, lowerEnd);
+  const yLower = yLocal.subarray(lowerStart, lowerEnd);
+  const xpLower = xpLocal.subarray(lowerStart, lowerEnd);
+  const ypLower = ypLocal.subarray(lowerStart, lowerEnd);
+
+  const yu = new Float64Array(x.length);
+  const yl = new Float64Array(x.length);
+  const tol = 1.0e-6;
+  const splineFailures = [];
+  for (let k = 0; k < x.length; k += 1) {
+    const upperZero = splineZero(sUpper, xUpper, xpUpper, x[k], tol);
+    if (upperZero.errCode !== 0) splineFailures.push({ side: 'upper', idx: k });
+    const su = upperZero.errCode === 0 ? upperZero.xbar : sUpper[0];
+    const yuRes = pcLookup(sUpper, yUpper, ypUpper, su);
+    yu[k] = yuRes.f;
+
+    const lowerZero = splineZero(sLower, xLower, xpLower, x[k], tol);
+    if (lowerZero.errCode !== 0) splineFailures.push({ side: 'lower', idx: k });
+    const sl = lowerZero.errCode === 0 ? lowerZero.xbar : sLower[0];
+    const ylRes = pcLookup(sLower, yLower, ypLower, sl);
+    yl[k] = ylRes.f;
+  }
+  if (splineFailures.length > 0) {
+    const detail = splineFailures.map((f) => `${f.side}:${f.idx}`).join(',');
+    console.warn(`6-series interpolation splineZero failures: ${detail}`);
+  }
+
+  return {
+    yu,
+    yl,
+    xupper: combined.xupper,
+    yupper: combined.yupper,
+    xlower: combined.xlower,
+    ylower: combined.ylower,
+  };
 }
 
 // Modified 6A/6M mean line (NACA Report 903), fixed a = 0.8.
@@ -1205,10 +1297,12 @@ function naca6(config, xx, yt, yc, nside, xb, yb) {
 
   const ym = new Float64Array(nside);
   const ymp = new Float64Array(nside);
-  if (camber === '6') {
-    meanLine6(a, cl, xx, ym, ymp);
+  if (family >= 6) {
+    meanLine6M(cl, xx, ym, ymp);
   } else if (camber === '6A' || camber === '6M') {
     meanLine6M(cl, xx, ym, ymp);
+  } else if (camber === '6') {
+    meanLine6(a, cl, xx, ym, ymp);
   } else {
     for (let i = 0; i < nside; i += 1) {
       ym[i] = 0.0;
@@ -1220,7 +1314,14 @@ function naca6(config, xx, yt, yc, nside, xb, yb) {
     yc[i] = ym[i];
   }
 
-  const { xupper, yupper, xlower, ylower } = combineThicknessAndCamber(xx, yt, ym, ymp);
+  const {
+    yu,
+    yl,
+    xupper,
+    yupper,
+    xlower,
+    ylower,
+  } = interpolateCombinedAirfoil(xx, yt, ym, ymp);
 
   const crossoverIdx = [];
   const crossEps = 1.0e-12;
@@ -1233,13 +1334,13 @@ function naca6(config, xx, yt, yc, nside, xb, yb) {
 
   let ib = 0;
   for (let i = nside - 1; i >= 0; i -= 1) {
-    xb[ib] = xupper[i];
-    yb[ib] = yupper[i];
+    xb[ib] = xx[i];
+    yb[ib] = yu[i];
     ib += 1;
   }
   for (let i = 1; i < nside; i += 1) {
-    xb[ib] = xlower[i];
-    yb[ib] = ylower[i];
+    xb[ib] = xx[i];
+    yb[ib] = yl[i];
     ib += 1;
   }
 

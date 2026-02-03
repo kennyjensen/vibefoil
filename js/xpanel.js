@@ -45,9 +45,9 @@ function apcalc(ctx) {
 function xywake(ctx) {
   const { N: n, X: x, Y: y, XP: xp, YP: yp, S: s, NX: nx, NY: ny, APANEL: apanel } = ctx;
   const waklen = ctx.WAKLEN ?? 1.0;
-  const nw = ctx.NW ?? 0;
+  const nw = Math.floor(n / 12) + 10 * Math.trunc(waklen);
+  ctx.NW = nw;
   if (nw <= 0) {
-    ctx.NW = 0;
     return;
   }
 

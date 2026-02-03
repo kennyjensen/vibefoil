@@ -330,9 +330,9 @@ function MIXED(ctx, kqsp, niterq) {
         maxGeomStep = step;
       }
     }
-    const maxStep = Number.isFinite(ctx.QDES_MAXSTEP) ? ctx.QDES_MAXSTEP : 0.02;
+    const maxStep = Number.isFinite(ctx.QDES_MAXSTEP) ? ctx.QDES_MAXSTEP : null;
     let relax = 1.0;
-    if (maxGeomStep > maxStep && maxGeomStep > 0.0) {
+    if (maxStep != null && maxGeomStep > maxStep && maxGeomStep > 0.0) {
       relax = maxStep / maxGeomStep;
       for (let i = 0; i < nsys; i += 1) {
         ctx.DQ[i] *= relax;

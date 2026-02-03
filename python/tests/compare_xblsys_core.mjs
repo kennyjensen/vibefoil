@@ -24,7 +24,6 @@ function cloneValue(val) {
 
 function makeCtx(state) {
   const ctx = {};
-  ensureCtx(ctx);
   for (const [key, val] of Object.entries(state)) {
     ctx[key] = cloneValue(val);
   }

@@ -159,8 +159,11 @@ const metrics = {
   gam: metricsArray(ctx.GAM, n, samples),
 };
 
+const dq = Array.from({ length: n + 5 }, (_, idx) => ctx.DQ[idx] ?? 0.0);
+
 const results = {
   metrics,
+  dq,
   psio: ctx.PSIO,
   qdof0: ctx.QDOF0,
   qdof1: ctx.QDOF1,

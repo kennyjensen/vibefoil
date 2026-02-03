@@ -15,7 +15,6 @@ function cloneValue(val) {
 }
 
 const ctx = {};
-ensureCtx(ctx);
 for (const [key, val] of Object.entries(base)) {
   ctx[key] = cloneValue(val);
 }

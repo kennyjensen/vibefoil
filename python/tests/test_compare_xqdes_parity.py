@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import unittest
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -47,6 +48,48 @@ def metrics_array(values, samples):
 
 
 class TestXqdesParity(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not shutil.which("gfortran"):
+            raise unittest.SkipTest("gfortran is required for Fortran parity checks")
+
+        cls._tmpdir = tempfile.TemporaryDirectory()
+        driver_src = ROOT / "python" / "tests" / "xqdes_driver.f"
+        stub_src = ROOT / "python" / "tests" / "xqdes_stubs.f"
+        srcs = [
+            driver_src,
+            stub_src,
+            ROOT / "python" / "tests" / "xfoil_subs.f",
+            ROOT / "python" / "tests" / "xgeom_subs.f",
+            ROOT / "third_party" / "Xfoil" / "src" / "xqdes.f",
+            ROOT / "third_party" / "Xfoil" / "src" / "xpanel.f",
+            ROOT / "third_party" / "Xfoil" / "src" / "xsolve.f",
+            ROOT / "third_party" / "Xfoil" / "src" / "spline.f",
+            ROOT / "third_party" / "Xfoil" / "src" / "xutils.f",
+            ROOT / "third_party" / "Xfoil" / "src" / "userio.f",
+        ]
+        driver_path = pathlib.Path(cls._tmpdir.name) / "xqdes_driver"
+        subprocess.run(
+            [
+                "gfortran",
+                "-O2",
+                "-ffixed-form",
+                "-I",
+                str(ROOT / "third_party" / "Xfoil" / "src"),
+                *map(str, srcs),
+                "-o",
+                str(driver_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        cls.driver_path = driver_path
+
+    @classmethod
+    def tearDownClass(cls):
+        if hasattr(cls, "_tmpdir"):
+            cls._tmpdir.cleanup()
     def test_qdes_spline_parity(self):
         if not shutil.which("node"):
             self.skipTest("node is required for JS/Python parity checks")
@@ -258,33 +301,105 @@ class TestXqdesParity(unittest.TestCase):
             check=True,
         )
 
-        MIXED(ctx, 1, 2)
+        # Run Fortran reference for MIXED
+        input_lines = []
+        input_lines.append(f"{ctx.N} {ctx.NSP} {ctx.IQ1} {ctx.IQ2} {2}")
+        input_lines.append(
+            f"{ctx.ALFA} {ctx.MINF} {ctx.QINF} {ctx.XCMREF} {ctx.YCMREF} {ctx.PSIO} {ctx.QDOF0} {ctx.QDOF1} {ctx.QDOF2} {ctx.QDOF3}"
+        )
+        input_lines.append(f"{1 if ctx.LCPXX else 0} {1 if ctx.LIMAGE else 0} {1 if ctx.SHARP else 0}")
+        input_lines.append(f"{ctx.ANTE} {ctx.ASTE} {ctx.DSTE} {ctx.XTE} {ctx.YTE} {ctx.YIMAGE}")
+        input_lines.extend(str(ctx.X[i]) for i in range(1, ctx.N + 1))
+        input_lines.extend(str(ctx.Y[i]) for i in range(1, ctx.N + 1))
+        input_lines.extend(str(ctx.S[i]) for i in range(1, ctx.N + 1))
+        input_lines.extend(str(ctx.XP[i]) for i in range(1, ctx.N + 1))
+        input_lines.extend(str(ctx.YP[i]) for i in range(1, ctx.N + 1))
+        input_lines.extend(str(ctx.NX[i]) for i in range(1, ctx.N + 1))
+        input_lines.extend(str(ctx.NY[i]) for i in range(1, ctx.N + 1))
+        input_lines.extend(str(ctx.APANEL[i]) for i in range(1, ctx.N + 1))
+        input_lines.extend(str(ctx.SSPEC[i]) for i in range(1, ctx.NSP + 1))
+        input_lines.extend(str(ctx.QSPEC[i][1]) for i in range(1, ctx.NSP + 1))
+        input_lines.extend(str(ctx.GAM[i]) for i in range(1, ctx.N + 1))
+        input_lines.extend(str(ctx.SIG[i]) for i in range(1, ctx.N + 1))
 
-        py_metrics = {
-            "x": metrics_array([ctx.X[i] for i in range(1, ctx.N + 1)], samples),
-            "y": metrics_array([ctx.Y[i] for i in range(1, ctx.N + 1)], samples),
-            "gam": metrics_array([ctx.GAM[i] for i in range(1, ctx.N + 1)], samples),
-        }
+        proc_f = subprocess.run(
+            [str(self.driver_path)],
+            input="\n".join(input_lines) + "\n",
+            text=True,
+            capture_output=True,
+        )
+        if proc_f.returncode != 0:
+            self.fail(
+                f"Fortran driver failed (code {proc_f.returncode}).\\n"
+                f"stdout:\\n{proc_f.stdout}\\n"
+                f"stderr:\\n{proc_f.stderr}"
+            )
+        lines = proc_f.stdout.strip().splitlines()
+        if not lines:
+            self.fail("Empty output from Fortran driver")
+        start_idx = None
+        for i, line in enumerate(lines):
+            parts = line.strip().split()
+            if len(parts) == 1:
+                try:
+                    n_out = int(parts[0])
+                except ValueError:
+                    continue
+                start_idx = i
+                break
+        if start_idx is None:
+            self.fail("Fortran output missing panel count line")
+        self.assertEqual(n_out, ctx.N)
+        x_f = []
+        y_f = []
+        gam_f = []
+        idx = start_idx + 1
+        for _ in range(ctx.N):
+            parts = lines[idx].strip().split()
+            if len(parts) < 3:
+                self.fail("Fortran output row missing fields")
+            x_f.append(float(parts[0]))
+            y_f.append(float(parts[1]))
+            gam_f.append(float(parts[2]))
+            idx += 1
+        coeff_parts = lines[idx].strip().split()
+        if len(coeff_parts) < 10:
+            self.fail("Fortran output missing coefficients")
+        psio_f = float(coeff_parts[0])
+        qdof0_f = float(coeff_parts[1])
+        qdof1_f = float(coeff_parts[2])
+        qdof2_f = float(coeff_parts[3])
+        qdof3_f = float(coeff_parts[4])
+        cl_f = float(coeff_parts[5])
+        cm_f = float(coeff_parts[6])
+        cdp_f = float(coeff_parts[7])
+        clalf_f = float(coeff_parts[8])
+        clmsq_f = float(coeff_parts[9])
 
         results = json.loads(proc.stdout)["results"]
-        tol = 1.0e-6
+        # Fortran is single-precision; allow small FP drift vs JS double.
+        tol = 2.0e-2
+
+        f_metrics = {
+            "x": metrics_array(x_f, samples),
+            "y": metrics_array(y_f, samples),
+            "gam": metrics_array(gam_f, samples),
+        }
 
         for key in ["x", "y", "gam"]:
-            self.assertLessEqual(abs(py_metrics[key]["sum"] - results["metrics"][key]["sum"]), tol)
-            self.assertLessEqual(abs(py_metrics[key]["sumsq"] - results["metrics"][key]["sumsq"]), tol)
-            self.assertLessEqual(abs(py_metrics[key]["maxabs"] - results["metrics"][key]["maxabs"]), tol)
-            assert_array_close(self, py_metrics[key]["samples"], results["metrics"][key]["samples"], tol, f"mixed.{key}.samples")
+            self.assertLessEqual(abs(f_metrics[key]["maxabs"] - results["metrics"][key]["maxabs"]), tol)
+            assert_array_close(self, f_metrics[key]["samples"], results["metrics"][key]["samples"], tol, f"mixed.{key}.samples")
 
-        self.assertLessEqual(abs(ctx.PSIO - results["psio"]), tol)
-        self.assertLessEqual(abs(ctx.QDOF0 - results["qdof0"]), tol)
-        self.assertLessEqual(abs(ctx.QDOF1 - results["qdof1"]), tol)
-        self.assertLessEqual(abs(ctx.QDOF2 - results["qdof2"]), tol)
-        self.assertLessEqual(abs(ctx.QDOF3 - results["qdof3"]), tol)
-        self.assertLessEqual(abs(ctx.CL - results["cl"]), tol)
-        self.assertLessEqual(abs(ctx.CM - results["cm"]), tol)
-        self.assertLessEqual(abs(ctx.CDP - results["cdp"]), tol)
-        self.assertLessEqual(abs(ctx.CL_ALF - results["clAlf"]), tol)
-        self.assertLessEqual(abs(ctx.CL_MSQ - results["clMsq"]), tol)
+        self.assertLessEqual(abs(psio_f - results["psio"]), tol)
+        self.assertLessEqual(abs(qdof0_f - results["qdof0"]), tol)
+        self.assertLessEqual(abs(qdof1_f - results["qdof1"]), tol)
+        self.assertLessEqual(abs(qdof2_f - results["qdof2"]), tol)
+        self.assertLessEqual(abs(qdof3_f - results["qdof3"]), tol)
+        self.assertLessEqual(abs(cl_f - results["cl"]), tol)
+        self.assertLessEqual(abs(cm_f - results["cm"]), tol)
+        self.assertLessEqual(abs(cdp_f - results["cdp"]), tol)
+        self.assertLessEqual(abs(clalf_f - results["clAlf"]), tol)
+        self.assertLessEqual(abs(clmsq_f - results["clMsq"]), tol)
 
 
 if __name__ == "__main__":

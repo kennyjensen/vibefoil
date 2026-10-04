@@ -745,16 +745,16 @@ function renderRunCases() {
   runCaseList.innerHTML = '';
   runCases.forEach((caseItem) => {
     const item = document.createElement('div');
-    item.className = `run-case-item${caseItem.id === activeCaseId ? ' active' : ''}`;
+    item.className = `run-case-item c-run-case-item${caseItem.id === activeCaseId ? ' active' : ''}`;
     item.dataset.caseId = `${caseItem.id}`;
 
     const meta = document.createElement('div');
-    meta.className = 'run-case-meta';
+    meta.className = 'run-case-meta c-run-case-meta';
 
     const titleInput = document.createElement('input');
     titleInput.type = 'text';
     titleInput.value = caseItem.name;
-    titleInput.className = 'run-case-title';
+    titleInput.className = 'run-case-title c-run-case-title';
     titleInput.addEventListener('input', (event) => {
       caseItem.name = event.target.value;
       caseItem.nameEdited = true;
@@ -771,6 +771,7 @@ function renderRunCases() {
     const colorInput = document.createElement('input');
     colorInput.type = 'color';
     colorInput.value = caseItem.color;
+    colorInput.className = 'c-color';
     colorInput.addEventListener('input', (event) => {
       caseItem.color = event.target.value;
       drawAlphaSweepPlot();
@@ -779,6 +780,7 @@ function renderRunCases() {
 
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
+    deleteBtn.className = 'c-button c-button--mini';
     deleteBtn.textContent = '🗑';
     deleteBtn.addEventListener('click', (event) => {
       event.stopPropagation();

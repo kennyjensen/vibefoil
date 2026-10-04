@@ -42,879 +42,115 @@
       }
     }
   </script>
-  <style>
-    :root {
-      --bg-1: #0c0f14;
-      --bg-2: #050608;
-      --ink: #e8edf2;
-      --ink-soft: #9aa4af;
-      --accent: #7fb3ff;
-      --panel: #0f1115;
-      --panel-border: #1f242c;
-      --shadow: rgba(0, 0, 0, 0.65);
-      --input: #0b0d10;
-      --input-border: #2b3038;
-      --canvas: #000000;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    .sr-only {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      margin: -1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-    }
-
-    sub {
-      font-size: 0.7em;
-      vertical-align: baseline;
-      position: relative;
-      top: 0.58em;
-    }
-
-    body {
-      margin: 0;
-      font-family: Consolas, "Courier New", monospace;
-      color: var(--ink);
-      background: radial-gradient(1200px 800px at 10% 10%, var(--bg-1), transparent),
-        radial-gradient(900px 600px at 90% 0%, var(--bg-2), transparent),
-        #000;
-      min-height: 100vh;
-    }
-
-    header {
-      padding: 24px 28px 8px 28px;
-      position: sticky;
-      top: 0;
-      z-index: 5;
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(6px);
-    }
-
-    .github-star-desktop {
-      position: absolute;
-      top: 24px;
-      right: 28px;
-      display: inline-block;
-      text-align: right;
-    }
-
-    .github-star-mobile {
-      display: none;
-      margin-top: 14px;
-    }
-
-    .github-note {
-      margin-top: 6px;
-      font-size: 11px;
-      color: var(--ink-soft);
-      white-space: nowrap;
-    }
-
-    .github-star-mobile .github-note {
-      white-space: normal;
-      max-width: 220px;
-    }
-
-    .mobile-note {
-      display: none;
-    }
-
-    .bugs-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .bugs-row .subtitle {
-      flex: 1 1 auto;
-    }
-
-    h1 {
-      margin: 0 0 6px 0;
-      font-size: 28px;
-      letter-spacing: 0.5px;
-    }
-
-    h1 a {
-      color: inherit;
-      text-decoration: none;
-    }
-
-    h1 a:visited {
-      color: inherit;
-    }
-
-    .subtitle {
-      color: var(--ink-soft);
-      margin: 0;
-      font-size: 14px;
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: minmax(280px, 360px) 1.2fr 0.8fr;
-      gap: 20px;
-      padding: 16px 24px 28px 24px;
-      min-height: calc(100vh - 96px);
-    }
-
-    .page-indicator {
-      display: none;
-      gap: 8px;
-      padding: 0 16px 12px 16px;
-    }
-
-    .page-indicator button {
-      flex: 1 1 0;
-      padding: 8px 10px;
-      border-radius: 999px;
-      border: 1px solid var(--panel-border);
-      background: rgba(8, 10, 12, 0.6);
-      color: var(--ink-soft);
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .page-indicator button.active {
-      color: var(--ink);
-      border-color: rgba(127, 179, 255, 0.8);
-      background: rgba(16, 24, 36, 0.85);
-      box-shadow: 0 0 0 1px rgba(127, 179, 255, 0.35);
-    }
-
-    .panel {
-      background: var(--panel);
-      border-radius: 16px;
-      box-shadow: 0 12px 30px var(--shadow);
-      padding: 18px;
-      border: 1px solid var(--panel-border);
-    }
-
-    .settings-panel {
-      position: sticky;
-      top: 96px;
-      align-self: start;
-    }
-
-    .airfoil-source-box {
-      position: relative;
-    }
-
-    .panel-icon-btn {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      width: 34px;
-      height: 34px;
-      border-radius: 10px;
-      border: 1px solid var(--panel-border);
-      background: rgba(8, 10, 12, 0.6);
-      color: var(--ink);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      padding: 0;
-    }
-
-    .panel-icon-btn:hover {
-      border-color: rgba(127, 179, 255, 0.8);
-      box-shadow: 0 0 0 1px rgba(127, 179, 255, 0.35);
-    }
-
-    .panel-icon-btn svg {
-      width: 18px;
-      height: 18px;
-      display: block;
-    }
-
-    .control-group {
-      margin-bottom: 16px;
-    }
-
-    .control-group label {
-      display: flex;
-      justify-content: space-between;
-      font-size: 14px;
-      margin-bottom: 6px;
-    }
-
-    .control-group input[type="range"] {
-      width: 100%;
-    }
-
-    .viscous-box {
-      border: 1px solid var(--panel-border);
-      border-radius: 12px;
-      padding: 12px;
-      background: rgba(12, 14, 18, 0.85);
-    }
-
-    .viscous-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-top: 8px;
-      font-size: 14px;
-    }
-
-    .viscous-row input[type="number"] {
-      width: 140px;
-      padding: 6px 8px;
-      border-radius: 8px;
-      border: 1px solid var(--input-border);
-      background: var(--input);
-      color: var(--ink);
-      font-family: inherit;
-    }
-
-    .mode-toggle {
-      display: flex;
-      gap: 16px;
-      font-size: 14px;
-    }
-
-    .airfoil-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .airfoil-row input[type="text"] {
-      flex: 1;
-      min-width: 0;
-      padding: 6px 8px;
-      border-radius: 8px;
-      border: 1px solid var(--input-border);
-      background: var(--input);
-      color: var(--ink);
-      font-family: inherit;
-    }
-
-    .status-text {
-      margin-top: 6px;
-      font-size: 12px;
-      color: rgba(230, 236, 244, 0.75);
-    }
-
-    .status-text.error {
-      color: #ff4a3d;
-    }
-
-    .sweep-row {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      margin-top: 10px;
-      font-size: 12px;
-    }
-
-    .sweep-row label {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .sweep-row input[type="number"] {
-      width: 100%;
-      padding: 6px 8px;
-      border-radius: 8px;
-      border: 1px solid var(--input-border);
-      background: var(--input);
-      color: var(--ink);
-      font-family: inherit;
-    }
-
-    .sweep-actions {
-      display: flex;
-      gap: 8px;
-      margin-top: 10px;
-    }
-
-    .sweep-actions button {
-      white-space: nowrap;
-    }
-
-    .run-cases {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-top: 8px;
-    }
-
-    .run-case-item {
-      display: grid;
-      grid-template-columns: 1fr auto auto;
-      gap: 8px;
-      align-items: center;
-      padding: 8px 10px;
-      border-radius: 10px;
-      border: 1px solid var(--panel-border);
-      background: rgba(8, 10, 12, 0.35);
-      cursor: pointer;
-    }
-
-    .run-case-item.active {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 1px rgba(127, 179, 255, 0.6);
-    }
-
-    .run-case-meta {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      font-size: 12px;
-      color: var(--ink-soft);
-    }
-
-    .run-case-title {
-      color: var(--ink);
-      font-size: 13px;
-    }
-
-    .run-case-title[type="text"] {
-      background: transparent;
-      border: none;
-      color: var(--ink);
-      font-family: inherit;
-      font-size: 13px;
-      padding: 0;
-    }
-
-    .run-case-title[type="text"]:focus {
-      outline: none;
-    }
-
-    .run-case-item input[type="color"] {
-      width: 32px;
-      height: 28px;
-      padding: 0;
-      border: none;
-      background: transparent;
-      cursor: pointer;
-    }
-
-    .run-case-item button {
-      min-width: 36px;
-      padding: 6px 8px;
-    }
-
-    select {
-      width: 100%;
-      padding: 6px 8px;
-      border-radius: 8px;
-      border: 1px solid var(--input-border);
-      background: var(--input);
-      color: var(--ink);
-      font-family: inherit;
-    }
-
-    button {
-      padding: 8px 12px;
-      border-radius: 10px;
-      border: 1px solid var(--input-border);
-      background: var(--input);
-      color: var(--ink);
-      cursor: pointer;
-      font-family: inherit;
-    }
-
-    .digits {
-      font-size: 18px;
-      font-weight: 600;
-      color: var(--accent);
-      letter-spacing: 2px;
-    }
-
-    .plot-wrap {
-      position: relative;
-      display: flex;
-      overflow: hidden;
-      height: calc(100vh - 140px);
-      min-height: 520px;
-    }
-
-    .plot-stack {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      flex: 1;
-      min-height: 0;
-    }
-
-    .plot-frame {
-      position: relative;
-      display: flex;
-      flex: 1 1 0;
-      min-height: 0;
-    }
-
-    .plot-frame.cp-frame {
-      flex: 0 0 34%;
-      min-height: 200px;
-    }
-
-    canvas {
-      width: 100%;
-      height: 100%;
-      display: block;
-      min-width: 0;
-      min-height: 0;
-      max-width: 100%;
-      max-height: 100%;
-      border-radius: 16px;
-      background: var(--canvas);
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-      flex: 0 0 auto;
-    }
-
-    #plot {
-      flex: 1 1 0;
-      min-height: 280px;
-    }
-
-    .plot-frame canvas {
-      position: relative;
-      z-index: 1;
-      flex: 1 1 auto;
-      min-height: 0;
-    }
-
-    .cp-plot {
-      min-height: 200px;
-    }
-
-    .plot-download {
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      z-index: 5;
-      width: 36px;
-      height: 36px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      background: rgba(8, 10, 12, 0.75);
-      color: rgba(230, 236, 244, 0.9);
-      cursor: pointer;
-      transition: transform 0.2s ease, background 0.2s ease, opacity 0.2s ease;
-      backdrop-filter: blur(6px);
-      overflow: visible;
-      pointer-events: auto;
-      touch-action: manipulation;
-    }
-
-    .plot-download:hover {
-      background: rgba(29, 33, 41, 0.85);
-      transform: translateY(-1px);
-    }
-
-    .plot-download:disabled {
-      cursor: default;
-      opacity: 0.35;
-      transform: none;
-    }
-
-    .plot-download svg {
-      width: 100%;
-      height: 100%;
-      display: block;
-      transform: scale(2.0);
-      transform-origin: center;
-    }
-
-    .plot-download.bottom-right {
-      top: auto;
-      bottom: 12px;
-      right: 12px;
-    }
-
-    .plot-edit {
-      position: absolute;
-      top: 12px;
-      left: 12px;
-      z-index: 5;
-      height: 36px;
-      min-width: 36px;
-      padding: 0 8px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      background: rgba(8, 10, 12, 0.75);
-      color: rgba(230, 236, 244, 0.9);
-      cursor: pointer;
-      transition: transform 0.2s ease, background 0.2s ease, opacity 0.2s ease;
-      backdrop-filter: blur(6px);
-      touch-action: manipulation;
-    }
-
-    .plot-edit:hover {
-      background: rgba(29, 33, 41, 0.85);
-      transform: translateY(-1px);
-    }
-
-    .plot-edit.active {
-      background: rgba(47, 123, 255, 0.9);
-      border-color: rgba(47, 123, 255, 0.9);
-      color: #ffffff;
-    }
-
-    .plot-edit svg {
-      width: 18px;
-      height: 18px;
-      display: block;
-    }
-
-    .plot-edit svg.stroke {
-      fill: none;
-      stroke: currentColor;
-      stroke-width: 2px;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-
-    .plot-edit.right {
-      left: auto;
-      right: 60px;
-    }
-
-    .plot-edit.right.second {
-      right: 108px;
-    }
-
-    .plot-edit.bottom-right {
-      top: auto;
-      bottom: 12px;
-    }
-
-    .plot-smooth {
-      opacity: 0;
-      pointer-events: none;
-      transform: scale(0.96);
-    }
-
-    .plot-frame.editing .plot-smooth {
-      opacity: 1;
-      pointer-events: auto;
-      transform: translateY(0);
-    }
-
-    .plot-frame.editing canvas {
-      cursor: default;
-    }
-
-    .side-plots {
-      height: calc(100vh - 140px);
-      min-height: 520px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    .side-plots canvas {
-      flex: 1 1 0;
-      min-height: 200px;
-    }
-
-    .plot-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-    }
-
-    .plot-actions button {
-      min-width: 56px;
-    }
-
-    .legend {
-      position: absolute;
-      right: 16px;
-      top: 140px;
-      background: rgba(8, 10, 12, 0.9);
-      padding: 8px 12px;
-      border-radius: 12px;
-      font-size: 12px;
-      color: var(--ink-soft);
-    }
-
-    .data-box {
-      position: absolute;
-      right: 16px;
-      top: 16px;
-      background: rgba(8, 10, 12, 0.6);
-      padding: var(--data-box-pad-y, 12px) var(--data-box-pad-x, 14px);
-      border-radius: 12px;
-      font-size: var(--data-box-font, 24px);
-      z-index: 2;
-      color: var(--ink);
-      line-height: 1.35;
-      width: var(--data-box-width, 220px);
-      box-shadow: 0 8px 18px var(--shadow);
-      pointer-events: none;
-    }
-
-    .hover-box {
-      background: rgba(8, 10, 12, 0.6);
-      padding: 12px 14px;
-      border-radius: 12px;
-      font-size: 14px;
-      color: var(--ink);
-      box-shadow: 0 8px 18px var(--shadow);
-      pointer-events: none;
-    }
-
-    .data-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .data-row[hidden] {
-      display: none;
-    }
-
-    .data-row.name {
-      justify-content: flex-start;
-    }
-
-    .data-row.notice {
-      justify-content: flex-start;
-      font-size: 12px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: #ff4a3d;
-      margin-top: 6px;
-    }
-
-    @media (max-width: 900px) {
-      header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-      }
-
-      .github-star-desktop {
-        display: none;
-      }
-
-      .github-star-mobile {
-        display: inline-block;
-        margin-top: 0;
-      }
-
-      .mobile-note {
-        display: inline;
-        margin-left: 6px;
-        font-size: 11px;
-        color: var(--ink-soft);
-        white-space: normal;
-      }
-
-      header h1 {
-        margin-bottom: 0;
-        white-space: nowrap;
-      }
-
-      .subtitle {
-        max-width: 220px;
-        padding: 6px 8px;
-        border-radius: 10px;
-        background: rgba(8, 10, 12, 0.55);
-        font-size: 11px;
-        line-height: 1.35;
-        margin: 0;
-      }
-
-      .layout {
-        grid-template-columns: none;
-        display: flex;
-        overflow-x: auto;
-        scroll-snap-type: x mandatory;
-        scroll-padding: 16px;
-        padding: 16px 16px 24px 16px;
-        gap: 16px;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-      }
-
-      .layout::-webkit-scrollbar {
-        display: none;
-      }
-
-      .page-indicator {
-        display: flex;
-        position: sticky;
-        top: 72px;
-        z-index: 4;
-        background: rgba(0, 0, 0, 0.7);
-        backdrop-filter: blur(6px);
-        padding-top: 8px;
-        margin-top: -8px;
-      }
-
-      .panel {
-        flex: 0 0 100%;
-        scroll-snap-align: start;
-      }
-
-      .settings-panel {
-        position: relative;
-        top: auto;
-      }
-
-      .plot-wrap {
-        height: calc(100vh - 190px);
-        min-height: 0;
-      }
-
-      #plot {
-        flex: 0 0 auto;
-        height: auto;
-        aspect-ratio: 5 / 1;
-      }
-
-      .plot-stack {
-        gap: 6px;
-      }
-
-      .plot-frame.cp-frame {
-        flex: 0 0 40%;
-        min-height: 190px;
-      }
-
-      .plot-download {
-        display: none;
-      }
-
-      .plot-edit.right {
-        right: 12px;
-      }
-
-      .plot-edit.right.second {
-        right: calc(12px + 36px + 12px);
-      }
-
-      .side-plots {
-        height: calc(100vh - 190px);
-        min-height: 0;
-        gap: 10px;
-      }
-
-      .side-plots canvas {
-        flex: 1 1 0;
-        min-height: 180px;
-      }
-    }
-  </style>
+  <link rel="stylesheet" href="./css/app.css" />
 </head>
-<body>
-  <header>
-    <h1><a href="https://github.com/kennyjensen/vibefoil" target="_blank" rel="noopener">Vibefoil</a></h1>
-    <h2 class="sr-only">Interactive airfoil explorer based on XFOIL</h2>
-    <p class="subtitle">An interactive airfoil explorer based on <a href="https://web.mit.edu/drela/Public/web/xfoil/" target="_blank" rel="noopener">XFOIL</a>.</p>
-    <div class="github-star-desktop">
-      <a
-        class="github-button"
-        href="https://github.com/kennyjensen/vibefoil"
-        data-color-scheme="no-preference: dark; light: dark; dark: dark;"
-        data-icon="octicon-star"
-        data-size="large"
-        data-show-count="true"
-        aria-label="Star kennyjensen/vibefoil on GitHub"
-      >Star</a>
-      <div class="github-note">AVL port released at 100 stars!</div>
+<body class="app">
+  <header class="app-header">
+    <h1 class="c-title"><a class="u-link" href="https://github.com/kennyjensen/vibefoil" target="_blank" rel="noopener">Vibefoil</a></h1>
+    <h2 class="u-sr-only">Interactive airfoil explorer based on XFOIL</h2>
+    <p class="subtitle c-subtitle">An interactive airfoil explorer based on <a class="u-link" href="https://web.mit.edu/drela/Public/web/xfoil/" target="_blank" rel="noopener">XFOIL</a>.</p>
+    <div class="header-actions">
+      <nav class="related-apps" aria-label="More airfoil and flight tools">
+        <a class="c-element-link" href="https://avl.vibefoil.com" target="_blank" rel="noopener noreferrer" aria-label="VibeLattice (opens in a new tab)">
+          <span class="c-element-symbol" aria-hidden="true">Vl</span>
+          <span class="c-element-name">VibeLattice</span>
+        </a>
+        <a class="c-element-link" href="https://sim.vibefoil.com" target="_blank" rel="noopener noreferrer" aria-label="VibeSim (opens in a new tab)">
+          <span class="c-element-symbol" aria-hidden="true">Vs</span>
+          <span class="c-element-name">VibeSim</span>
+        </a>
+        <a class="c-element-link" href="https://alula.vibefoil.com" target="_blank" rel="noopener noreferrer" aria-label="Alula (opens in a new tab)">
+          <span class="c-element-symbol" aria-hidden="true">Al</span>
+          <span class="c-element-name">Alula</span>
+        </a>
+      </nav>
+      <div class="github-star-desktop c-github-star c-github-star--desktop">
+        <a
+          class="github-button"
+          href="https://github.com/kennyjensen/vibefoil"
+          data-color-scheme="no-preference: dark; light: dark; dark: dark;"
+          data-icon="octicon-star"
+          data-size="large"
+          data-show-count="true"
+          aria-label="Star kennyjensen/vibefoil on GitHub"
+        >Star</a>
+        <div class="github-note c-github-note">AVL port released at 100 stars!</div>
+      </div>
     </div>
   </header>
 
   <div class="page-indicator" role="tablist" aria-label="Panels">
-    <button type="button" data-index="0" class="active">Settings</button>
-    <button type="button" data-index="1">Airfoil Vis</button>
-    <button type="button" data-index="2">C<sub>L</sub>/C<sub>D</sub> Plots</button>
+    <button type="button" data-index="0" class="c-tabs-button active">Settings</button>
+    <button type="button" data-index="1" class="c-tabs-button">Airfoil Vis</button>
+    <button type="button" data-index="2" class="c-tabs-button">C<sub class="u-sub">L</sub>/C<sub class="u-sub">D</sub> Plots</button>
   </div>
 
   <div class="layout">
-    <div class="panel settings-panel">
-      <div class="control-group viscous-box airfoil-source-box">
-        <label>
+    <div class="panel c-panel l-sticky settings-panel">
+      <div class="control-group c-control-group viscous-box c-box airfoil-source-box">
+        <label class="c-control-label">
           <span>Airfoil Source</span>
         </label>
         <button
           id="downloadDatAirfoil"
-          class="panel-icon-btn"
+          class="panel-icon-btn c-panel-icon-btn"
           type="button"
           title="Download airfoil (.dat)"
           aria-label="Download airfoil (.dat)"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
+          <svg class="c-panel-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="currentColor" d="M12 3a1 1 0 0 1 1 1v9.17l2.59-2.58a1 1 0 1 1 1.41 1.42l-4.3 4.29a1 1 0 0 1-1.4 0l-4.3-4.29a1 1 0 1 1 1.41-1.42L11 13.17V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
           </svg>
         </button>
         <div class="mode-toggle">
-          <label><input type="radio" name="source" value="naca" checked /> NACA</label>
-          <label><input type="radio" name="source" value="database" /> Database</label>
-          <label><input type="radio" name="source" value="custom" /> Custom</label>
+          <label class="c-inline-label"><input type="radio" name="source" value="naca" checked /> NACA</label>
+          <label class="c-inline-label"><input type="radio" name="source" value="database" /> Database</label>
+          <label class="c-inline-label"><input type="radio" name="source" value="custom" /> Custom</label>
         </div>
 
         <div id="nacaOptions">
-          <div class="control-group">
-            <label>
+          <div class="control-group c-control-group">
+            <label class="c-control-label">
               <span>Series</span>
             </label>
             <div class="mode-toggle">
-              <label><input type="radio" name="series" value="4" checked /> 4-digit</label>
-              <label><input type="radio" name="series" value="5" /> 5-digit</label>
-              <label><input type="radio" name="series" value="6" /> 6-series</label>
+              <label class="c-inline-label"><input type="radio" name="series" value="4" checked /> 4-digit</label>
+              <label class="c-inline-label"><input type="radio" name="series" value="5" /> 5-digit</label>
+              <label class="c-inline-label"><input type="radio" name="series" value="6" /> 6-series</label>
             </div>
           </div>
           <div id="controls4">
-          <div class="control-group">
-            <label for="m">
+          <div class="control-group c-control-group">
+            <label class="c-control-label" for="m">
               <span>Max camber (M)</span>
               <span id="mValue">2%</span>
             </label>
-            <input id="m" type="range" min="0" max="9" step="1" value="2" />
+            <input id="m" type="range" class="c-range" min="0" max="9" step="1" value="2" />
           </div>
 
-          <div class="control-group">
-            <label for="p">
+          <div class="control-group c-control-group">
+            <label class="c-control-label" for="p">
               <span>Camber position (P)</span>
               <span id="pValue">40%</span>
             </label>
-            <input id="p" type="range" min="0" max="9" step="1" value="4" />
+            <input id="p" type="range" class="c-range" min="0" max="9" step="1" value="4" />
           </div>
 
-          <div class="control-group">
-            <label for="t">
+          <div class="control-group c-control-group">
+            <label class="c-control-label" for="t">
               <span>Thickness (T)</span>
               <span id="tValue">12%</span>
             </label>
-            <input id="t" type="range" min="1" max="30" step="1" value="12" />
+            <input id="t" type="range" class="c-range" min="1" max="30" step="1" value="12" />
           </div>
           </div>
 
           <div id="controls5" hidden>
-            <div class="control-group">
-              <label for="series5">
+            <div class="control-group c-control-group">
+              <label class="c-control-label" for="series5">
                 <span>Camber line</span>
               </label>
-              <select id="series5">
+              <select class="c-select" id="series5">
                 <option value="210">210</option>
                 <option value="220">220</option>
                 <option value="230">230</option>
@@ -923,21 +159,21 @@
               </select>
             </div>
 
-            <div class="control-group">
-              <label for="t5">
+            <div class="control-group c-control-group">
+              <label class="c-control-label" for="t5">
                 <span>Thickness (T)</span>
                 <span id="t5Value">12%</span>
               </label>
-              <input id="t5" type="range" min="1" max="30" step="1" value="12" />
+              <input id="t5" type="range" class="c-range" min="1" max="30" step="1" value="12" />
             </div>
           </div>
 
           <div id="controls6" hidden>
-            <div class="control-group">
-              <label for="series6Profile">
+            <div class="control-group c-control-group">
+              <label class="c-control-label" for="series6Profile">
                 <span>Profile</span>
               </label>
-              <select id="series6Profile">
+              <select class="c-select" id="series6Profile">
                 <option value="63">63</option>
                 <option value="64">64</option>
                 <option value="65">65</option>
@@ -948,164 +184,164 @@
                 <option value="65A">65A</option>
               </select>
             </div>
-            <div class="control-group">
-              <label for="t6">
+            <div class="control-group c-control-group">
+              <label class="c-control-label" for="t6">
                 <span>Thickness (T)</span>
                 <span id="t6Value">12%</span>
               </label>
-              <input id="t6" type="range" min="1" max="30" step="1" value="12" />
+              <input id="t6" type="range" class="c-range" min="1" max="30" step="1" value="12" />
             </div>
-            <div class="control-group">
-              <label for="a6">
+            <div class="control-group c-control-group">
+              <label class="c-control-label" for="a6">
                 <span>Uniform loading (a)</span>
                 <span id="a6Value">1.0</span>
               </label>
-              <input id="a6" type="range" min="0.1" max="1.0" step="0.05" value="1.0" />
+              <input id="a6" type="range" class="c-range" min="0.1" max="1.0" step="0.05" value="1.0" />
             </div>
             <div class="viscous-row" id="cl6Row">
-              <label for="cl6">C<sub>L</sub></label>
-              <input id="cl6" type="number" step="0.05" value="0.0" />
+              <label for="cl6">C<sub class="u-sub">L</sub></label>
+              <input id="cl6" type="number" step="0.05" value="0.0" class="c-input c-input--compact">
             </div>
           </div>
         </div>
 
         <div id="customOptions" hidden>
-          <div class="control-group">
-            <label>
+          <div class="control-group c-control-group">
+            <label class="c-control-label">
               <span>Airfoil File</span>
             </label>
             <div class="mode-toggle">
-              <button id="loadDat" type="button">Open</button>
+              <button class="c-button" id="loadDat" type="button">Open</button>
               <input id="datFile" type="file" accept=".dat" hidden />
             </div>
-            <p class="subtitle">Loads XFOIL .dat airfoil coordinates.</p>
+            <p class="subtitle c-subtitle">Loads XFOIL .dat airfoil coordinates.</p>
           </div>
         </div>
 
         <div id="databaseOptions" hidden>
-          <div class="control-group">
-            <label for="uiucName">
+          <div class="control-group c-control-group">
+            <label class="c-control-label" for="uiucName">
               <span>Database Airfoil</span>
             </label>
             <div class="airfoil-row">
-              <input id="uiucName" type="text" list="uiucList" placeholder="e.g. sd7003 or e387.dat" />
+              <input id="uiucName" type="text" list="uiucList" placeholder="e.g. sd7003 or e387.dat" class="c-input c-input--text">
               <datalist id="uiucList"></datalist>
-              <button id="fetchUiuc" type="button">Fetch</button>
+              <button class="c-button" id="fetchUiuc" type="button">Fetch</button>
             </div>
-            <p class="subtitle">Pulls Selig-format .dat files from uiuc_airfoil_database on GitHub.</p>
-            <p id="uiucStatus" class="subtitle status-text" hidden></p>
+            <p class="subtitle c-subtitle">Pulls Selig-format .dat files from uiuc_airfoil_database on GitHub.</p>
+            <p id="uiucStatus" class="subtitle c-subtitle c-status-text" hidden></p>
           </div>
         </div>
       </div>
 
 
-      <div class="control-group viscous-box">
-        <label for="viscous">
+      <div class="control-group viscous-box c-control-group c-box">
+        <label class="c-control-label" for="viscous">
           <span>Boundary Layer</span>
         </label>
-        <label><input id="viscous" type="checkbox" checked /> Viscous mode</label>
+        <label class="c-inline-label"><input id="viscous" type="checkbox" checked /> Viscous mode</label>
         <div class="viscous-row">
           <label for="mach">Mach</label>
-          <input id="mach" type="number" min="0" max="0.99" step="0.01" value="0.00" />
+          <input id="mach" type="number" min="0" max="0.99" step="0.01" value="0.00" class="c-input c-input--compact">
         </div>
         <div class="viscous-row">
           <label for="reynolds">Re</label>
-          <input id="reynolds" type="number" min="10000" step="100000" value="1000000" />
+          <input id="reynolds" type="number" min="10000" step="100000" value="1000000" class="c-input c-input--compact">
         </div>
         <div class="viscous-row">
-          <label for="ncr">N<sub>cr</sub></label>
-          <input id="ncr" type="number" min="1" max="15" step="1" value="9.0" />
+          <label for="ncr">N<sub class="u-sub">cr</sub></label>
+          <input id="ncr" type="number" min="1" max="15" step="1" value="9.0" class="c-input c-input--compact">
         </div>
         <div class="viscous-row">
-          <label><input id="advancedMode" type="checkbox" /> Advanced mode</label>
+          <label class="c-inline-label"><input id="advancedMode" type="checkbox" /> Advanced mode</label>
         </div>
         <div id="advancedControls" hidden>
           <div class="viscous-row">
-            <label for="nIter">N<sub>iter</sub></label>
-            <input id="nIter" type="number" min="1" step="1" value="20" />
+            <label for="nIter">N<sub class="u-sub">iter</sub></label>
+            <input id="nIter" type="number" min="1" step="1" value="20" class="c-input c-input--compact">
           </div>
           <div class="viscous-row">
-            <label><input id="reuseSolution" type="checkbox" /> Reuse BL solution</label>
+            <label class="c-inline-label"><input id="reuseSolution" type="checkbox" /> Reuse BL solution</label>
           </div>
         </div>
       </div>
 
-      <div class="control-group viscous-box">
-        <label for="alpha">
+      <div class="control-group viscous-box c-control-group c-box">
+        <label class="c-control-label" for="alpha">
           <span>Angle-of-attack</span>
           <span id="alphaValue">0°</span>
         </label>
-        <input id="alpha" type="range" min="-15" max="15" step="0.1" value="0" />
+        <input id="alpha" type="range" class="c-range" min="-15" max="15" step="0.1" value="0" />
         <div class="sweep-actions">
-          <button id="alphaMinus" type="button">−</button>
-          <button id="alphaPlus" type="button">+</button>
+          <button class="c-button" id="alphaMinus" type="button">−</button>
+          <button class="c-button" id="alphaPlus" type="button">+</button>
         </div>
         <div class="sweep-row">
-          <label>
+          <label class="c-stack-label">
             <span>Start</span>
-            <input id="sweepStart" type="number" value="-10" step="0.5" />
+            <input id="sweepStart" type="number" value="-10" step="0.5" class="c-input c-input--full">
           </label>
-          <label>
+          <label class="c-stack-label">
             <span>End</span>
-            <input id="sweepEnd" type="number" value="10" step="0.5" />
+            <input id="sweepEnd" type="number" value="10" step="0.5" class="c-input c-input--full">
           </label>
-          <label>
+          <label class="c-stack-label">
             <span>Inc</span>
-            <input id="sweepInc" type="number" value="1" step="0.5" min="0.1" />
+            <input id="sweepInc" type="number" value="1" step="0.5" min="0.1" class="c-input c-input--full">
           </label>
         </div>
         <div class="sweep-actions">
-          <button id="alphaSweep" type="button">Sweep</button>
+          <button class="c-button" id="alphaSweep" type="button">Sweep</button>
         </div>
       </div>
 
-      <div class="control-group viscous-box">
-        <label>
+      <div class="control-group viscous-box c-control-group c-box">
+        <label class="c-control-label">
           <span>Flap</span>
         </label>
-        <div class="control-group">
-          <label for="flapDef">
+        <div class="control-group c-control-group">
+          <label class="c-control-label" for="flapDef">
             <span>Deflection (+ down)</span>
             <span id="flapDefValue">0.0°</span>
           </label>
-          <input id="flapDef" type="range" min="-20" max="20" step="0.5" value="0" />
+          <input id="flapDef" type="range" class="c-range" min="-20" max="20" step="0.5" value="0" />
           <div class="sweep-actions">
-            <button id="flapDefMinus" type="button">−</button>
-            <button id="flapDefPlus" type="button">+</button>
+            <button class="c-button" id="flapDefMinus" type="button">−</button>
+            <button class="c-button" id="flapDefPlus" type="button">+</button>
           </div>
         </div>
-        <div class="control-group">
-          <label for="flapX">
+        <div class="control-group c-control-group">
+          <label class="c-control-label" for="flapX">
             <span>Hinge x/c</span>
             <span id="flapXValue">0.75</span>
           </label>
-          <input id="flapX" type="range" min="0" max="1" step="0.01" value="0.75" />
+          <input id="flapX" type="range" class="c-range" min="0" max="1" step="0.01" value="0.75" />
         </div>
-        <div class="control-group">
-          <label for="flapY">
+        <div class="control-group c-control-group">
+          <label class="c-control-label" for="flapY">
             <span>Hinge y/t</span>
             <span id="flapYValue">0.50</span>
           </label>
-          <input id="flapY" type="range" min="0" max="1" step="0.01" value="0.50" />
+          <input id="flapY" type="range" class="c-range" min="0" max="1" step="0.01" value="0.50" />
         </div>
       </div>
 
-      <div class="control-group viscous-box">
-        <label>
+      <div class="control-group viscous-box c-control-group c-box">
+        <label class="c-control-label">
           <span>Run case</span>
         </label>
         <div id="runCaseList" class="run-cases"></div>
         <div class="sweep-actions">
-          <button id="addRunCase" type="button">Add run case</button>
-          <button id="downloadRunCases" type="button">Download</button>
+          <button class="c-button" id="addRunCase" type="button">Add run case</button>
+          <button class="c-button" id="downloadRunCases" type="button">Download</button>
         </div>
       </div>
       <div class="bugs-row">
-        <p class="subtitle">
-          Please submit bugs and feature requests <a href="https://github.com/kennyjensen/vibefoil/issues" target="_blank" rel="noopener">here</a>.
-          <span class="mobile-note">AVL port released at 100 stars!</span>
+        <p class="subtitle c-subtitle c-bugs-text">
+          Please submit bugs and feature requests <a class="u-link" href="https://github.com/kennyjensen/vibefoil/issues" target="_blank" rel="noopener">here</a>.
+          <span class="mobile-note c-mobile-note">AVL port released at 100 stars!</span>
         </p>
-        <div class="github-star-mobile">
+        <div class="github-star-mobile c-github-star c-github-star--mobile">
           <a
             class="github-button"
             href="https://github.com/kennyjensen/vibefoil"
@@ -1119,70 +355,70 @@
       </div>
     </div>
 
-    <div class="panel plot-wrap">
+    <div class="panel c-panel plot-wrap">
       <div class="plot-stack">
         <div class="plot-frame" id="airfoilFrame">
-          <canvas id="plot" width="900" height="500"></canvas>
-          <button id="smoothAirfoil" class="plot-edit plot-smooth right second bottom-right" type="button" title="Smooth airfoil" aria-label="Smooth airfoil">
-            <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true">
+          <canvas id="plot" class="c-canvas c-canvas--frame c-canvas--main" width="900" height="500"></canvas>
+          <button id="smoothAirfoil" class="plot-edit plot-smooth c-plot-btn c-plot-btn--edit c-plot-btn--smooth u-right u-right-second u-bottom-right" type="button" title="Smooth airfoil" aria-label="Smooth airfoil">
+            <svg class="c-plot-icon c-plot-icon--stroke" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M3 9c3-4 6-4 9 0s6 4 9 0" />
               <path d="M3 15c3-4 6-4 9 0s6 4 9 0" />
             </svg>
           </button>
-          <button id="editAirfoil" class="plot-edit right bottom-right" type="button" title="Edit airfoil" aria-label="Edit airfoil" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
+          <button id="editAirfoil" class="plot-edit c-plot-btn c-plot-btn--edit u-right u-bottom-right" type="button" title="Edit airfoil" aria-label="Edit airfoil" aria-pressed="false">
+            <svg class="c-plot-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path fill="currentColor" d="M16.9 3.2a1.5 1.5 0 0 1 2.1 0l1.8 1.8a1.5 1.5 0 0 1 0 2.1l-9.9 9.9-3.6.7.7-3.6 9.9-9.9zM4 20h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2z"/>
             </svg>
           </button>
-          <button id="downloadBl" class="plot-download bottom-right" type="button" title="Download BLDUMP" aria-label="Download BLDUMP">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
+          <button id="downloadBl" class="plot-download c-plot-btn c-plot-btn--download u-bottom-right" type="button" title="Download BLDUMP" aria-label="Download BLDUMP">
+            <svg class="c-plot-icon c-plot-icon--download" viewBox="0 0 24 24" aria-hidden="true">
               <path fill="currentColor" d="M12 3a1 1 0 0 1 1 1v9.17l2.59-2.58a1 1 0 1 1 1.41 1.42l-4.3 4.29a1 1 0 0 1-1.4 0l-4.3-4.29a1 1 0 1 1 1.41-1.42L11 13.17V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
             </svg>
           </button>
         </div>
-        <div class="plot-frame cp-frame">
-          <button id="smoothCp" class="plot-edit plot-smooth right second" type="button" title="Smooth Cp" aria-label="Smooth Cp">
-            <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true">
+        <div class="plot-frame plot-frame--cp">
+          <button id="smoothCp" class="plot-edit plot-smooth c-plot-btn c-plot-btn--edit c-plot-btn--smooth u-right u-right-second" type="button" title="Smooth Cp" aria-label="Smooth Cp">
+            <svg class="c-plot-icon c-plot-icon--stroke" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M3 9c3-4 6-4 9 0s6 4 9 0" />
               <path d="M3 15c3-4 6-4 9 0s6 4 9 0" />
             </svg>
           </button>
-          <button id="editCp" class="plot-edit right" type="button" title="Edit Cp" aria-label="Edit Cp" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
+          <button id="editCp" class="plot-edit c-plot-btn c-plot-btn--edit u-right" type="button" title="Edit Cp" aria-label="Edit Cp" aria-pressed="false">
+            <svg class="c-plot-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path fill="currentColor" d="M16.9 3.2a1.5 1.5 0 0 1 2.1 0l1.8 1.8a1.5 1.5 0 0 1 0 2.1l-9.9 9.9-3.6.7.7-3.6 9.9-9.9zM4 20h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2z"/>
             </svg>
           </button>
-          <canvas id="cpPlot" class="cp-plot" width="900" height="280"></canvas>
-          <button id="downloadCp" class="plot-download" type="button" title="Download CPDUMP" aria-label="Download CPDUMP">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
+          <canvas id="cpPlot" class="c-canvas c-canvas--frame c-canvas--cp" width="900" height="280"></canvas>
+          <button id="downloadCp" class="plot-download c-plot-btn c-plot-btn--download" type="button" title="Download CPDUMP" aria-label="Download CPDUMP">
+            <svg class="c-plot-icon c-plot-icon--download" viewBox="0 0 24 24" aria-hidden="true">
               <path fill="currentColor" d="M12 3a1 1 0 0 1 1 1v9.17l2.59-2.58a1 1 0 1 1 1.41 1.42l-4.3 4.29a1 1 0 0 1-1.4 0l-4.3-4.29a1 1 0 1 1 1.41-1.42L11 13.17V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
             </svg>
           </button>
         </div>
       </div>
-      <div class="data-box" id="dataBox">
-        <div class="data-row name"><span id="dataName">—</span></div>
-        <div class="data-row"><span>Re</span><span id="dataRe">—</span></div>
-        <div class="data-row"><span>α</span><span id="dataAlpha">—</span></div>
-        <div class="data-row"><span>C<sub>L</sub></span><span id="dataCl">—</span></div>
-        <div class="data-row"><span>C<sub>M</sub></span><span id="dataCm">—</span></div>
-        <div class="data-row"><span>C<sub>D</sub></span><span id="dataCd">—</span></div>
-        <div class="data-row"><span>L/D</span><span id="dataLd">—</span></div>
-        <div class="data-row"><span>N<sub>cr</sub></span><span id="dataNcr">—</span></div>
-        <div class="data-row notice" id="dataConverged" hidden>NOT CONVERGED</div>
+      <div class="data-box c-data-box" id="dataBox">
+        <div class="data-row c-data-row c-data-row--name"><span id="dataName">—</span></div>
+        <div class="data-row c-data-row"><span>Re</span><span id="dataRe">—</span></div>
+        <div class="data-row c-data-row"><span>α</span><span id="dataAlpha">—</span></div>
+        <div class="data-row c-data-row"><span>C<sub class="u-sub">L</sub></span><span id="dataCl">—</span></div>
+        <div class="data-row c-data-row"><span>C<sub class="u-sub">M</sub></span><span id="dataCm">—</span></div>
+        <div class="data-row c-data-row"><span>C<sub class="u-sub">D</sub></span><span id="dataCd">—</span></div>
+        <div class="data-row c-data-row"><span>L/D</span><span id="dataLd">—</span></div>
+        <div class="data-row c-data-row"><span>N<sub class="u-sub">cr</sub></span><span id="dataNcr">—</span></div>
+        <div class="data-row c-data-row c-data-row--notice" id="dataConverged" hidden>NOT CONVERGED</div>
       </div>
     </div>
 
-    <div class="panel side-plots">
-      <canvas id="alphaPlot" width="520" height="340"></canvas>
-      <canvas id="polarPlot" width="520" height="320"></canvas>
-      <div class="hover-box" id="hoverBox">
-        <div class="data-row name"><span id="hoverName">—</span></div>
-        <div class="data-row"><span>Mach</span><span id="hoverMach">—</span></div>
-        <div class="data-row"><span>Re</span><span id="hoverRe">—</span></div>
-        <div class="data-row"><span>N<sub>cr</sub></span><span id="hoverNcr">—</span></div>
-        <div class="data-row"><span>α</span><span id="hoverAlpha">—</span></div>
-        <div class="data-row"><span>Flap</span><span id="hoverFlap">—</span></div>
+    <div class="panel c-panel side-plots">
+      <canvas id="alphaPlot" class="c-canvas c-canvas--side" width="520" height="340"></canvas>
+      <canvas id="polarPlot" class="c-canvas c-canvas--side" width="520" height="320"></canvas>
+      <div class="hover-box c-hover-box" id="hoverBox">
+        <div class="data-row c-data-row c-data-row--name"><span id="hoverName">—</span></div>
+        <div class="data-row c-data-row"><span>Mach</span><span id="hoverMach">—</span></div>
+        <div class="data-row c-data-row"><span>Re</span><span id="hoverRe">—</span></div>
+        <div class="data-row c-data-row"><span>N<sub class="u-sub">cr</sub></span><span id="hoverNcr">—</span></div>
+        <div class="data-row c-data-row"><span>α</span><span id="hoverAlpha">—</span></div>
+        <div class="data-row c-data-row"><span>Flap</span><span id="hoverFlap">—</span></div>
       </div>
     </div>
   </div>

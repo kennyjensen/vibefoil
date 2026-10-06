@@ -841,6 +841,11 @@ C------ store primary variables
         CTQ(IBL,IS)  = CQ2
         DELT(IBL,IS) = DE2
         TSTR(IBL,IS) = HS2*T2
+        DSSR(IBL,IS) = HC2*T2
+
+        MDEF(IBL,IS) = R2*U2*D2
+        PDEF(IBL,IS) = R2*U2*U2*T2
+        KDEF(IBL,IS) = R2*U2*U2*U2*T2*HS2*0.5
 C
 C------ set "1" variables to "2" variables for next streamwise station
         CALL BLPRV(XSI,AMI,CTI,THI,DSI,DSWAKI,UEI)
@@ -869,7 +874,7 @@ C
  2000 CONTINUE
 C
       RETURN
-      END
+      END ! MRCHUE
   
  
       SUBROUTINE MRCHDU
@@ -1160,12 +1165,18 @@ C------ store primary variables
         DSTR(IBL,IS) = DSI
         UEDG(IBL,IS) = UEI
         MASS(IBL,IS) = DSI*UEI
+
         TAU(IBL,IS)  = 0.5*R2*U2*U2*CF2
         DIS(IBL,IS)  =     R2*U2*U2*U2*DI2*HS2*0.5
         CTQ(IBL,IS)  = CQ2
         DELT(IBL,IS) = DE2
         TSTR(IBL,IS) = HS2*T2
+        DSSR(IBL,IS) = HC2*T2
 C
+        MDEF(IBL,IS) = R2*U2*D2
+        PDEF(IBL,IS) = R2*U2*U2*T2
+        KDEF(IBL,IS) = R2*U2*U2*U2*T2*HS2*0.5
+
 C------ set "1" variables to "2" variables for next streamwise station
         CALL BLPRV(XSI,AMI,CTI,THI,DSI,DSWAKI,UEI)
         CALL BLKIN
@@ -1190,7 +1201,7 @@ C
  2000 CONTINUE
 C
       RETURN
-      END
+      END ! MRCHDU
   
  
       SUBROUTINE XIFSET(IS)
@@ -1245,7 +1256,7 @@ C
       ENDIF
 C
       RETURN
-      END
+      END ! XIFSET
 
 
 
@@ -1554,6 +1565,10 @@ C---- equate upper wake arrays to lower wake arrays
          CTQ(IBLTE(1)+KBL,1) =  CTQ(IBLTE(2)+KBL,2)
         DELT(IBLTE(1)+KBL,1) = DELT(IBLTE(2)+KBL,2)
         TSTR(IBLTE(1)+KBL,1) = TSTR(IBLTE(2)+KBL,2)
+        DSSR(IBLTE(1)+KBL,1) = DSSR(IBLTE(2)+KBL,2)
+        MDEF(IBLTE(1)+KBL,1) = MDEF(IBLTE(2)+KBL,2)
+        PDEF(IBLTE(1)+KBL,1) = PDEF(IBLTE(2)+KBL,2)
+        KDEF(IBLTE(1)+KBL,1) = KDEF(IBLTE(2)+KBL,2)
     6 CONTINUE
 C
       RETURN

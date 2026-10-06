@@ -43,8 +43,9 @@ C
 C------ find max pivot index NX
         NX = NP
         DO 11 N=NP1, NN
-          IF(ABS(Z(N,NP))-ABS(Z(NX,NP))) 11,11,111
-  111      NX = N
+          IF(ABS(Z(N,NP)) .GT. ABS(Z(NX,NP))) THEN
+           NX = N
+          ENDIF
    11   CONTINUE
 C
         PIVOT = 1.0/Z(NX,NP)
@@ -113,8 +114,9 @@ C
 C------ find max pivot index NX
         NX = NP
         DO 11 N=NP1, NN
-          IF(ABS(Z(N,NP))-ABS(Z(NX,NP))) 11,11,111
-  111      NX = N
+          IF(ABS(Z(N,NP)) .GT. ABS(Z(NX,NP))) THEN
+           NX = N
+          ENDIF
    11   CONTINUE
 C
         PIVOT = (1.0,0.0)/Z(NX,NP)
@@ -187,7 +189,7 @@ C     *******************************************************
 C
       DIMENSION A(NSIZ,NSIZ), INDX(NSIZ)
 C
-      PARAMETER (NVX=500)
+      PARAMETER (NVX=515)
       DIMENSION VV(NVX)
 C
       IF(N.GT.NVX) STOP 'LUDCMP: Array overflow. Increase NVX.'

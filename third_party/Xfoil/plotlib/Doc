@@ -24,7 +24,7 @@
 
 Xplot11 Graphics Package  "Documentation"   
 
-C     Version 4.46 11/28/01
+C     Version 4.60 07 May 2025
 
 (submitted in partial fullfillment of the 
  necessity of documenting this package)
@@ -84,7 +84,6 @@ The following features are NOT provided by design:
 - Read/Write Colormaps
 - Multiple X windows
 - full 3D support (you really ought to be using OpenGL at that point)
-
 
 
 Implementation
@@ -329,6 +328,12 @@ and can be resized with the mouse via the Window Manager.
 For PostScript hardcopy, (X,Y) are inches, so that anything visible 
 in the default X-window will just fit on a standard 8.5"x11.0" sheet 
 in Landscape orientation.
+
+If you wish the PostScript output to always be in Portrait mode,
+can do so with the call
+   CALL PLPORT
+before the first PLOPEN call.  To undo this (go back to the default):
+   CALL PLUNPORT
 
 For the X-window, (X,Y) are "pseudo_inches", whose size depends
 on the physical size of the screen, and on the specified fraction
@@ -801,21 +806,34 @@ c==== This comment lead indicates a required call.  All others are optional.
 c==== Initialize plot routines, sets up default (10 color) colormap
       CALL PLINITIALIZE
 c
-c---- Additional "Spectrum" colormap with hardwired definitions
-c      (1..64 colors ranging from Blue to Cyan to Green to Yellow)
-      CALL COLORSPECTRUMHUES(64,'BCGY')
+c---- Additional "Spectrum" colormap using colors interpolated between
+c      8 hardwired colors plus black and white.  These are selected via
+c      a string consisting of their first letters (with K for black):
+c        K  black
+c        W  white
+c        R  red
+c        O  orange
+c        Y  yellow
+c        G  green
+c        C  cyan
+c        B  blue
+c        V  violet
+c        M  magenta
 c
-c---- Alternative Spectrum-setup call are given below...
-c-     (these are more general, but more awkward to set up)
+c     The string is passed to COLORSPECTRUMHUES to generate the spectrum,
+c     for example:
+c      NCOLORS = 64
+c      CALL COLORSPECTRUMHUES(NCOLORS,'BWR')
 c
-c---- User-supplied "Spectrum" interpolated from base color RGB components
-c     (in lieu of COLORSPECTRUMHUES call above)
-CCC   CALL COLORSPECTRUMTRP(64,NBASE,IRGB,COLWIDTH)
+c     Two colormaps are defined, one fully or almost fully saturated for
+c     a black background (reverse video), and less saturated (darker)
+c     for a white background and hardcopy.  Either will be used as the
+c     situation dictates.
 c
-c---- User-supplied "Spectrum" defined by RGB components
-c     (in lieu of COLORSPECTRUMHUES or COLORSPECTRUMTRP call above)
-CCC   CALL COLORSPECTRUMRGB(NRGB,IRGB)
-c
+c     You may set up your own colormaps if needed.  Likely the easiest
+c     approach is to make your own version of COLORSPECTRUMHUES, giving 
+c     it a different name, e.g. COLORSPECTRUMHUES2, and modify its 
+c     color RGB values in the DATA statements.
 c
 c==== start new X-window plot, Postscript output to default unit and file
 c     normally "plot.ps" and logical unit 80, no PostScript yet
@@ -857,7 +875,7 @@ c==== finish plot page
 c
 c
 c---- replot everything (since last PLOPEN call) to PostScript file "plot.ps"
-      CALL REPLOT(2)
+      CALL REPLOT(4)
 c
 c
 c---- query window size (might have been changed by user via mouse)
@@ -946,7 +964,7 @@ compatibility.  These routines should not be used in new applications,
 since the intent is to phase them out sometime in the 21st Century:-)
 
 
-The other source files set_subs.f, ps_subs.f, gw_subs.f, Xwin.c
+The other source files set_subs.f, ps_subs.f, gw_subs.f, Xwin2.c
 contain internal support routines.  These are not intended to be
 called by applications (there's no reason to do so in any case).
 
@@ -955,39 +973,43 @@ called by applications (there's no reason to do so in any case).
 
 
 Sample and test programs
+These exercise various features of the plotlib with some simple, short
+programs.  They are intended for testing and validating the plotlib
+functionality.
+
 -------------------------
 
-volts.f      - demo program that draws a simple, labeled plot with axes.
+cmap2.f 
+cmap3.f      - used for interactive viewing of RGB color components:
 
-volts_old.f  - demo program that draws a simple, labeled plot with axes.
-               (uses old "Versatec" plot calls)
+contest.f    - test of contoured, filled plots
+
+defmap.f     - displays the default colormap produced by CALL COLORMAPDEFAULT
+
+gridtest.f   - tests the grid routines (obvious, aren't we...)
+
+keyinchk.f    - tests keyboard/mouse input from graphics window
+
+mousexy.f    - tests double buffering for selection and mouse interaction with
+               a spline through user input points which can then be dragged
+	       with the mouse
 
 squares.f    - draws a sine wave in colored boxes with colored labels
 
 squaresdoublebuff.f   - tests the double buffering with a sine wave with
                dynamic color sequence in the colored boxes
 
-gridtest.f   - tests the grid routines (obvious, aren't we...)
-
-symbols.f     - display and test the basic vector fonts 
+symbols.f    - display and test the basic vector fonts 
 
 symbolsall.f - display and test all the vector fonts and symbols, has option
                to test the separate plot file or external plot file options 
-
-cmap2.f 
-cmap3.f      - used for interactive viewing of RGB color components:
-
-zoomtest.f   - test of zooming, enter T T to prompt to keep scale, use cursor
-
-contest.f    - test of contoured, filled plots
-
-defmap.f     - displays the default colormap produced by CALL COLORMAPDEFAULT
 
 spectrum.f   - displays the "Spectrum" produced by
                CALL COLORSPECTRUMHUES(ncols, RYGCBM_string)
                in pie and bar form.  
 
                Typical values for RYGCBM_string might be
+                'RWB'
                 'RYG'
                 'GYR'
                 'MCY'
@@ -996,6 +1018,13 @@ spectrum.f   - displays the "Spectrum" produced by
 
                Choosing strongly non-contiguous sequences like 'RCB' is OK, 
                but will make a horrid-looking Spectrum.
+
+zoomtest.f   - test of zooming, enter T T to prompt to keep scale, use cursor
+
+volts.f      - demo program that draws a simple, labeled plot with axes.
+
+volts_old.f  - demo program that draws a simple, labeled plot with axes.
+               (uses old "Versatec" plot calls)
 
 sym/test.f   - display current vector fonts
 

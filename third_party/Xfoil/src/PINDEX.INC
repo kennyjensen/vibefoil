@@ -30,10 +30,24 @@ C
      &    JTI = 4 )    ! transition index
       PARAMETER (JPTOT=4)
 
+C---------------------
+C  Pointers for referencing polar airfoil-element quantities
+C
+      PARAMETER (
+     &    KCX  = 1,     ! Cx
+     &    KCY  = 2,     ! Cy
+     &    KCM  = 3,     ! Cm
+     &    KCDV = 4 )    ! CDv
+
+      PARAMETER (KPTOT=4)
+
       CHARACTER*10 CPOLNAME(IPTOT)
       CHARACTER*5 CPOLSNAME(JPTOT)
-      CHARACTER*6 CPOLFORM(IPTOT), CPOLSFORM(JPTOT)
-C
+      CHARACTER*5 CPOLNNAME(KPTOT)
+      CHARACTER*6 CPOLFORM(IPTOT),
+     &           CPOLSFORM(JPTOT),
+     &           CPOLNFORM(KPTOT)
+
       DATA CPOLNAME  /
      & 'alpha     ',
      & 'CL        ',
@@ -53,7 +67,7 @@ C
      & 'F9.4  ',   !     CL  
      & 'F10.5 ',   !     CD  
      & 'F9.4  ',   !     CM  
-     & 'F10.5 ',   !     CDw 
+     & 'F10.5 ',   !     CDw
      & 'F10.5 ',   !     CDv 
      & 'F10.5 ',   !     CDp 
      & 'F8.4  ',   !     Mach
@@ -73,3 +87,14 @@ C
      & 'F9.4  ',    !    Xtrip
      & 'F9.4  ',    !    Xtr
      & 'F9.4  '  /  !    Itr
+
+      DATA CPOLNNAME /
+     & 'Cx_n ',
+     & 'Cy_n ',
+     & 'Cm_n ',
+     & 'CDv_n' /
+      DATA CPOLNFORM  /
+     & 'F9.4  ',    !    Cx
+     & 'F9.4  ',    !    Cy
+     & 'F9.4  ',    !    Cm
+     & 'F10.5 '  /  !    CDv

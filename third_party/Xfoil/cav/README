@@ -1,0 +1,10 @@
+
+pltcav  is a script to plot cavitation polars from XFOIL easily, using gnuplot.
+This takes the polar names as arg list and makes a plot to the screen and 
+a postscript hardcopy "cav-plt.ps".   Saves the gnuplot commands to "gnuplt.cmd".   
+
+The polars need to have Cpmin listed, which is enabled with the CINC toggle command in OPER.
+Three sample such polars are here.  Plot them with the command line:
+
+pltcav polar.e817mod1-rn6mn1 polar.h105-10a-rn6mn1 polar.db10c-rn6mn1
+

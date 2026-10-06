@@ -1,5 +1,5 @@
 C--- Replacement functions for Fortran's that lack RSHIFT,LSHIFT,AND
-C     Version 4.46 11/28/01
+C     Version 4.56 01/16/23
 
       INTEGER FUNCTION RSHIFT(I1,N)
       RSHIFT = ISHFT(I1,-N)

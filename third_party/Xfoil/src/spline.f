@@ -19,9 +19,9 @@ C    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 C***********************************************************************
 
       SUBROUTINE SPLINE(X,XS,S,N)
-      DIMENSION X(N),XS(N),S(N)
-      PARAMETER (NMAX=1000)
-      DIMENSION A(NMAX),B(NMAX),C(NMAX)
+      REAL X(N),XS(N),S(N)
+      PARAMETER (NMAX=2500)
+      REAL A(NMAX),B(NMAX),C(NMAX)
 C-------------------------------------------------------
 C     Calculates spline coefficients for X(S).          |
 C     Zero 2nd derivative end conditions are used.      |
@@ -61,9 +61,9 @@ C
 
 
       SUBROUTINE SPLIND(X,XS,S,N,XS1,XS2)
-      DIMENSION X(N),XS(N),S(N)
-      PARAMETER (NMAX=1000)
-      DIMENSION  A(NMAX),B(NMAX),C(NMAX)
+      REAL X(N),XS(N),S(N)
+      PARAMETER (NMAX=2500)
+      REAL  A(NMAX),B(NMAX),C(NMAX)
 C-------------------------------------------------------
 C     Calculates spline coefficients for X(S).          |
 C     Specified 1st derivative and/or usual zero 2nd    |
@@ -140,7 +140,7 @@ C
 
       SUBROUTINE SPLINA(X,XS,S,N)
       IMPLICIT REAL (A-H,O-Z)
-      DIMENSION X(N),XS(N),S(N)
+      REAL X(N),XS(N),S(N)
       LOGICAL LEND
 C-------------------------------------------------------
 C     Calculates spline coefficients for X(S).          |
@@ -183,7 +183,7 @@ C
 
 
       SUBROUTINE TRISOL(A,B,C,D,KK)
-      DIMENSION A(KK),B(KK),C(KK),D(KK)
+      REAL A(KK),B(KK),C(KK),D(KK)
 C-----------------------------------------
 C     Solves KK long, tri-diagonal system |
 C                                         |
@@ -216,7 +216,7 @@ C
 
 
       FUNCTION SEVAL(SS,X,XS,S,N)
-      DIMENSION X(N), XS(N), S(N)
+      REAL X(N), XS(N), S(N)
 C--------------------------------------------------
 C     Calculates X(SS)                             |
 C     XS array must have been calculated by SPLINE |
@@ -243,7 +243,7 @@ C
       END ! SEVAL
 
       FUNCTION DEVAL(SS,X,XS,S,N)
-      DIMENSION X(N), XS(N), S(N)
+      REAL X(N), XS(N), S(N)
 C--------------------------------------------------
 C     Calculates dX/dS(SS)                         |
 C     XS array must have been calculated by SPLINE |
@@ -271,7 +271,7 @@ C
       END ! DEVAL
 
       FUNCTION D2VAL(SS,X,XS,S,N)
-      DIMENSION X(N), XS(N), S(N)
+      REAL X(N), XS(N), S(N)
 C--------------------------------------------------
 C     Calculates d2X/dS2(SS)                       |
 C     XS array must have been calculated by SPLINE |
@@ -300,7 +300,7 @@ C
 
 
       FUNCTION CURV(SS,X,XS,Y,YS,S,N)
-      DIMENSION X(N), XS(N), Y(N), YS(N), S(N)
+      REAL X(N), XS(N), Y(N), YS(N), S(N)
 C-----------------------------------------------
 C     Calculates curvature of splined 2-D curve |
 C     at S = SS                                 |
@@ -347,7 +347,7 @@ C
 
 
       FUNCTION CURVS(SS,X,XS,Y,YS,S,N)
-      DIMENSION X(N), XS(N), Y(N), YS(N), S(N)
+      REAL X(N), XS(N), Y(N), YS(N), S(N)
 C-----------------------------------------------
 C     Calculates curvature derivative of        |
 C     splined 2-D curve at S = SS               |
@@ -402,7 +402,7 @@ C
 
 
       SUBROUTINE SINVRT(SI,XI,X,XS,S,N)
-      DIMENSION X(N), XS(N), S(N)
+      REAL X(N), XS(N), S(N)
 C-------------------------------------------------------
 C     Calculates the "inverse" spline function S(X).    |
 C     Since S(X) can be multi-valued or not defined,    |
@@ -434,7 +434,7 @@ C
 
 
       SUBROUTINE SCALC(X,Y,S,N)
-      DIMENSION X(N), Y(N), S(N)
+      REAL X(N), Y(N), S(N)
 C----------------------------------------
 C     Calculates the arc length array S  |
 C     for a 2-D array of points (X,Y).   |
@@ -450,13 +450,13 @@ C
 
 
       SUBROUTINE SPLNXY(X,XS,Y,YS,S,N)
-      DIMENSION X(N), XS(N), Y(N), YS(N), S(N)
+      REAL X(N), XS(N), Y(N), YS(N), S(N)
 C-----------------------------------------
 C     Splines 2-D shape X(S), Y(S), along |
 C     with true arc length parameter S.   |
 C-----------------------------------------
       PARAMETER (KMAX=32)
-      DIMENSION XT(0:KMAX), YT(0:KMAX)
+      REAL XT(0:KMAX), YT(0:KMAX)
 C
       KK = KMAX
       NPASS = 10
@@ -537,7 +537,7 @@ C     but allows derivative discontinuities     |
 C     at segment joints.  Segment joints are    |
 C     defined by identical successive S values. |
 C-----------------------------------------------
-      DIMENSION X(N), XS(N), S(N)
+      REAL X(N), XS(N), S(N)
 C
       IF(S(1).EQ.S(2)  ) STOP 'SEGSPL:  First input point duplicated'
       IF(S(N).EQ.S(N-1)) STOP 'SEGSPL:  Last  input point duplicated'
@@ -558,31 +558,38 @@ C
       END ! SEGSPL
 
 
-
       SUBROUTINE SEGSPLD(X,XS,S,N,XS1,XS2)
+      IMPLICIT REAL (A-H,M,O-Z)
+      REAL X(N), XS(N), S(N)
 C-----------------------------------------------
 C     Splines X(S) array just like SPLIND,      |
 C     but allows derivative discontinuities     |
-C     at segment joints.  Segment joints are    |
-C     defined by identical successive S values. |
+c     at segment joints.  Segment joints are    |
+c     defined by identical successive S values. |
 C-----------------------------------------------
-      DIMENSION X(N), XS(N), S(N)
-C
-      IF(S(1).EQ.S(2)  ) STOP 'SEGSPL:  First input point duplicated'
-      IF(S(N).EQ.S(N-1)) STOP 'SEGSPL:  Last  input point duplicated'
-C
+      IF(S(1).EQ.S(2)  ) STOP 'SEGSPLD:  First input point duplicated'
+      IF(S(N).EQ.S(N-1)) STOP 'SEGSPLD:  Last  input point duplicated'
+
       ISEG0 = 1
-      DO 10 ISEG=2, N-2
+      DO ISEG = 2, N-2
         IF(S(ISEG).EQ.S(ISEG+1)) THEN
          NSEG = ISEG - ISEG0 + 1
-         CALL SPLIND(X(ISEG0),XS(ISEG0),S(ISEG0),NSEG,XS1,XS2)
+         XS1T = -999.0
+         XS2T = -999.0
+         IF(ISEG0        .EQ. 1) XS1T = XS1
+         IF(ISEG0+NSEG-1 .EQ. N) XS2T = XS2
+         CALL SPLIND(X(ISEG0),XS(ISEG0),S(ISEG0),NSEG,XS1T,XS2T)
          ISEG0 = ISEG+1
         ENDIF
-   10 CONTINUE
-C
+      ENDDO
+
       NSEG = N - ISEG0 + 1
-      CALL SPLIND(X(ISEG0),XS(ISEG0),S(ISEG0),NSEG,XS1,XS2)
-C
+      XS1T = -999.0
+      XS2T = -999.0
+      IF(ISEG0        .EQ. 1) XS1T = XS1
+      IF(ISEG0+NSEG-1 .EQ. N) XS2T = XS2
+      CALL SPLIND(X(ISEG0),XS(ISEG0),S(ISEG0),NSEG,XS1T,XS2T)
+
       RETURN
-      END ! SEGSPL
+      END ! SEGSPLD
 

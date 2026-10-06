@@ -52,13 +52,14 @@ C
 C
 C---What devices to plot to?
       WRITE(*,*) ' '
- 1    WRITE(*,*) ' Enter -1 for no PS, 0 for B&W PS, 1 for color PS'
+   1  WRITE(*,*) ' Enter -1 no PS, 0 B&W PS, 1 color PS, 2 color PDF'
       READ(*,1000,end=2000) INP
       IOUT = -1
       if(INP.NE.' ') READ(INP,*,end=2000,err=2000) IOUT
  2    IF(IOUT.LT.0) IDEV = 1
       IF(IOUT.EQ.0) IDEV = 3
-      IF(IOUT.GE.1) IDEV = 5
+      IF(IOUT.EQ.1) IDEV = 5
+      IF(IOUT.GE.2) IDEV = 9
 C
 C---plot #1 in B&W portrait mode 0.5 of screen height
       CALL PLINITIALIZE

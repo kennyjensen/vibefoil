@@ -37,7 +37,7 @@ C
 C
 C---Decide about what devices to plot to
       WRITE(*,*) ' '
-   1  WRITE(*,*) ' Enter -1 for no PS, 0 for B&W PS, 1 for color PS'
+   1  WRITE(*,*) ' Enter -1 no PS, 0 B&W PS, 1 color PS, 2 color PDF'
       READ(*,1000,end=2000) INP
       ips = -1
       if(INP.ne.' ') then
@@ -45,7 +45,8 @@ C---Decide about what devices to plot to
       endif
       IDEV = 1
       IF(ips.eq.0) IDEV = 3
-      IF(ips.ge.1) IDEV = 5
+      IF(ips.eq.1) IDEV = 5
+      IF(ips.ge.2) IDEV = 9
       ipslu = 0
 C
 C---- for REPLOT:  X11 only

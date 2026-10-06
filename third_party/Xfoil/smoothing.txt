@@ -1,0 +1,13 @@
+
+I typically use XFOIL's inverse-design menus MDES or QDES to smooth the airfoil.  So I actually smooth the surface speed distribution q(s) and then recompute the airfoil shape x(s),y(s).  If there is a visibly obvious geometric glitch, I will first remove it with GDES, and then switch to MDES or QDES. 
+
+MDES affects the whole airfoil, and is best for general smoothing.  QDES affects only a selected part of the airfoil, and is useful when some of the airfoil must remain exactly fixed for some reason.
+
+The basic trick is to draw the modified q(s) so that it passes through the inflection points of the current noisy q(s).  This will result in the least impact on the overall airfoil shape.  You can do small pieces of the airfoil at a time to check progress.  MDES also has a q(s) filtering function FILT, which might be useful.  But FILT thinks that the leading edge is a "glitch" and tries to smooth it, which is not what you want typically.
+
+To smooth around the leading edge, run the inviscid solution at a very high alfa, maybe 70 deg for cambered airfoils and 90 deg for nearly symmetric airfoils.  Then perform the smoothing of the noisy velocity distribution of the LE spike using QDES as described above.  Mark the inverse interval close to the LE velocity spike to keep the smoothing modification highly local.
+
+After smoothing, the airfoil may not have exactly the intended thickness ratio.  In that case I will adjust it using the TSET function in GDES.
+
+Then save the airfoil in any one of the available formats with SAVE or PSAV or ISAV
+

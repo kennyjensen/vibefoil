@@ -41,14 +41,15 @@ C
 C...Alter actual data scales
       DO 10 I=1,24
       X(I) = X(I) * 1000
- 10   Y(I) = Y(I) / 10000
+      Y(I) = Y(I) / 10000
+ 10   CONTINUE
 C
       IPD = 1
       RELSIZ = -0.6
 C
 C...Select type(s) of plot output
       WRITE(*,40)
- 40   FORMAT('Input plot device (1 screen, 2 PShardcopy, 3 both): ',$)
+ 40   FORMAT('Enter plot device (1 screen, 2 B&W PS, 3 screen+PS): ',$)
       READ(*,5,end=1000) RDLINE
       IF(RDLINE.NE.' ') READ(RDLINE,*,err=42) IPD
 C

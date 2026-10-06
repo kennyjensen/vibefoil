@@ -395,3 +395,58 @@ XFOIL 6.99 (Jun '13)
 - Added LAG command in the VPAR menu to allow modification of lag-equation constants.
 
 
+XFOIL 6.995 (Dec '14)
+---------------------
+
+- Added SYTB command to GDES, which allows separate top/bottom y scales
+
+
+XFOIL 6.996 (Apr '17)
+---------------------
+
+- Fixed the treatment of a sharp trailing edge for a viscous case.
+  Previously, the (favorable) influence of the apparent sinks in the
+  airfoil wake were being neglected at an internal control point
+  just inside the trailing edge.  The effect will be visible mainly
+  on cases with sharp trailing edges and with relatively large 
+  trailing edge angles,
+
+(addendum, Sep '20)
+
+- Added the SQTE command (in GDES), which "squares" the TE gap segment
+  perpendicular to the camberline, by trimming and extending the two
+  surfaces as needed.  The camberline is left unaffected.
+
+- Added to the TGAP command (in GDES) a 3rd argument to the TGAP command
+  which is a float input -1.0 .. +1.0, and specifies how the gap change
+  is split and added to the top and bottom surfaces:
+    +1.0:  gap change is added all to top surface
+     0.0:  gap change is split 50/50 between top and bottom
+    -1.0:  gap change is added all to bottom surface
+  The default (just <enter>) is 0.0, which is the previously implementation.
+ 
+- Added more digits of precision when printing airfoil max thickness and camber
+
+- Added to the PLOP menu the ability to toggle between single-page
+  and multi-page Postscript output
+
+- Changed computed goto's (1980's leftovers) to equivalent if-then-else logic 
+
+- added NACS command at Top Level.  This is the same as NACA command, except
+  the airfoil produced has a sharp trailing edge.  To make this change,
+  the normalized NACA 4-digit thickness(x/c) distribution is computed with  
+  1.0089304*x/c rather than just x/c.  The resulting max-thickness location 
+  is then at x/c = 0.2973445 rather than at 0.3 as  usual.
+
+(addendum, Jan '23)
+- Added to the PLOP menu the ability to suppress rotation of landscape plot
+
+- Increased default number of airfoil points to 240.
+  Added message suggesting a PANE command if loaded airfoil has fewer points.
+
+- Increased spline work array sizes to 2500, to allow large buffer airfoil reads.
+
+- Added NSPL command to GDES, which sets the number of spline sub-intervals
+  for plotting the analytic splined airfoil contour, which is initialized to 20.
+  Specifying 1 will display linear segments between the nodes,  which is also
+  the actual panel geometry used by the panel solver.

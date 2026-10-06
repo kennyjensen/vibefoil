@@ -24,7 +24,7 @@ C
 C***********************************************************************
 C --- Xplot11 "old Versatec-like" routines
 C
-C     Version 4.46 11/28/01
+C     Version 4.56 01/16/23
 C
 C     Xplot11 interface for older plot routines (similar to that for 
 C     Versatec graphics) as a bridge to backwards compatibility with 
@@ -250,7 +250,7 @@ C   supports passing character literals as integers without complaining
 C   and you enable old style Versatec SYMBOL calls with integer arguments.
 C   See SYMBOL below...
 C
-      DIMENSION XARRAY(*),YARRAY(*)
+      REAL XARRAY(*),YARRAY(*)
       DATA  SYMSIZE / 0.08 /
 C
 C...Initialize subscripts
@@ -358,7 +358,7 @@ C              DELTA>0  indicates that the curve is plotted with a solid line.
 C
 C  Calls:   PLOT
 C
-      DIMENSION X(NE),Y(NE)
+      REAL X(NE),Y(NE)
 C
 C...Default scale factors
       XOFF = 0.
@@ -404,7 +404,15 @@ C...New end point
       IF (K.GT.1)   GO TO 140
 C
 C...First data point (K=1)
-  120 IF (NET-2) 122,124,126
+cc120 IF (NET-2) 122,124,126
+  120 IF    (NET-2 .LT. 0) THEN
+        GO TO 122
+      ELSEIF(NET-2 .EQ. 0) THEN
+        GO TO 124
+      ELSE
+        GO TO 126
+      ENDIF
+
   122 X1 = (X(1)-XOFF)/XFAC
       Y1 = (Y(1)-YOFF)/YFAC
       CALL PLOT (X1,Y1,+3)
@@ -817,12 +825,10 @@ C            AXLEN  Axis length in inches (REAL)
 C            NPTS   Number of data points to be scaled (INTEGER)
 C            INC    Increment between points in ARRAY (INTEGER)
 C
-      DIMENSION ARRAY(1)
+      REAL ARRAY(*)
 C
-      DIMENSION UNITS(7)
-      DATA UNITS(1)/1./,UNITS(2)/2./,UNITS(3)/4./,UNITS(4)/5./
-      DATA UNITS(5)/8./,UNITS(6)/10./,UNITS(7)/20./
-C
+      REAL UNITS(7)
+      DATA UNITS / 1.0, 2.0, 4.0, 5.0, 8.0, 10.0, 20.0 /
 C
 C...Min and max values of 'ARRAY' accessed by 'INC' stride
       K = IABS(INC)
@@ -952,8 +958,8 @@ C      INTEGER*1 ITEXT(1)
 C      BYTE      ITEXT(1)
 C+++OldVersatec 
 C
-      DIMENSION XA(14),YA(14)
-      DIMENSION ASIN(5),ACOS(5)
+      REAL XA(14),YA(14)
+      REAL ASIN(5),ACOS(5)
       INTEGER*4 IRAM, AND
       INTEGER*4 NCHR,KVAL,NODES,
      &          MSKALL,MSK4,MSK5,MSK7,MSK8,MSK11,
@@ -1288,7 +1294,7 @@ C...End of SYMBOL processing, if necessary restore line pattern
       SUBROUTINE SOFFSET(FACC,ANCC,ANCS,XA,YA)
 C...Calculates character offsets using current factor and direction 
 C   sine and cosine
-      DIMENSION XA(14), YA(14)
+      REAL XA(14), YA(14)
 C
       Z = FACC*ANCC
       W = FACC*ANCS

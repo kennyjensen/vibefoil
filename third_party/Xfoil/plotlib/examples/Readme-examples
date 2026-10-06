@@ -60,9 +60,12 @@ cmap3.f      - used for interactive viewing of RGB color components:
 
 zoomtest.f   - test of zooming
 
+defmap.f     - displays the default colormap produced by CALL COLORMAPDEFAULT
+
 contest.f    - test of contouring primitives for color, filled contours
 
-defmap.f     - displays the default colormap produced by CALL COLORMAPDEFAULT
+mousexy3.f   - test of interactive mouse plotting of spline input and 
+               modification
 
 spectrum.f   - displays the "Spectrum" produced by
                CALL COLORSPECTRUMHUES(ncols, RYGCBM_string)
@@ -78,7 +81,9 @@ spectrum.f   - displays the "Spectrum" produced by
                Choosing strongly non-contiguous sequences like 'RCB' is OK, 
                but will make a horrid-looking Spectrum.
 
-sym/test.f   - display current vector fonts
+
+
+#sym/test.f   - display current vector fonts
 
 
 

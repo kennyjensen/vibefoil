@@ -35,19 +35,25 @@ include ../config.make
 ###================================================
 
 LIB  = ../$(PLTLIB)
+LINKLIBS = $(LINKLIB) $(PDFLIBDIR)
 
 #FC = ifort
-#FFLAGS = -r8
+#FLGS = -r8
+
+FLG = $(FFLAGS)
+#FLG = $(FFLAGS) -fbounds-check -finit-real=inf -ffpe-trap=invalid,zero
 
 PROGS = volts volts_old \
         symbols symbolsall \
 	squares squaresdoublebuff \
 	spectrum cmap2 cmap3 defmap \
-        gridtest zoomtest contest mousexy mousexy2
+        gridtest zoomtest contest \
+        mousexy keyinchk
 
+
+all:  $(PROGS)
 
 examples:  $(PROGS)
-
 
 test:  $(PROGS)
 
@@ -55,111 +61,105 @@ clean:
 	-/bin/rm *.o
 	-/bin/rm $(PROGS)
 	-/bin/rm plot*.ps
+	-/bin/rm plot*.pdf
 
 
 
 #Test routines for package
 
-volts: volts.o 
-	$(FC) -o volts volts.o $(LIB) $(LINKLIB)
-
-volts_old: volts_old.o 
-	$(FC) -o volts_old volts_old.o $(LIB) $(LINKLIB)
-
-symbols: symbols.o 
-	$(FC) -o symbols symbols.o $(LIB) $(LINKLIB)
-
-symbolsall: symbolsall.o 
-	$(FC) -o symbolsall symbolsall.o $(LIB) $(LINKLIB)
-
-squares: squares.o
-	$(FC) -o squares squares.o $(LIB) $(LINKLIB)
-
-squaresdoublebuff: squaresdoublebuff.o
-	$(FC) -o squaresdoublebuff squaresdoublebuff.o $(LIB) $(LINKLIB)
-
-spectrum: spectrum.o 
-	$(FC) -o spectrum spectrum.o $(LIB) $(LINKLIB)
-
 cmap2: cmap2.o 
-	$(FC) -o cmap2 cmap2.o $(LIB) $(LINKLIB)
+	$(FC) -o cmap2 cmap2.o $(LIB) $(LINKLIBS)
 
 cmap3: cmap3.o 
-	$(FC) -o cmap3 cmap3.o $(LIB) $(LINKLIB)
- 
-defmap: defmap.o
-	$(FC) -o defmap defmap.o $(LIB) $(LINKLIB)
-
-gridtest: gridtest.o 
-	$(FC) -o gridtest gridtest.o $(LIB) $(LINKLIB)
-
-zoomtest: zoomtest.o 
-	$(FC) -o zoomtest zoomtest.o $(LIB) $(LINKLIB)
+	$(FC) -o cmap3 cmap3.o $(LIB) $(LINKLIBS)
 
 contest: contest.o 
-	$(FC) -o contest contest.o $(LIB) $(LINKLIB)
+	$(FC) -o contest contest.o $(LIB) $(LINKLIBS)
+
+defmap: defmap.o
+	$(FC) -o defmap defmap.o $(LIB) $(LINKLIBS)
+
+gridtest: gridtest.o 
+	$(FC) -o gridtest gridtest.o $(LIB) $(LINKLIBS)
 
 mousexy: mousexy.o 
-	$(FC) -o mousexy mousexy.o $(LIB) $(LINKLIB)
+	$(FC) -o mousexy mousexy.o $(LIB) $(LINKLIBS)
 
-mousexy2: mousexy2.o 
-	$(FC) -o mousexy2 mousexy2.o $(LIB) $(LINKLIB)
+keyinchk: keyinchk.o 
+	$(FC) -o keyinchk keyinchk.o $(LIB) $(LINKLIBS)
 
-mousexy3: mousexy3.o 
-	$(FC) -o mousexy3 mousexy3.o $(LIB) $(LINKLIB)
+spectrum: spectrum.o 
+	$(FC) -o spectrum spectrum.o $(LIB) $(LINKLIBS)
+
+squares: squares.o
+	$(FC) -o squares squares.o $(LIB) $(LINKLIBS)
+
+squaresdoublebuff: squaresdoublebuff.o
+	$(FC) -o squaresdoublebuff squaresdoublebuff.o $(LIB) $(LINKLIBS)
+
+symbols: symbols.o 
+	$(FC) -o symbols symbols.o $(LIB) $(LINKLIBS)
+
+symbolsall: symbolsall.o 
+	$(FC) -o symbolsall symbolsall.o $(LIB) $(LINKLIBS)
+
+zoomtest: zoomtest.o 
+	$(FC) -o zoomtest zoomtest.o $(LIB) $(LINKLIBS)
+
+
+volts: volts.o 
+	$(FC) -o volts volts.o $(LIB) $(LINKLIBS)
+
+volts_old: volts_old.o 
+	$(FC) -o volts_old volts_old.o $(LIB) $(LINKLIBS)
 
 
 
 volts.o: volts.f
-	$(FC) -c $(FFLAGS) $<
+	$(FC) -c $(FLG) $<
 
 volts_old.o: volts_old.f
-	$(FC) -c $(FFLAGS) $<
+	$(FC) -c $(FLG) $<
 
 symbols.o: symbols.f
-	$(FC) -c $(FFLAGS) $<
+	$(FC) -c $(FLG) $<
 
 symbolsall.o: symbolsall.f
-	$(FC) -c $(FFLAGS) $<
+	$(FC) -c $(FLG) $<
 
 squares.o: squares.f
-	$(FC) -c $(FFLAGS) $<
+	$(FC) -c $(FLG) $<
 
 squaresdoublebuff.o: squaresdoublebuff.f
-	$(FC) -c $(FFLAGS) $<
+	$(FC) -c $(FLG) $<
 
 spectrum.o: spectrum.f
-	$(FC) -c $(FFLAGS) $<
+	$(FC) -c $(FLG) $<
 
 cmap2.o: cmap2.f
-	$(FC) -c $(FFLAGS) $<
+	$(FC) -c $(FLG) $<
 
 cmap3.o: cmap3.f
-	$(FC) -c $(FFLAGS) $<
+	$(FC) -c $(FLG) $<
 
 defmap.o: defmap.f
-	$(FC) -c $(FFLAGS) $<
+	$(FC) -c $(FLG) $<
 
 gridtest.o: gridtest.f
-	$(FC) -c $(FFLAGS) $<
+	$(FC) -c $(FLG) $<
 
 zoomtest.o: zoomtest.f
-	$(FC) -c $(FFLAGS) $<
+	$(FC) -c $(FLG) $<
 
 contest.o: contest.f
-	$(FC) -c $(FFLAGS) $<
+	$(FC) -c $(FLG) $<
 
 mousexy.o: mousexy.f
-	$(FC) -c $(FFLAGS) $<
+	$(FC) -c $(FLG) $<
 
-mousexy2.o: mousexy2.f
-	$(FC) -c $(FFLAGS) $<
-
-mousexy3.o: mousexy3.f
-	$(FC) -c $(FFLAGS) $<
 
 #May need to specify these on a brain-dead make system
-#.f.o:	$(FC) -c $(FFLAGS) $<
+#.f.o:	$(FC) -c $(FLG) $<
 #.c.o:	$(CC) -c $(CFLAGS) $<
 
 

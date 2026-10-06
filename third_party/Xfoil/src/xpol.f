@@ -48,7 +48,8 @@ C
      &              REYNP1(IP),MACHP1(IP),ACRITP(1,IP),XSTRIPP(1,IP),
      &              PTRATP(IP),ETAPP(IP),
      &              NAMEPOL(IP), IRETYP(IP),IMATYP(IP),
-     &              ISX,1,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &              1,1,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &                  CPOLSD(1,1,1,IP), KPOL,NKPOL,
      &              'XFOIL',VERSION, .FALSE.)
        NIPOL = NIPOL0
 C
@@ -235,7 +236,7 @@ C---- try reading the polar file to see if it exists
      &             REYNP1(IP),MACHP1(IP),ACRITP(1,IP),XSTRIPP(1,IP),
      &             PTRATP(IP),ETAPP(IP),
      &             NAMEPOL(IP),IRETYP(IP),IMATYP(IP),
-     &             ISX,NBLP(1,IP),CPOLSD(1,1,1,IP),
+     &             1,NBLP(1,IP),CPOLSD(1,1,1,IP),CPOLEL(1,1,1,IP),
      &             CODEPOL(IP),VERSPOL(IP) )
       IF(ERROR) GO TO 90
       CLOSE(LU)
@@ -319,7 +320,8 @@ C---- display polar save file just read in
      &             REYNP1(IP),MACHP1(IP),ACRITP(1,IP),XSTRIPP(1,IP),
      &             PTRATP(IP),ETAPP(IP),
      &             NAMEPOL(IP), IRETYP(IP),IMATYP(IP),
-     &             ISX,1,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &             1,1,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &                 CPOLSD(1,1,1,IP), KPOL,NKPOL,
      &             CODEPOL(IP),VERSPOL(IP), .FALSE. )
 C
 C---- enable writing to the save file
@@ -349,7 +351,8 @@ C
      &             REYNP1(IP),MACHP1(IP),ACRITP(1,IP),XSTRIPP(1,IP),
      &             PTRATP(IP),ETAPP(IP),
      &             NAMEPOL(IP),IRETYP(IP),IMATYP(IP),
-     &             ISX,1,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &             1,1,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &                 CPOLSD(1,1,1,IP), KPOL,NKPOL,
      &             'XFOIL',VERSION, .FALSE. )
       CLOSE(LU)
       PFNAME(IP) = FNAME
@@ -622,15 +625,16 @@ C---- add point to save file
         IPOL(NIPOL) = ICH
        ENDIF
 C
-       OPEN(LU,FILE=PFNAME(IP),STATUS='OLD')
-       CALL BOTTOM(LU)
+       OPEN(LU,FILE=PFNAME(IP),STATUS='OLD',ACCESS='APPEND')
+ccc       CALL BOTTOM(LU)
        IA = NAPOL(IP)
        CALL POLWRIT(LU,' ',ERROR, .FALSE.,
      &              NAX, IA,IA, CPOL(1,1,IP), IPOL,NIPOL,
      &              REYNP1(IP),MACHP1(IP),ACRITP(1,IP),XSTRIPP(1,IP),
      &              PTRATP(IP),ETAPP(IP),
      &              NAMEPOL(IP), IRETYP(IP),IMATYP(IP),
-     &              ISX,1,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &              1,1,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &                  CPOLSD(1,1,1,IP), KPOL,NKPOL,
      &              'XFOIL',VERSION, .FALSE. )
        CLOSE(LU)
        NIPOL = NIPOL0
@@ -664,8 +668,9 @@ C
       BETA = SQRT(1.0 - MINF**2)
       BFAC = 0.5*MINF**2 / (1.0 + BETA)
 C
-      OPEN(LU,FILE=PFNAMX(IP),STATUS='OLD',FORM='UNFORMATTED')
-      CALL BOTTOMX(LU)
+      OPEN(LU,FILE=PFNAMX(IP),STATUS='OLD',ACCESS='APPEND',
+     &     FORM='UNFORMATTED')
+ccc      CALL BOTTOMX(LU)
 C
 C---- write integrated forces to unformatted dump file
       IF(LVISC) THEN

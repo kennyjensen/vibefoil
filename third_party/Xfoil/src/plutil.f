@@ -19,10 +19,10 @@ C    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 C***********************************************************************
 
       SUBROUTINE OPLSET(IDEV,IDEVRP,IPSLU,
-     &                  SIZE,PAR,
+     &                  PAR,SIZE,
      &                  XMARG,YMARG,XPAGE,YPAGE,
-     &                  CSIZE,SCRNFR,LCURS,LLAND, ICOLS)
-      LOGICAL LCURS,LLAND
+     &                  CSIZE,SCRNFR,LCURS,LLAND,LPPORT, ICOLS)
+      LOGICAL LCURS,LLAND,LPPORT
 C-----------------------------------------------------------
 C     Allows user modification of various plot parameters.
 C-----------------------------------------------------------
@@ -30,9 +30,9 @@ C-----------------------------------------------------------
       CHARACTER*4 COMAND
       CHARACTER*128 COMARG
       CHARACTER*10 CHCURS, CHLAND
-      DIMENSION IINPUT(20)
-      DIMENSION RINPUT(20)
-      LOGICAL ERROR, LGRAPH, LCOLOR
+      INTEGER IINPUT(20)
+      REAL RINPUT(20)
+      LOGICAL ERROR, LGRAPH, LCOLOR, LSINGL, LPLAND
       INTEGER ICOLS(2)
 C
  1000 FORMAT(A)
@@ -50,27 +50,35 @@ C
        CHLAND = 'Portrait  '
       ENDIF
 C
-      LGRAPH = IDEV  .GE.1
-      LCOLOR = IDEVRP.EQ.4
+      LGRAPH = IDEV   .GE. 1
+      LCOLOR = IDEVRP .EQ. 4
+      LSINGL = IPSLU  .LT. 0
+      LPLAND = .NOT. LPPORT
 C
-      WRITE(*,2000) LGRAPH, SIZE, PAR,
+      WRITE(*,2000) LGRAPH, LCOLOR, LSINGL, LPLAND,
+     &              PAR,SIZE,
      &              XPAGE,YPAGE, XMARG,YMARG, 
      &              CSIZE, SCRNFR,
-     &              CHCURS, CHLAND, LCOLOR,
+     &              CHCURS, CHLAND, 
      &              ICOLS(1), ICOLS(2)
- 2000 FORMAT(' ...............................................'
-     &     //'  G raphics-enable flag:       ', L2,
-     &      /'  S ize of plot object         ', F6.2,'"'
-     &      /'  A spect ratio of plot object ', F8.4
-     &      /'  P age dimensions             ', F6.2,' x',F6.2,'"'
-     &      /'  M argins from page edges     ', F6.2,'",',F6.2,'"'
-     &      /'  F ont size (relative)        ', F8.4
-     &      /'  W indow/screen size fraction ', F8.4
-     &      /'  B lowup input method:        ', A 
-     &      /'  O rientation of plot:        ', A 
-     &      /'  C olor PostScript output?    ', L2,
-     &      /'  L ine colors for top,bottom  ', 2I3 )
+ 2000 FORMAT(' ................................................'
+     &     //'  G raphics-enable flag:        ', L2,
+     &      /'  C olor PostScript output?     ', L2,
+     &      /'  I ndividual plot file output? ', L2,
+     &      /'  R otate landscape hardcopy?   ', L2,
+     &      /'  A spect ratio of plot object  ', F8.4
+     &      /'  S ize of plot object          ', F6.2,'"'
+     &      /'  P age dimensions              ', F6.2,' x',F6.2,'"'
+     &      /'  M argins from page edges      ', F6.2,'",',F6.2,'"'
+     &      /'  F ont size (relative)         ', F8.4
+     &      /'  W indow/screen size fraction  ', F8.4
+     &      /'  B lowup input method:         ', A 
+     &      /'  O rientation of plot:         ', A
+     &      /'  L ine colors for top,bottom   ', 2I3 )
 C
+C      A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
+C      x x x     x x   x     x x   x x   x x       x
+      
  5    CALL ASKC('      Option, Value   (or <Return>) ^',COMAND,COMARG)
 C
       DO I=1, 20
@@ -93,6 +101,27 @@ C
          IDEV = 0
         ENDIF
 C
+      ELSEIF (INDEX('Cc',VAR).NE.0) THEN
+        LCOLOR = .NOT. LCOLOR
+        IF(     LCOLOR) IDEVRP = 4
+        IF(.NOT.LCOLOR) IDEVRP = 2
+C
+      ELSEIF (INDEX('Ii',VAR).NE.0) THEN
+        LSINGL = .NOT. LSINGL
+        IF(     LSINGL) IPSLU = -1
+        IF(.NOT.LSINGL) IPSLU =  1
+C
+      ELSEIF (INDEX('Rr',VAR).NE.0) THEN
+        LPPORT = .NOT. LPPORT
+        IF(LPPORT) THEN
+c------- hardcopy of landscape plot will not be rotated
+c-        (treat landscape plot like it`s "portrait")
+         CALL PLPORT
+        ELSE
+c------- hardcopy of landscape plot will be rotated, to fit on 8.5x11 paper
+         CALL PLUNPORT
+        ENDIF
+
       ELSEIF (INDEX('Ss',VAR).NE.0) THEN
         IF(NINPUT.GE.1) THEN
           SIZE = RINPUT(1)
@@ -156,11 +185,6 @@ C
         YTMP = YPAGE
         XPAGE = YTMP
         YPAGE = XTMP
-C
-      ELSEIF (INDEX('Cc',VAR).NE.0) THEN
-        LCOLOR = .NOT. LCOLOR
-        IF(     LCOLOR) IDEVRP = 4
-        IF(.NOT.LCOLOR) IDEVRP = 2
 C
       ELSEIF (INDEX('Ll',VAR).NE.0) THEN
 C------ set top and bottom-side colors

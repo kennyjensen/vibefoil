@@ -24,9 +24,9 @@ C***********************************************************************
      &                  XMOD,YMOD, XWIN,YWIN, SIZE,
      &                  XOFF,YOFF,XSF,YSF, COLPNT,COLMOD,
      &                  NEWPLOT )
-      DIMENSION IFRST(NSIDE), ILAST(NSIDE)
-      DIMENSION X(IX), Y(IX,NLINE), YD(IX,NLINE)
-      DIMENSION XMOD(2),YMOD(2), XWIN(2),YWIN(2)
+      INTEGER IFRST(NSIDE), ILAST(NSIDE)
+      REAL X(IX), Y(IX,NLINE), YD(IX,NLINE)
+      REAL XMOD(2),YMOD(2), XWIN(2),YWIN(2)
       LOGICAL LBLEND
       CHARACTER*(*) COLPNT, COLMOD
       EXTERNAL NEWPLOT
@@ -547,7 +547,8 @@ C------- current point is before modified interval...try next point
          IMOD1 = I
         ELSEIF(XI .LE. XP(NP)) THEN
 C------- stuff new point into Vspec array and plot it
-         Y(I,IL) = SEVAL(XI,YP,YPD,XP,NP)
+         Y(I,IL)  = SEVAL(XI,YP,YPD,XP,NP)
+         YD(I,IL) = DEVAL(XI,YP,YPD,XP,NP)
         ELSE
 C------- went past modified interval...finish up
          IMOD2 = I
@@ -567,9 +568,9 @@ C----- plot modified function over modified interval
         IPEN = 3
         DO I = IMOD1, IMOD2
 C----- scale X,Y to plot coordinates
-          XP = (X(I   )-XOFF)*XSF
-          YP = (Y(I,IL)-YOFF)*YSF
-          CALL PLOT(XP,YP,IPEN)
+          XPLT = (X(I   )-XOFF)*XSF
+          YPLT = (Y(I,IL)-YOFF)*YSF
+          CALL PLOT(XPLT,YPLT,IPEN)
           IPEN = 2
         ENDDO
         CALL PLFLUSH
@@ -1159,8 +1160,10 @@ C---- Modify input points in user-specified segment
 C---- go over all points on modified segment
  60   DO I = IMOD1, IMOD2
         SI = S(I)
-        X(I) = SEVAL(SI,XP,XPD,SP,NP)
-        Y(I) = SEVAL(SI,YP,YPD,SP,NP)
+        X(I)  = SEVAL(SI,XP,XPD,SP,NP)
+        Y(I)  = SEVAL(SI,YP,YPD,SP,NP)
+        XD(I) = DEVAL(SI,XP,XPD,SP,NP)
+        YD(I) = DEVAL(SI,YP,YPD,SP,NP)
       ENDDO
 C
 C---- Replot with changes
@@ -1171,9 +1174,9 @@ C----- plot modified function over modified interval
        CALL NEWCOLORNAME('MAGENTA')
        IPEN = 3
        DO I = IMOD1, IMOD2
-         XP = (X(I)-XOFF)*XSF
-         YP = (Y(I)-YOFF)*YSF
-         CALL PLOT(XP,YP,IPEN)
+         XPLT = (X(I)-XOFF)*XSF
+         YPLT = (Y(I)-YOFF)*YSF
+         CALL PLOT(XPLT,YPLT,IPEN)
          IPEN = 2
        ENDDO
        CALL PLFLUSH

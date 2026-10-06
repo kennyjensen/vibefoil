@@ -24,7 +24,7 @@ C
 C***********************************************************************
 C --- Xplot11 driver for X windows plotting to screen
 C
-C     Version 4.46 11/28/01
+C     Version 4.56 01/16/23
 C
 C     Notes:  These routines handle the interface to the graphics screen
 C             window.  Not normally called by the user.
@@ -72,7 +72,7 @@ C
 
 
 
-      subroutine gw_init
+      subroutine gw_initialize
 C---Initializes graphics screen plotting and global plot variables
       include 'pltlib.inc'
 C
@@ -213,6 +213,7 @@ C---absolute coordinates.  Returns position when mouse button is pressed
 C---or keyboard key is pressed.
 C
       include 'pltlib.inc'
+      integer khar
 C
       if(LGW_OPEN) then
 C
@@ -286,12 +287,12 @@ C
       subroutine gw_pen(ipen)
 C...Sets pen width for screen display
       include 'pltlib.inc'
-      dimension ipmap(5)
-c     data ipmap / 0, 0, 2, 3, 4 /  <- too wide!
-      data ipmap / 0, 0, 1, 1, 2 /
+      integer ipmap(20)
+      data ipmap / 0, 0, 1, 1, 2, 2, 3, 3, 4, 4,
+     &             5, 5, 6, 6, 7, 7, 8, 8, 9, 9  /
 C
-      ip = max(1,ipen)
-      ip = min(5,ip)
+      ip = max(ipen, 1)
+      ip = min(ip, I_PEN_MAX, 20)
       if(LGW_OPEN) then
         call gwxpen(ipmap(ip))
       endif
@@ -508,7 +509,12 @@ C...Check colorindex<0 for this color, if so this is an unallocated color
 C
 C...If color is unallocated, allocate it using the RGB components
         if (ic.lt.0) then
-          irgb = COLOR_RGB(icol)
+          if(LGW_REVVIDEO) THEN
+           irgb = COLOR_RGB1(icol)
+          else
+           irgb = COLOR_RGB2(icol)
+          endif
+
           irg = irgb/256 
           ired = irg/256 
           igrn = irg  - 256*ired
@@ -555,7 +561,11 @@ C...Check colorindex<0 for this color, if so this is an unallocated color
 C
 C...If color is unallocated, allocate it using the RGB components
         if (ic.lt.0) then
-          irgb = COLOR_RGB(icol)
+          if(LGW_REVVIDEO) THEN
+           irgb = COLOR_RGB1(icol)
+          else
+           irgb = COLOR_RGB2(icol)
+          endif
           irg = irgb/256 
           ired = irg/256 
           igrn = irg  - 256*ired
@@ -595,7 +605,8 @@ C     n      number of X,Y points
 C     ifill  fill flag, 0 for no fill, 1 for filled polyline
 C
       include 'pltlib.inc'
-      dimension X(n), Y(n), ix(MaxPolyLine), iy(MaxPolyLine)
+      real X(n), Y(n)
+      integer ix(MaxPolyLine), iy(MaxPolyLine)
 C
       if(n.GT.MaxPolyLine) then
         write(*,*) 'gw_polyline: array overflow.  Increase MaxPolyline.'

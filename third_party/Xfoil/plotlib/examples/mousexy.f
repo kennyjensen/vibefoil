@@ -24,28 +24,31 @@ C***********************************************************************
 
       program mousexy
 c---------------------------------------------------------------
-c     Interactive mouse and continuous input test program.
+c     Interactive mouse and continuous cursor input test program.
 c
 c     Lets user specify points in a spline, then allows the user to 
-c     drag spline points around to change the curve
+c     drag spline points around to change the curve.
 c---------------------------------------------------------------
 c
       parameter (ipx=100)
 c
       character*1 cin
+      integer khar
 c
       common /Rpoints/
      &       ch,
      &       x1(ipx), y1(ipx), s1(ipx), xp1(ipx), yp1(ipx),
      &       x2(ipx), y2(ipx), s2(ipx), xp2(ipx), yp2(ipx)
       common /Ipoints/
-     &       iplt, n1, n2
+     &       iparam, iplt, n1, n2
       logical lok
 c
       ch = 0.13
       n1 = 0
       n2 = 0
       iplt = 0
+C--- iparam controls interpolation abscissa (0 for x, 1 for s)
+      iparam = 1
 c
  1000 format(a)
 C
@@ -53,13 +56,14 @@ C---Initialize the plot package before we get into plotting...
       CALL PLINITIALIZE
 
 C---put up plot window and refresh
-      call pltall('(terminate with q or double point)')
+      call pltall('Enter points',
+     &            '(terminate with q or double point)',' ')
 
 c
 ccc      call NEWFACTOR(6.0)
 c
  5    write(*,1050) 
- 1050 format(/' Enter points for spline (q or ret to end)')
+ 1050 format(/' Enter points for spline (q or ret to end)',' ',' ')
 
 C--- Get initial set of points from user
       call NEWCOLORNAME('green')
@@ -69,12 +73,13 @@ C
       ylast = -999.
       ii = 0
       do j = 1, 100
-        call GETCURSORXY(xx,yy,ikey)
-        cin = char(ikey)
-        if(cin.EQ.'q' .OR. cin.EQ.'Q') go to 100
+cc        write(*,*) 'calling getcursorxy'
+        call GETCURSORXY(xx,yy,cin)
+cc        write(*,*) 'after getcursorxy ',xx,yy,cin
+        if(cin.EQ.'q' .OR. cin.EQ.'Q') go to 20
 C--- check for doubled point to end input
           if( (xx-xlast).EQ.0.0 .AND. 
-     &        (yy-ylast).EQ.0.0 ) go to 100 
+     &        (yy-ylast).EQ.0.0 ) go to 20
         ii = ii + 1
         x1(ii) = xx
         y1(ii) = yy
@@ -85,68 +90,139 @@ C--- check for doubled point to end input
           call plot(xlast,ylast,3)
           call plot(xx,yy,2)
           CALL PLSYMB(999.,999.,0.4*CH,2,0.0,0)
-          call PLFLUSH
         endif
+        call PLFLUSH
         xlast = xx
         ylast = yy
       end do
 C
- 100  n1 = ii
+ 20   n1 = ii
+c  
+C--- Sort points by x coordinate to get monotonic array
+      call sort(n1,x1,y1)
 C
       call plend
+C
 C--- initialize modified point arrays 
-       do j = 1, n1
-         x2(j) = x1(j)      
-         y2(j) = y1(j)
-       end do
-       n2 = n1
+ 100  do j = 1, n1
+        x2(j) = x1(j)      
+        y2(j) = y1(j)
+      end do
+      n2 = n1
 
-      call pltall('Select point to modify ("i" to reset)')
+ 200  call pltall('Select point to modify',
+     &            'Options are "a" for add, "d" to delete',
+     &            '"x" or "s" for abscissa, "i" to reset')
 c
       write(*,*)
       write(*,*) 'Move spline points...'
 C
- 200  call GETCURSORXY(xx,yy,ikey)
+      call GETCURSORXY(xx,yy,cin)
 cc      call NEWCOLORNAME('green')
 cc      call plot(xx,yy,3)
 cc      CALL PLSYMB(999.,999.,0.4*CH,2,0.0,0)
-      cin = char(ikey)
-      write(*,*) 'ikey cin ',ikey,cin
+cc      write(*,*) ' cin ',cin
 
       if(cin.EQ.'q' .OR. cin.EQ.'Q') go to 400
 C--- reset modified point arrays 
       if(cin.EQ.'i' .OR. cin.EQ.'I') then
        write(*,*) 're-initializing points...'
-       do j = 1, n1
-         x2(j) = x1(j)      
-         y2(j) = y1(j)
-       end do
-       n2 = n1
-       call pltall('Select point to modify ("i" to reset)')
+       go to 100
+      endif
+C--- switch interpolation to x
+      if(cin.EQ.'x' .OR. cin.EQ.'X') then
+       write(*,*) 'interpolating in x...'
+       iparam = 0 
        go to 200
       endif
-
+C--- switch interpolation to s
+      if(cin.EQ.'s' .OR. cin.EQ.'S') then
+       write(*,*) 'interpolating in s...'
+       iparam = 1 
+       go to 200
+      endif
+C--- sort points by x coordinate to get monotonic array
+      if(cin.EQ.'r' .OR. cin.EQ.'R') then
+       write(*,*) 'sorting points in x...'
+       call sort(n1,x1,y1)
+       call sort(n2,x2,y2)
+       go to 200
+      endif
+C
 C--- find closest point to cursor     
       jp = 0
       dsqmin = 999.
-      do j = 1, n1
+      do j = 1, n2
         dsq = (xx-x2(j))**2 + (yy-y2(j))**2
         if(dsq.LT.dsqmin) then
           dsqmin = dsq
           jp = j
         endif
       end do
+C
+C--- add point to arrays at cursor position
+      if(cin.EQ.'a' .OR. cin.EQ.'A') then
+       write(*,*) 'adding point at cursor...'
+       if(iparam.EQ.1) then
+C--- find position in s
+         call scalc(x2,y2,s2,n2)
+         call splind(x2,xp2,s2,n2,-999.,-999.)        
+         call splind(y2,yp2,s2,n2,-999.,-999.)        
+         call NEARPT(xx,yy,SNEAR,X2,XP2,Y2,YP2,S2,N2)
+         ja = 0
+         do j = 2, n2
+           if(SNEAR.GT.s2(j-1) .AND. SNEAR.LT.s2(j)) ja = j
+         end do
+       else
+C--- find position in x
+         ja = 0
+         do j=2,n2
+           if(xx.GT.x2(j-1) .AND. xx.LT.x2(j)) ja = j
+         end do         
+         if(xx.LT.x2(1))  ja =1
+         if(xx.GT.x2(n2)) ja = n2+1
+       endif
+C--- shift array and add point
+       if(ja.NE.0) then
+        do j=n2,ja,-1
+          x2(j+1) = x2(j)
+          y2(j+1) = y2(j)
+        end do
+        x2(ja) = xx
+        y2(ja) = yy
+        n2 = n2+1
+       endif
+       go to 200
+      endif
+C
+C--- delete point at cursor position
+      if(cin.EQ.'d' .OR. cin.EQ.'D') then
+       write(*,*) 'deleting point at cursor...'
+       if(jp.EQ.n2) then
+        n2 = n2-1
+       else
+        do j=jp+1,n2
+          x2(j-1) = x2(j)
+          y2(j-1) = y2(j)
+         end do
+         n2 = n2-1
+       endif
+       go to 200
+      endif
+c
+      if((index('abcdefghijklmnopqrstuvwxyz',cin).NE.0) .OR.
+     &   (index('ABCDEFGHIJKLMNOPQRSTUVWXYZ',cin).NE.0) .OR.
+     &   (index('0123456789',cin).NE.0)) go to 200
 c
       write(*,*) 'Cursor at x,y ',xx,yy
       write(*,*) 'Point ',jp,' selected at x,y ',x1(jp),y1(jp) 
 C--- now read cursor and move point
- 300  call GETCURSORXYC(xx,yy,ibtn)
+ 300  call pltall('Move point...',' ',' ')
+      call GETCURSORXYC(xx,yy,ibtn)
       write(*,*) xx,yy,ibtn
       if(ibtn.eq.0) go to 200
       x2(jp) = xx
       y2(jp) = yy
-      n2 = n1
-      call pltall('Move point...("i" to reset)')
       go to 300      
 c
  400  continue
@@ -154,8 +230,15 @@ ccc      pause
       stop
       end
 
-      subroutine pltall(msg)
-      character*(*) msg
+
+      subroutine pltall(msg1,msg2,msg3)
+C--- Graphics refresh routine for curve modification
+C    Resplines original (x1,y1,n1) and modified (x2,y2,n2) curves 
+C    and plots the splines with symbols at the curve points
+C
+C    Curves are splined vs "s" or vs "x", determined by iparam = 1 or 0
+C
+      character*(*) msg1, msg2, msg3
       parameter (ipx=100)
 c
       common /Rpoints/
@@ -163,18 +246,39 @@ c
      &       x1(ipx), y1(ipx), s1(ipx), xp1(ipx), yp1(ipx),
      &       x2(ipx), y2(ipx), s2(ipx), xp2(ipx), yp2(ipx)
       common /Ipoints/
-     &       iplt, n1, n2
+     &       iparam, iplt, n1, n2
 C
+C--- (Re)Open window for plotting (clears old window)
       call PLOPEN(0.8,0,1)
-      CALL PLCHAR(0.5,0.5,1.2*CH,'TEST FOR MOUSE READ',0.0,-1)
-      CALL PLCHAR(0.3,0.3,1.2*CH,msg,0.0,-1)
+      XMSG = 0.5
+      YMSG = 1.0
+      CALL PLCHAR(XMSG,YMSG,1.2*CH,'TEST FOR MOUSE READ',0.0,-1)
+      if(msg1.NE.' ') then
+        YMSG = YMSG - 1.3*CH
+        CALL PLCHAR(XMSG,YMSG,CH,msg1,0.0,-1)
+      endif
+      if(msg2.NE.' ') then
+        YMSG = YMSG - 1.3*CH
+        CALL PLCHAR(XMSG,YMSG,CH,msg2,0.0,-1)
+      endif
+      if(msg3.NE.' ') then
+        YMSG = YMSG - 1.3*CH
+        CALL PLCHAR(XMSG,YMSG,CH,msg3,0.0,-1)
+      endif
+C
+C--- re-origin
 ccc      call PLOT(5.5, 4.25, -3)
 
+C--- curve #1 (original)
       if(n1.GT.1) then
 C--- spline input curve and plot
-      call scalc(x1,y1,s1,n1)
-      call splind(x1,xp1,s1,n1,-999.,-999.)        
-      call splind(y1,yp1,s1,n1,-999.,-999.)        
+      if(iparam.EQ.1) then
+       call scalc(x1,y1,s1,n1)
+       call splind(x1,xp1,s1,n1,-999.,-999.)        
+       call splind(y1,yp1,s1,n1,-999.,-999.)        
+      else
+       call splind(y1,yp1,x1,n1,-999.,-999.)        
+      endif
 C
       call NEWCOLORNAME('blue')
       call plot(x1(1),y1(1),3)
@@ -183,21 +287,32 @@ C
       dfn = 1.0/float(ninter)
       do j = 1, n1-1
         ds = s1(j+1) - s1(j)
+        dx = x1(j+1) - x1(j)
         do n = 1, ninter
-          ss = s1(j) + ds*float(n)*dfn
-          xx = seval(ss,x1,xp1,s1,n1)
-          yy = seval(ss,y1,yp1,s1,n1)
+          if(iparam.EQ.1) then
+           ss = s1(j) + ds*float(n)*dfn
+           xx = seval(ss,x1,xp1,s1,n1)
+           yy = seval(ss,y1,yp1,s1,n1)
+          else
+           xx = x1(j) + dx*float(n)*dfn
+           yy = seval(xx,y1,yp1,x1,n1)
+          endif
           call plot(xx,yy,2)
         end do
         CALL PLSYMB(999.,999.,0.4*CH,1,0.0,0)
       end do
       endif
 
+C--- curve #2 (modified)
       if(n2.GT.1) then
 C--- spline modified curve and plot
-      call scalc(x2,y2,s2,n2)
-      call splind(x2,xp2,s2,n2,-999.,-999.)        
-      call splind(y2,yp2,s2,n2,-999.,-999.)        
+      if(iparam.EQ.1) then
+       call scalc(x2,y2,s2,n2)
+       call splind(x2,xp2,s2,n2,-999.,-999.)        
+       call splind(y2,yp2,s2,n2,-999.,-999.)        
+      else
+       call splind(y2,yp2,x2,n2,-999.,-999.)        
+      endif
 C
       call NEWCOLORNAME('red')
       call plot(x2(1),y2(1),3)
@@ -206,10 +321,16 @@ C
       dfn = 1.0/float(ninter)
       do j = 1, n2-1
         ds = s2(j+1) - s2(j)
+        dx = x2(j+1) - x2(j)
         do n = 1, ninter
-          ss = s2(j) + ds*float(n)*dfn
-          xx = seval(ss,x2,xp2,s2,n2)
-          yy = seval(ss,y2,yp2,s2,n2)
+          if(iparam.EQ.1) then
+           ss = s2(j) + ds*float(n)*dfn
+           xx = seval(ss,x2,xp2,s2,n2)
+           yy = seval(ss,y2,yp2,s2,n2)
+          else
+           xx = x2(j) + dx*float(n)*dfn
+           yy = seval(xx,y2,yp2,x2,n2)
+          endif
           call plot(xx,yy,2)
         end do
         CALL PLSYMB(999.,999.,0.4*CH,1,0.0,0)
@@ -807,4 +928,123 @@ C
 C
       RETURN
       END ! SEGSPL
+
+      SUBROUTINE NEARPT(XPNT,YPNT,SNEAR,X,XP,Y,YP,S,N)
+      IMPLICIT REAL (A-H,M,O-Z)
+      DIMENSION X(N),XP(N),Y(N),YP(N),S(N)
+C========================================================
+C     Finds arc length position S=SNEAR of a point 
+C     on a 2-D splined curve X(S),Y(S) nearest the 
+C     specified point XPNT,YPNT.
+C
+C     Assumes the value passed in via SNEAR is a good 
+C     initial guess.
+C========================================================
+C
+C---- convergence tolerance
+      EPS = 1.0E-4 * (S(N) - S(1))
+C
+C---- Newton iteration loop
+      DO 215 IPASS=1, 10
+        CALL SEVALL(SNEAR,X,XP,S,N,XXI,XPI,X2I)
+        CALL SEVALL(SNEAR,Y,YP,S,N,YYI,YPI,Y2I)
+C
+C------ residual is dot product with curve tangent vector
+        RES   = (XXI-XPNT)*XPI + (YYI-YPNT)*YPI
+C
+        RES_S = (XPI     )*XPI + (YPI     )*YPI
+     &        + (XXI-XPNT)*X2I + (YYI-YPNT)*Y2I
+C
+        DSN = -RES/RES_S
+        SNEAR = SNEAR + DSN
+        IF(ABS(DSN) .LT. EPS) GO TO 216
+C
+  215 CONTINUE
+      WRITE(*,*) 'NEARPT: Convergence failed.  Continuing...'
+  216 CONTINUE
+C
+      RETURN
+      END ! NEARPT
+
+
+      SUBROUTINE SEVALL(SS,X,XS,S,N,
+     &                  XX, XXS, XXSS )
+      IMPLICIT REAL (A-H,M,O-Z)
+      DIMENSION X(N),XS(N),S(N)
+C--------------------------------------------------
+C     Calculates all spline derivatives.           |
+C     (Combines SEVAL, DEVAL, D2VAL)               |
+C     XS array must have been calculated by SPLINE |
+C--------------------------------------------------
+      ILOW = 1
+      I = N
+C
+   10 IF(I-ILOW .LE. 1) GO TO 11
+C
+      IMID = (I+ILOW)/2
+      IF(SS .LT. S(IMID)) THEN
+       I = IMID
+      ELSE
+       ILOW = IMID
+      ENDIF
+      GO TO 10
+C
+   11 DS = S(I) - S(I-1)
+      T = (SS - S(I-1)) / DS
+C
+      F0 = X(I-1)
+      F1 = DS*XS(I-1)
+      F2 = -DS*(2.0*XS(I-1) + XS(I)) + 3.0*(X(I) - X(I-1))
+      F3 =  DS*(    XS(I-1) + XS(I)) - 2.0*(X(I) - X(I-1))
+C
+      XX = F0 + T*(F1 + T*(    F2 + T*    F3))
+      XXS =        F1 + T*(2.0*F2 + T*3.0*F3)
+      XXSS =               2.0*F2 + T*6.0*F3
+C
+      XXS = XXS/DS
+      XXSS = XXSS/DS**2
+C
+      RETURN
+      END ! SEVALL
+
+
+      SUBROUTINE SORT(KK,S,W)
+C--- Sorts input arrays S(KK),W(KK) by abscissa S
+C    Eliminates duplicate S points from arrays, updates KK
+      DIMENSION S(KK), W(KK)
+      LOGICAL DONE
+C
+C---- sort arrays
+      DO IPASS=1, 1234
+        DONE = .TRUE.
+        DO 101 N=1, KK-1
+          NP = N+1
+          IF(S(NP).GE.S(N)) GO TO 101
+           TEMP = S(NP)
+           S(NP) = S(N)
+           S(N) = TEMP
+           TEMP = W(NP)
+           W(NP) = W(N)
+           W(N) = TEMP
+           DONE = .FALSE.
+  101   CONTINUE
+        IF(DONE) GO TO 11
+      END DO
+      WRITE(*,*) 'Sort failed'
+C
+C---- search for duplicate pairs and eliminate each one
+   11 KKS = KK
+      DO 20 K=1, KKS
+        IF(K.GE.KK) RETURN
+        IF(S(K).NE.S(K+1)) GO TO 20
+C------- eliminate pair
+         KK = KK-2
+         DO KT=K, KK
+           S(KT) = S(KT+2)
+           W(KT) = W(KT+2)
+        END DO
+   20 CONTINUE
+C
+      RETURN
+      END
 

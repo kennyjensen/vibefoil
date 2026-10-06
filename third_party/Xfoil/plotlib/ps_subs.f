@@ -22,9 +22,9 @@ C                        or drela@mit.edu
 C***********************************************************************
 C
 C***********************************************************************
-C --- Xplot11 driver for postscript output to file
+C --- Driver for hardcopy output to postscript files
 C
-C     Version 4.46 11/28/01
+C     Version 4.56 01/16/23
 C
 C     Notes:  PS Plotting coordinates in points (1pt=1/72in.)
 C             are multiplied by 10 and truncated as integers to 
@@ -37,6 +37,7 @@ C
 C             The option exists to check before overwriting all old 
 C             postscript output files (including the default file 
 C             "plot.ps") see the commented section below. 
+C
 C***********************************************************************
 
       subroutine ps_setup(nunit)
@@ -44,23 +45,23 @@ C
 C---Sets defaults for Postscript output
 C
 C    nunit   specifies logical unit and suffix for name for .ps output file
-C            if nunit<0 output file is named "plotXXX.ps" where XXX is the
+C            if nunit<0 output file is named "plotNNN.ps" where NNN is the
 C               plot sequential number (i.e. separate plot files are created 
 C               for each plot) 
 C            if nunit=0 output file is named "plot.ps"  
-C            if nunit>0  output file is named "plotUUU.ps" where UUU is the 
-C               nunit unit number
+C            if nunit>0  output file is named "plotunitUUU.ps" where UUU is 
+C               the number of 'nunit' formatted to 3 integers with leading 0's 
 C
       include 'pltlib.inc'
       character numunit*3
 C
+cc      print *, 'ps_setup nunit,LPS_OPEN ', nunit,LPS_OPEN
       PX_ORG = 10.
       PY_ORG = 10.
       P_SCALE = 0.
-      LPS_OPEN      = .FALSE. 
-      LPS_UNSTROKED = .FALSE.
-      LPS_EXTERNAL  = .FALSE.
-      LPS_ONEFILE   = .TRUE.
+      LPS_OPEN     = .FALSE. 
+      LP_UNSTROKED = .FALSE.
+      LP_ONEFILE   = .TRUE.
       I_PAGES = 0
 C
 C---Default postscript output file is "plot.ps", specified if nunit=0,
@@ -73,50 +74,56 @@ C   file with name assigned as "plotNNN.ps" where NNN is the sequential
 C   plot number
 C
 C   If user specifies a logical unit to use for the plot file the logical
-C   unit is used for IO and the name assigned is "plotNNN.ps" where
-C   NNN is the logical unit number (0>NNN<1000)
+C   unit is used for IO and the name assigned is "plotUUU.ps" where
+C   UUU is the logical unit number (0>UUU<1000)
 C
       nunit0 = nunit
       if(nunit.EQ.0) then
        nunit0 = NPS_UNIT_DEFAULT
-       PS_FILE = 'plot.ps'
+       PS_FILE  = 'plot.ps'
       elseif(nunit.EQ.NPRIM_UNIT_DEFAULT .OR. nunit.GT.999) then
        write(*,*) 'PS_SETUP: PS file unit out of bounds: ',nunit
        write(*,*) '          Using default unit ',NPS_UNIT_DEFAULT
-       write(*,*) '          Using default file "plot.ps"'
+       write(*,*) '          Using default files "plot.ps"'
        nunit0 = NPS_UNIT_DEFAULT
-       PS_FILE = 'plot.ps'
+       PS_FILE  = 'plot.ps'
       elseif(nunit.LT.0) then
 c       write(*,*) 'PS_SETUP: separate PS files used for each plot'
 c       write(*,*) '          Using unit ',NPS_UNIT_DEFAULT
-c       write(*,*) '          Using file "plot###.ps"'
+c       write(*,*) '          Using files "plot###.ps"'
        nunit0 = NPS_UNIT_DEFAULT
-       PS_FILE = 'plot000.ps'
-       LPS_ONEFILE = .FALSE.
+       PS_FILE  = 'plot000.ps'
+       LP_ONEFILE = .FALSE.
       else
        write(numunit,10) nunit0
-       PS_FILE = 'plotunit' // numunit // '.ps'
+       PS_FILE  = 'plotunit' // numunit // '.ps'
       endif
       NPS_UNIT = nunit0 
+cc      print *, 'ps_setup NPS__UNIT,LP_ONEFILE ', NPS_UNIT,LP_ONEFILE
 C
  10   format(I3.3)
       return
       end
 
 
-      subroutine ps_init
+      subroutine ps_initialize
 C---Initializes Postscript plotting and global plot variables
       include 'pltlib.inc'
 C
-C---Change page orientation if required
-      IPS_MODE = 0
-      if(I_PAGETYPE.EQ.Page_Landscape) IPS_MODE = 1
+cc      print *, 'ps_initialize'
+C---- set PS page Portrait/Landscape orientation
+      if(I_PAGETYPE.EQ.Page_Portrait .OR. LP_PORT) then
+       IPS_MODE = 0
+      else
+       IPS_MODE = 1
+      endif
 C
       N_VECS  = 0
 C...P_SCALE set so user graphics scales to 1.0inch/(absolute unit) on page
-      if(P_SCALE.EQ.0.)  P_SCALE = 72.
+      if(P_SCALE .EQ. 0.0)  P_SCALE = 72.0
       PX_SIZ = P_SCALE*X_PAGE
       PY_SIZ = P_SCALE*Y_PAGE
+C
       call ps_open
 C
       return
@@ -124,105 +131,92 @@ C
 
 
       subroutine ps_open
-C...Initializes PostScript file for plotting commands
+C...Initializes PostScript files for plotting commands
       include 'pltlib.inc'
       logical LEXIST, LOPEN
-      character*80 PS_FILE2
+      character*256 PS_FILE2
       character*1 ans
       character numpage*3
 C
+cc      print *, 'ps_open LPS_OPEN ', LPS_OPEN 
       LOPEN = LPS_OPEN
       call a_strip(' ',PS_FILE)
-      NCH = index(PS_FILE,' ') - 1
+      NCHPS  = index(PS_FILE,' ') - 1
 C
 C---Check status on PS file
 C---PS file NOT OPENED.
-      if(.NOT.LPS_OPEN) then
+      if(LPS_GEN) then
 C
-C---Check unit to see if user opened it already (set status flag LPS_EXTERNAL)
-C   if file is already open skip opening the file, just use it
-C   if unit is unopened then open a file for output
-        if(LPS_EXTERNAL) go to 10
-C---Check if file pre-opened outside of Xplot11
-        inquire(unit=NPS_UNIT,opened=LPS_EXTERNAL,err=1)
-C
- 1      if(.NOT.LPS_EXTERNAL) then
+        if(.NOT.LPS_OPEN) then
 C
 C---If we are writing separate plotxxx.ps files create plot file name for
 C   this plot using cumulative plot number
-         if(.NOT.LPS_ONEFILE) then
+         if(.NOT.LP_ONEFILE) then
            write(numpage,100) N_PAGES
-           PS_FILE = 'plot' // numpage // '.ps'
+           PS_FILE  = 'plot' // numpage // '.ps'
+           NCHPS  = index(PS_FILE,' ') - 1
          endif
  100     format(I3.3)
-C
 C
 C.....PS_FILE doesn't exist, so open it and proceed
  2       open(unit=NPS_UNIT,file=PS_FILE,status='UNKNOWN',err=3)
          rewind(NPS_UNIT)
          go to 10
-C....On open error get some other name and try again...
+C....On open error get some other name from user and try again...
  3       write(*,1020)
          read (*,1100) PS_FILE2
          call a_strip(' ',PS_FILE2)
          if(PS_FILE2.EQ.' ') go to 3
          PS_FILE = PS_FILE2
-         NCH = index(PS_FILE,' ') - 1
+         NCHPS = index(PS_FILE,' ') - 1
          go to 2
 C
-        endif
-C
- 1010   format(/' PostScript output file  ',A,
+ 1010    format(/' PostScript output file  ',A,
      &          '  exists. Overwrite? [Y] ',$)
- 1020   format(' Specify new output file: ',$)
+ 1020    format(' Specify new output file: ',$)
 C
 C...Write Postscript file header to identify this as a .ps file
- 10     write(NPS_UNIT,1030) PS_FILE
-        if(IPS_MODE.EQ.1) write(NPS_UNIT,1040) 
-        write(NPS_UNIT,1050) 
-C
- 1030   format('%!PS-Adobe-2.0'/
-     &         '%%Title: ',A/
-     &         '%%Creator: Xplot11'/
-     &         '%%Pages: (atend)'/
-     &         '%%BoundingBox: (atend)')
- 1040   format('%%Orientation: Landscape')
- 1050   format('%%EndComments'/)
-C
-        LPS_OPEN = .TRUE.
-C
-      endif
-C
-C
-C...For any ps_open -> Initialize Postscript last point and bounding box
-      PS_LSTX  = -99999.
-      PS_LSTY  = -99999.
-      BB_XMIN  =  99999.
-      BB_YMIN  =  99999.
-      BB_XMAX  = -99999.
-      BB_YMAX  = -99999.
-C
-      if(LOPEN) then
-         if(LPS_EXTERNAL) then
-           write(*,1064)
-          else
-           write(*,1065) PS_FILE(1:NCH)
+ 10      write(NPS_UNIT,1030) PS_FILE
+         if(IPS_MODE.EQ.0) then
+           write(NPS_UNIT,1040) 
+         else
+           write(NPS_UNIT,1041) 
          endif
+         write(NPS_UNIT,1050) 
+C     
+ 1030    format('%!PS-Adobe-2.0'/
+     &          '%%Title: ',A/
+     &          '%%Creator: Xplot11'/
+     &          '%%Pages: (atend)'/
+     &          '%%BoundingBox: (atend)')
+ 1040    format('%%Orientation: Portrait')
+ 1041    format('%%Orientation: Landscape')
+ 1050    format('%%EndComments'/)
+C
+         LPS_OPEN = .TRUE.
+C
+       endif
+      
+C...  For any ps_open -> Initialize Postscript last point and bounding box
+       PS_LSTX  = -1.0E7
+       PS_LSTY  = -1.0E7
+       BB_XMIN  =  1.0E7
+       BB_YMIN  =  1.0E7
+       BB_XMAX  = -1.0E7
+       BB_YMAX  = -1.0E7
+C
+       if(LOPEN) then
+         write(*,1065) PS_FILE(1:NCHPS)
        else
-         if(LPS_EXTERNAL) then
-           write(*,1059)
-          else
-           write(*,1060) PS_FILE(1:NCH)
-         endif
-      endif
- 1059 format(' Writing   PostScript to external file ...')
- 1060 format(' Writing   PostScript to file  ',A,' ...')
- 1064 format(' Appending PostScript to external file ...')
- 1065 format(' Appending PostScript to file  ',A,' ...')
+         write(*,1060) PS_FILE(1:NCHPS)
+       endif
+ 1060  format(' Writing   PostScript to file  ',A,' ...')
+ 1065  format(' Appending PostScript to file  ',A,' ...')
 C
 C...Put out a page preamble
       N_PAGES = N_PAGES + 1
       I_PAGES = I_PAGES + 1
+C
       write(NPS_UNIT,1070) I_PAGES, I_PAGES
  1070 format('%%Page: ',I4,2X,I4/
      &       'gsave  %Save current context'/
@@ -248,17 +242,21 @@ c      ixtrans =  0
 c      iytrans =  ifix(P_SCALE*X_PAGE)
 c      irotate = -90
 C--------------------------------------------------------------
-      ixtrans =  ifix(P_SCALE*Y_PAGE)
-      iytrans =  0
-      irotate =  90
+       ixtrans =  ifix(P_SCALE*Y_PAGE)
+       iytrans =  0
+       irotate =  90
 C--------------------------------------------------------------
- 1080 format('% Rotate and translate for Landscape format'/
-     &       I4,1X,I4,' translate ',I4,' rotate')
-      if(IPS_MODE.EQ.1) write(NPS_UNIT,1080) ixtrans,iytrans,irotate
+ 1080  format('% Rotate and translate for Landscape format'/
+     &        I4,1X,I4,' translate ',I4,' rotate')
+       if(IPS_MODE.EQ.1) then
+        write(NPS_UNIT,1080) ixtrans,iytrans,irotate
+       endif
 C
-      LPS_UNSTROKED = .TRUE.
+      endif  ! end of PS setup
+C
+      LP_UNSTROKED = .TRUE.
       N_VECS = 0
-C
+C      
  1100 format(a)
       return
       end
@@ -285,19 +283,16 @@ c
 C...Closes PostScript file for plotting
       include 'pltlib.inc'
 C
-      if(.NOT.LPS_OPEN) return
-C
+cc      print *, 'ps_close LPS_OPEN ',LPS_OPEN
+      if(LPS_OPEN) then
 C...Put out page count
-      write(NPS_UNIT,30) I_PAGES
-  30  format('%%Trailer'/'%%Pages: ',I4)
-C
-C...Don't mess with external supplied units
-      if(.NOT.LPS_EXTERNAL) then
+        write(NPS_UNIT,30) I_PAGES
         close(NPS_UNIT)
         NPS_UNIT = -1
+        LPS_OPEN = .FALSE.
       endif
-C
-      LPS_OPEN = .FALSE.
+  30  format('%%Trailer'/'%%Pages: ',I4)
+C      
       return
       end
 
@@ -306,17 +301,33 @@ C
 C...Ends PostScript page
       include 'pltlib.inc'
 C
-      if(.NOT.LPS_OPEN     ) return
-      if(.NOT.LPS_UNSTROKED) return
-C
-C...If a page has already been plotted, finish it
-      if(I_PAGES.GT.0) THEN
-        write(NPS_UNIT,20) IFIX(BB_XMIN),IFIX(BB_YMIN),
-     &                     IFIX(BB_XMAX),IFIX(BB_YMAX)
+c      write(*,*) 'ps_endpage:',
+c     &    (.NOT.LPS_OPEN), (.NOT.LP_UNSTROKED), I_PAGES
+cc      print *, 'ps_endpage LPS_OPEN,LP_UNSTROKED ',LPS_OPEN,LP_UNSTROKED
+
+      if(.NOT.LP_UNSTROKED) return
+      if(LPS_OPEN) then
+
+C...If a page has already been plotted, finish it,
+C   add small margins to plot to avoid clipping lines
+        if(I_PAGES.GT.0) THEN
+          IXMIN = IFIX(BB_XMIN-BB_MARG)
+          IYMIN = IFIX(BB_YMIN-BB_MARG)
+          IXMAX = IFIX(BB_XMAX+BB_MARG)
+          IYMAX = IFIX(BB_YMAX+BB_MARG)
+
+          if(IPS_MODE .EQ. 0) THEN
+C------- Portrait
+           write(NPS_UNIT,20) IXMIN, IYMIN, IXMAX, IYMAX
+          else
+C------- Landscape
+           write(NPS_UNIT,20) IYMIN, IXMIN, IYMAX, IXMAX
+          endif
+        endif
       endif
   20  format('stroke showpage grestore'/'%%BoundingBox: ',4I8/)
-C
-      LPS_UNSTROKED = .FALSE.
+C    
+      LP_UNSTROKED = .FALSE.
       N_VECS = 0
 C
       return
@@ -326,6 +337,7 @@ C
       subroutine ps_flush
 C...Flushes out buffered plot output to PostScript file
       include 'pltlib.inc'
+C...Flush out existing lines at old color
       return
       end
 
@@ -345,7 +357,8 @@ C
       include 'pltlib.inc'
       character*22 colorname
 C
-      if(.NOT.LPS_OPEN .OR. .NOT.LPS_COLOR) return
+      if(.NOT.LP_COLOR) return
+      if(.NOT.LPS_OPEN) return
 C
 C...Flush out existing lines at old color
       if(N_VECS.GT.0) then
@@ -374,12 +387,14 @@ C
 C
 C...Change the line width for new lines
       if(N_VECS.GT.0) then
-        write(NPS_UNIT,10)
         N_VECS = 0
+        write(NPS_UNIT,10)
       endif
 C
-      write(NPS_UNIT,20) 0.25*float(jpen)
-C
+      scalepspen = 0.25
+      wpen = scalepspen*float(jpen)
+      write(NPS_UNIT,20) wpen
+C     
   10  format(' CPSM')
   20  format(' ',F5.2,' SL')
       return
@@ -389,14 +404,16 @@ C
 C...Sets Postscript line pattern 
       include 'pltlib.inc'
 C
-      dimension iseg(32)
+      integer iseg(32)
       data mskall /-1/
       data nsegmax / 8 /
 C
       if(.NOT.LPS_OPEN) return
 C
       if(lmask.EQ.0 .OR. lmask.eq.mskall) then
-        if(N_VECS.GT.0) write(NPS_UNIT,10) 
+        if(N_VECS.GT.0) then
+          write(NPS_UNIT,10) 
+        endif
         write(NPS_UNIT,20) 
 C
        else
@@ -404,13 +421,16 @@ C...Set line pattern from lower 16 bits of line mask (integer)
 C   Note: no more than 10 pattern elements can be written to PS!
         call bitpat(lmask,nseg,iseg)
         nsg = min(nseg,nsegmax)
-	if(N_VECS.GT.0) write(NPS_UNIT,10)
-	write(NPS_UNIT,30) (iseg(i),i=1,nsg)
-	write(NPS_UNIT,40)
+	if(N_VECS.GT.0) then
+          write(NPS_UNIT,10)
+        endif
+        write(NPS_UNIT,30) (iseg(i),i=1,nsg)
+        write(NPS_UNIT,40)
       endif
 C
       N_VECS = 0
-  10  format(' CPSM')
+C
+ 10   format(' CPSM')
   20  format(' [ ] 0 setdash')
   30  format(' [',10I3)
   40  format(' ] 0 setdash')
@@ -440,7 +460,8 @@ C
       BB_XMAX = MAX(BB_XMAX,PX1,PX2)
       BB_XMIN = MIN(BB_XMIN,PX1,PX2)
       BB_YMAX = MAX(BB_YMAX,PY1,PY2)
-      BB_YMIN = MIN(BB_YMIN,PY1,PY2)
+      BB_YMIN = MIN(BB_YMIN,PY1,PY2)      
+C
       ipx1 = ifix(10.0*PX1)
       ipy1 = ifix(10.0*PY1)
       ipx2 = ifix(10.0*PX2)
@@ -448,18 +469,10 @@ C
 C
       idx = iabs( ifix(10.0*PS_LSTX) - ipx1 )
       idy = iabs( ifix(10.0*PS_LSTY) - ipy1 )
-C
-      if(N_VECS.GE.500) then
-	write(NPS_UNIT,10)
-	N_VECS = 0
-      endif
-C
-
       if(idx.LE.1 .AND. idy.LE.1 .AND. N_VECS.NE.0) then
-CCC   if(PX1.EQ.PS_LSTX .AND. PY1.EQ.PS_LSTY .AND. N_VECS.NE.0) then
         write(NPS_UNIT,30) ipx2,ipy2
-       else
-	write(NPS_UNIT,20) ipx1,ipy1,ipx2,ipy2
+      else
+        write(NPS_UNIT,20) ipx1,ipy1,ipx2,ipy2
       endif
 C
       PS_LSTX = PX2
@@ -499,16 +512,37 @@ C         or it will try to stroke the path we need to fill...
 C
       include 'pltlib.inc'
       real mingrey, maxgrey
-      dimension X(n), Y(n)
+      real X(n), Y(n)
       data mingrey, maxgrey / 0.10, 0.95 /
       if(n.LE.1) return
 C
-C...If this is a filled polyline flush out existing lines
+      if(.NOT.LPS_OPEN) return
+C
+C...  Flush out existing paths
       if(N_VECS.GT.0) then
         write(NPS_UNIT,10)
         N_VECS = 0
       endif
 C
+C...If this is not a color plot, re-shade Spectrum color indices with
+C   grey shades, from light grey to near black to replace the color shading
+C
+      if(.NOT.LP_COLOR .AND. N_COLOR.GT.0) then
+C...Create grey color for fill
+        call GETCOLOR(icol)
+        if(icol.EQ.2) then
+          grey = 1.0
+         elseif(icol.LT.0) then
+          ispec = -icol
+          greyfrac = float(ispec-1)/float(N_SPECTRUM-1)
+          grey = mingrey + (maxgrey-mingrey)*greyfrac
+         else
+          grey = 0.0
+        endif
+        write(NPS_UNIT,15) grey
+      endif
+C
+C...Plot polyline path
       X1 = X(1)
       Y1 = Y(1)
       do i = 2, n
@@ -519,33 +553,15 @@ C
         Y1 = Y2
       end do
 C
-C...If this is not a color PS plot, shade any Spectrum color indices with
-C   a grey shade from light grey to near black to replace the color shading
       if(ifill.eq.0) then 
+C...Not filled, stroke the polyline
         write(NPS_UNIT,10)
+        N_VECS = 0
       else
-        grey = 0.0
-        if(.NOT.LPS_COLOR .AND. N_COLOR.GT.0) then
-          call GETCOLOR(icol)
-          if(icol.EQ.2) then
-            grey = 1.0
-           elseif(icol.LT.0) then
-            ispec = -icol
-            greyfrac = float(ispec-1)/float(N_SPECTRUM-1)
-            grey = mingrey + (maxgrey-mingrey)*greyfrac
-           else
-            grey = 0.0
-          endif
-          write(NPS_UNIT,15) grey
-        endif
+C...Fill the path
         write(NPS_UNIT,20)
       endif
-C...Flush vector count since we are shading this now
       N_VECS = 0
-      if(grey.NE.0.0) then
-        grey = 0.0
-        write(NPS_UNIT,15) grey
-      endif
 C
   10  format(' CPSM')
   15  format(' ',F5.2,' SG')
@@ -567,7 +583,7 @@ c
 c---  Uses the library routines and() and rshift() for bit manipulation 
 c     which are present in most fortran libraries as extensions to f77.
 c
-      dimension iout(*)
+      integer iout(*)
 c
 c--- Shift the mask until the low order bit is 1 to start...
       imask = mask

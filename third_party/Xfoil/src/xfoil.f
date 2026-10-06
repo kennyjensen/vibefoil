@@ -34,7 +34,7 @@ C
 C---- max panel angle threshold for warning
       DATA ANGTOL / 40.0 /
 C
-      VERSION = 6.99
+      VERSION = 6.996
       WRITE(*,1005) VERSION
  1005 FORMAT(
      &  /' ==================================================='
@@ -73,8 +73,17 @@ C
          CALL PANPLT
         ENDIF
        ENDIF
+
+       IF(N .LT. NPAN) THEN
+        WRITE(*,1090) NPAN
+       ENDIF
       ENDIF
-C
+
+ 1090 FORMAT(
+     & /' * Number of nodes is less than default  (',I4,' )',
+     & /' * Repanel with PANE command, or proceed as is')
+
+
       WRITE(*,1100) XCMREF,YCMREF,NPAN
  1100 FORMAT(
      &  /'   QUIT    Exit program'
@@ -173,6 +182,14 @@ C===============================================
        CALL MSAVE(COMARG)
 C
 C===============================================
+      ELSEIF(COMAND.EQ.'SVG ') THEN
+       CALL SVGOUT(COMARG)
+C
+C===============================================
+      ELSEIF(COMAND.EQ.'DXF ') THEN
+       CALL DXFOUT(COMARG)
+C
+C===============================================
       ELSEIF(COMAND.EQ.'REVE') THEN
        LCLOCK = .NOT.LCLOCK
        IF(LCLOCK) THEN
@@ -216,10 +233,20 @@ C
          CALL PANPLT
         ENDIF
        ENDIF
+
+       IF(N .LT. NPAN) THEN
+        WRITE(*,1090) NPAN
+       ENDIF
 C
 C===============================================
       ELSEIF(COMAND.EQ.'NACA') THEN
-       CALL NACA(IINPUT(1))
+C----- standard NACA 4-digit or 5-digit section
+       CALL NACA(IINPUT(1),.FALSE.)
+C
+C===============================================
+      ELSEIF(COMAND.EQ.'NACS') THEN
+C----- modified for sharp TE
+       CALL NACA(IINPUT(1),.TRUE.)
 C
 C===============================================
       ELSEIF(COMAND.EQ.'INTE') THEN
@@ -301,9 +328,9 @@ C
 C===============================================
       ELSEIF(COMAND.EQ.'PLOP') THEN
        CALL OPLSET(IDEV,IDEVRP,IPSLU,
-     &             SIZE,PLOTAR,
+     &             PLOTAR,SIZE,
      &             XMARG,YMARG,XPAGE,YPAGE,
-     &             CH,SCRNFR,LCURS,LLAND,ICOLS)
+     &             CH,SCRNFR,LCURS,LLAND,LPPORT,ICOLS)
 C
 C===============================================
       ELSEIF(COMAND.EQ.'WDEF') THEN
@@ -533,9 +560,9 @@ C---- circle plane array size (257, or largest 2  + 1 that will fit array size)
       NC1 = MIN( NC1 , 257 )
 C
 C---- default paneling parameters
-      NPAN = 160
+      NPAN = 240
       CVPAR = 1.0
-      CTERAT = 0.15
+      CTERAT = 0.3 
       CTRRAT = 0.2
 C
 C---- default paneling refinement zone x/c endpoints
@@ -561,6 +588,9 @@ C---- plot aspect ratio, character size
 C
 C---- airfoil node tick-mark size (as fraction of arc length)
       GTICK = 0.0005
+
+C---- number of points per spline intervals for plotting
+      NTS = 20
 C
 C---- Cp limits in  Cp vs x  plot
       CPMAX =  1.0
@@ -665,6 +695,8 @@ C
       JPOL(2) = JTI
       NJPOL = 2
 C
+      NKPOL = 0
+C
 C---- default Cm reference location
       XCMREF = 0.25
       YCMREF = 0.
@@ -758,7 +790,10 @@ C  10  magenta
 C
 C
       CALL PLINITIALIZE
-C
+
+      LPPORT = .TRUE.
+      CALL PLPORT
+
 C---- set up color spectrum
       NCOLOR = 64
       CALL COLORSPECTRUMHUES(NCOLOR,'RYGCBM')
@@ -1193,14 +1228,17 @@ C
 C
       ENDIF
 C
-C---- calculate friction drag coefficient
+C---- calculate friction drag and lift coefficients
       CDF = 0.0
+      CLF = 0.0
       DO 20 IS=1, 2
         DO 205 IBL=3, IBLTE(IS)
           I  = IPAN(IBL  ,IS)
           IM = IPAN(IBL-1,IS)
-          DX = (X(I) - X(IM))*CA + (Y(I) - Y(IM))*SA
+          DX =  (X(I) - X(IM))*CA + (Y(I) - Y(IM))*SA
+          DY = -(X(I) - X(IM))*SA + (Y(I) - Y(IM))*CA
           CDF = CDF + 0.5*(TAU(IBL,IS)+TAU(IBL-1,IS))*DX * 2.0/QINF**2
+          CLF = CLF + 0.5*(TAU(IBL,IS)+TAU(IBL-1,IS))*DY * 2.0/QINF**2
  205    CONTINUE
  20   CONTINUE
 C
@@ -1262,7 +1300,10 @@ C----- if area is negative (clockwise order), reverse coordinate order
       ENDIF
 C
       IF(LNORM) THEN
-       CALL NORM(XB,XBP,YB,YBP,SB,NB)
+       XSHIFT = 0.
+       YSHIFT = 0.
+       SCALE  = 1.0
+       CALL NORM(XB,XBP,YB,YBP,SB,NB,XSHIFT,YSHIFT,SCALE)
        WRITE(*,1020)
       ENDIF
 C
@@ -1544,6 +1585,250 @@ C
       END ! MSAVE
 
 
+      SUBROUTINE SVGOUT(FNAME1)
+C-------------------------------------------------
+C     Writes out current airfoil in SVG format
+C-------------------------------------------------
+      INCLUDE 'XFOIL.INC'
+      CHARACTER*(*) FNAME1
+C
+      CHARACTER*1 ANS
+      CHARACTER*128 LINE
+      CHARACTER*32 UNITS
+C
+      LU = 2
+C
+C---- get output filename if it was not supplied
+      IF(FNAME1(1:1) .NE. ' ') THEN
+       FNAME = FNAME1
+      ELSE
+       CALL ASKS('Enter output filename^',FNAME)
+      ENDIF
+      CALL STRIP(FNAME,NFNAME)
+
+      OPEN(LU,FILE=FNAME,STATUS='OLD',ERR=5)
+      WRITE(*,*)
+      WRITE(*,*) 'Output file exists.  Overwrite?  Y'
+      READ(*,1000) ANS
+      IF(INDEX('Nn',ANS).EQ.0) GO TO 6
+C
+      CLOSE(LU)
+      WRITE(*,*) 'SVG file not written.'
+      RETURN
+C
+ 5    OPEN(LU,FILE=FNAME,STATUS='NEW',ERR=90)
+ 6    REWIND(LU)
+
+      UNITS = 'in'
+      NUNITS = 2
+      WRITE(*,*) 'Enter units:  ', UNITS(1:NUNITS)
+      READ(*,1000) LINE
+      IF(LINE .NE. ' ') THEN
+       UNITS = LINE
+       CALL STRIP(UNITS,NUNITS)
+      ENDIF
+
+      XMIN = X(1)
+      XMAX = X(1)
+      YMIN = -Y(1)
+      YMAX = -Y(1)
+      DO I = 2, N
+        XMIN = MIN( XMIN , X(I) )
+        XMAX = MAX( XMAX , X(I) )
+        YMIN = MIN( YMIN , -Y(I) )
+        YMAX = MAX( YMAX , -Y(I) )
+      ENDDO
+      IWIDTH  = INT( 1.05*(XMAX-XMIN) )
+      IHEIGHT = INT( 1.05*(YMAX-YMIN) )
+      IXMIN = INT(  XMIN-1.5 )
+      IXMAX = INT(  XMAX+1.5 )
+      IYMIN = INT(  YMIN-1.5 )
+      IYMAX = INT(  YMAX+1.5 )
+
+      GSIZE = MAX( XMAX-XMIN , YMAX-YMIN )
+
+ 1000 FORMAT(A,A,A)
+      WRITE(LU,1000) '<svg'
+
+ 1100 FORMAT(A,I12,A,A)
+      WRITE(LINE,1100) 'width="' ,IWIDTH,  UNITS(1:NUNITS), '"'
+      CALL BSTRIP(LINE,NLINE)
+      WRITE(LU,1000) '   ',LINE(1:NLINE)
+
+      WRITE(LINE,1100) 'height="',IHEIGHT, UNITS(1:NUNITS), '"'
+      CALL BSTRIP(LINE,NLINE)
+      WRITE(LU,1000) '   ',LINE(1:NLINE)
+
+ 1400 FORMAT(A,I8,I8,I8,I8,A)
+      WRITE(LU,1400) '   viewBox="',IXMIN,IYMIN,IXMAX,IYMAX, '"'
+
+      WRITE(LU,1000) '   version="1.1"'
+      WRITE(LU,1000) '   id="svg5"'
+      WRITE(LU,1000) '   sodipodi:docname="',FNAME(1:NFNAME),'"'
+      WRITE(LU,1001) '   xmlns:inkscape='
+      WRITE(LU,1000)   
+     &   '"http://www.inkscape.org/namespaces/inkscape"'
+      WRITE(LU,1001) '   xmlns:sodipodi='
+      WRITE(LU,1000)      
+     &  '"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" >'
+      WRITE(LU,1000) '   <sodipodi:namedview'
+      WRITE(LU,1000) '   inkscape:document-units="',
+     &                      UNITS(1:NUNITS),'" />'
+      WRITE(LU,1000) '  <defs'
+      WRITE(LU,1000) '     id="defs2" />'
+      WRITE(LU,1000) '  <g>'
+      WRITE(LU,1000) '   <path'
+
+ 1001 FORMAT(A,$)
+      WRITE(LU,1001) '     style="fill:none;stroke:#000000;'
+      WRITE(LU,1000) 'stroke-width:0.02px;stroke-linecap:butt"'
+
+      WRITE(LU,1001) '     d="M'
+      DO I = 1, N
+        WRITE(LINE,9200) X(I),-Y(I)
+ 9200   FORMAT(F13.6,',',F13.6)
+        CALL BSTRIP(LINE,NLINE)
+ 1101   FORMAT(A,A,$)
+        WRITE(LU,1101) ' ',LINE(1:NLINE)
+      ENDDO
+      WRITE(LU,1000) '"'
+      WRITE(LU,1000) '     id="path42" />'
+      WRITE(LU,1000) '  </g>'
+      WRITE(LU,1000) '</svg>'
+
+      CLOSE(LU)
+      RETURN
+C
+ 90   WRITE(*,*) 'Bad filename.'
+      WRITE(*,*) 'SVG file not written.'
+      RETURN
+
+      END ! SVGOUT
+
+
+ 
+      SUBROUTINE DXFOUT(FNAME1)
+C-------------------------------------------------
+C     Writes out current airfoil in 2D DXF format
+C-------------------------------------------------
+      INCLUDE 'XFOIL.INC'
+      CHARACTER*(*) FNAME1
+C
+      CHARACTER*1 ANS
+      CHARACTER*128 LINE
+C
+      LU = 2
+C
+C---- get output filename if it was not supplied
+      IF(FNAME1(1:1) .NE. ' ') THEN
+       FNAME = FNAME1
+      ELSE
+       CALL ASKS('Enter output filename^',FNAME)
+      ENDIF
+      CALL STRIP(FNAME,NFNAME)
+
+      OPEN(LU,FILE=FNAME,STATUS='OLD',ERR=5)
+      WRITE(*,*)
+      WRITE(*,*) 'Output file exists.  Overwrite?  Y'
+      READ(*,1000) ANS
+      IF(INDEX('Nn',ANS).EQ.0) GO TO 6
+C
+      CLOSE(LU)
+      WRITE(*,*) 'DXF file not written.'
+      RETURN
+C
+ 5    OPEN(LU,FILE=FNAME,STATUS='NEW',ERR=90)
+ 6    REWIND(LU)
+
+      XMIN = X(1)
+      XMAX = X(1)
+      YMIN = Y(1)
+      YMAX = Y(1)
+      DO I = 2, N
+        XMIN = MIN( XMIN , X(I) )
+        XMAX = MAX( XMAX , X(I) )
+        YMIN = MIN( YMIN , Y(I) )
+        YMAX = MAX( YMAX , Y(I) )
+      ENDDO
+      ALEN = MAX( XMAX-XMIN , YMAX-YMIN )
+      XMIN = XMIN - 0.1*ALEN
+      XMAX = XMAX + 0.1*ALEN
+      YMIN = YMIN - 0.1*ALEN
+      YMAX = YMAX + 0.1*ALEN
+
+ 1000 FORMAT(A)
+ 1001 FORMAT(A,$)
+ 2100 FORMAT(1X,F10.4)
+ 3100 FORMAT(1X,F14.6)
+
+      WRITE(LU,1000) '999'
+      WRITE(LU,1000) '"DXF R12 Output" (www.mydxf.blogspot.com)'
+      WRITE(LU,1000) ' 0 '
+      WRITE(LU,1000) 'SECTION'
+      WRITE(LU,1000) ' 2 '
+      WRITE(LU,1000) 'HEADER'
+      WRITE(LU,1000) ' 9 '
+      WRITE(LU,1000) '$ACADVER'
+      WRITE(LU,1000) ' 1 '
+      WRITE(LU,1000) 'AC1009'
+      WRITE(LU,1000) ' 9 '
+      WRITE(LU,1000) '$EXTMIN'
+      WRITE(LU,1000) ' 10 '
+      WRITE(LU,2100) XMIN
+      WRITE(LU,1000) ' 20 '
+      WRITE(LU,2100) YMIN
+      WRITE(LU,1000) ' 9 '
+      WRITE(LU,1000) '$EXTMAX'
+      WRITE(LU,1000) ' 10 '
+      WRITE(LU,2100) XMAX
+      WRITE(LU,1000) ' 20 '
+      WRITE(LU,2100) YMAX
+      WRITE(LU,1000) ' 0 '
+      WRITE(LU,1000) 'ENDSEC'
+      WRITE(LU,1000) ' 0 '
+      WRITE(LU,1000) 'SECTION'
+      WRITE(LU,1000) ' 2 '
+      WRITE(LU,1000) 'ENTITIES'
+      DO I = 1, N-1
+        WRITE(LU,1000) '0'
+        WRITE(LU,1000) 'LINE'
+        WRITE(LU,1000) '8'
+        WRITE(LU,1000) 'Layer 1'
+
+        WRITE(LU,1000) '10'
+        WRITE(LINE,3100) X(I)
+        CALL STRIP(LINE,NLINE)
+        WRITE(LU,1000) LINE(1:NLINE)
+
+        WRITE(LU,1000) '20'
+        WRITE(LINE,3100) Y(I)
+        CALL STRIP(LINE,NLINE)
+        WRITE(LU,1000) LINE(1:NLINE)
+
+        WRITE(LU,1000) '11'
+        WRITE(LINE,3100) X(I+1)
+        CALL STRIP(LINE,NLINE)
+        WRITE(LU,1000) LINE(1:NLINE)
+
+        WRITE(LU,1000) '21'
+        WRITE(LINE,3100) Y(I+1)
+        CALL STRIP(LINE,NLINE)
+        WRITE(LU,1000) LINE(1:NLINE)
+      ENDDO
+      WRITE(LU,1000) ' 0 '
+      WRITE(LU,1000) 'ENDSEC'
+      WRITE(LU,1000) ' 0 '
+      WRITE(LU,1001) 'EOF'
+
+      CLOSE(LU)
+      RETURN
+
+ 90   WRITE(*,*) 'Bad filename.'
+      WRITE(*,*) 'DXF file not written.'
+      RETURN
+      END ! DXFOUT
+
+
  
       SUBROUTINE ROTATE(X,Y,N,ALFA)
       DIMENSION X(N), Y(N)
@@ -1565,8 +1850,9 @@ C
       END
 
 
-      SUBROUTINE NACA(IDES1)
+      SUBROUTINE NACA(IDES1,LTES)
       INCLUDE 'XFOIL.INC'
+      LOGICAL LTES
 C
 C---- number of points per side
       NSIDE = IQX/3
@@ -1586,8 +1872,8 @@ C
        RETURN
       ENDIF
 C
-      IF(ITYPE.EQ.4) CALL NACA4(IDES,W1,W2,W3,NSIDE,XB,YB,NB,NAME)
-      IF(ITYPE.EQ.5) CALL NACA5(IDES,W1,W2,W3,NSIDE,XB,YB,NB,NAME)
+      IF(ITYPE.EQ.4) CALL NACA4(IDES,W1,W2,W3,NSIDE,XB,YB,NB,NAME,LTES)
+      IF(ITYPE.EQ.5) CALL NACA5(IDES,W1,W2,W3,NSIDE,XB,YB,NB,NAME,LTES)
       CALL STRIP(NAME,NNAME)
 C
 C---- see if routines didn't recognize designator
@@ -2217,8 +2503,13 @@ C
         ENDIF
         IF(NPAN .GT. IQX-6) THEN
           NPAN = IQX - 6
-          WRITE(*,1200) NPAN
- 1200     FORMAT(1X,' Number of panel nodes reduced to array limit:',I4)
+          WRITE(*,1210) NPAN
+ 1210     FORMAT(1X,' Number of panel nodes reduced to array limit:',I4)
+        ENDIF
+        IF(NPAN .LT. 2) THEN
+          NPAN = 2
+          WRITE(*,1220)
+ 1220     FORMAT(1X,' Number of panel nodes increased to the minimum 2')
         ENDIF
         LCHANGE = .TRUE.
 C

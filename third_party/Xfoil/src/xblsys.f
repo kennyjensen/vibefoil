@@ -2490,7 +2490,13 @@ C---- Turbulent skin friction function  ( Cf )    (Coles)
       GM1 = GAM - 1.0
       FC = SQRT(1.0 + 0.5*GM1*MSQ)
       GRT = LOG(RT/FC)
-      GRT = MAX(GRT,3.0)
+      GRT_RT = 1.0/RT
+      GRT_MSQ = -0.25*GM1/FC**2
+      IF(GRT .LT. 3.0) THEN
+       GRT = 3.0
+       GRT_RT = 0.
+       GRT_MSQ = 0.
+      ENDIF
 C
       GEX = -1.74 - 0.31*HK
 C
@@ -2503,8 +2509,8 @@ C
       CF     = ( CFO  +  1.1E-4*(THK-1.0) ) / FC
       CF_HK  = (-1.33*CFO - 0.31*LOG(GRT/2.3026)*CFO
      &         - 1.1E-4*(1.0-THK**2) / 0.875    ) / FC
-      CF_RT  = GEX*CFO/(FC*GRT) / RT
-      CF_MSQ = GEX*CFO/(FC*GRT) * (-0.25*GM1/FC**2) - 0.25*GM1*CF/FC**2
+      CF_RT  = GEX*CFO/(FC*GRT) * GRT_RT
+      CF_MSQ = GEX*CFO/(FC*GRT) * GRT_MSQ - 0.25*GM1*CF/FC**2
 C
       RETURN
       END ! CFT

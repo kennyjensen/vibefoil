@@ -1,0 +1,58 @@
+#! /bin/csh
+# Script to make cavitation plots using gnuplot from XFOIL CINC polars
+# HHY 5/27/11
+
+if ($#argv < 1) then
+	echo "plotcav: polarfiles"
+	exit 1
+endif
+
+set cleanfiles = 1
+echo "args: $*"
+
+
+#   Creates file for gnuplot commmands, then runs gnuplot 
+
+echo 'set title "Cavitation Diagram"' > gnuplt.cmd
+echo 'set ylabel "CL"'               >> gnuplt.cmd
+echo 'set xlabel "Cpmin"'            >> gnuplt.cmd
+echo 'set grid'                      >> gnuplt.cmd
+echo 'set xrange [0:-6]'             >> gnuplt.cmd
+echo 'set xtics 0.5'                 >> gnuplt.cmd
+echo 'set yrange [-0.5:1.5]'         >> gnuplt.cmd
+echo 'set ytics 0.5'                 >> gnuplt.cmd
+echo ' '                             >> gnuplt.cmd
+
+#  go through filenames in arg list and setup plot commands for each file
+set n=0
+foreach f ($*)
+  set file=$f 
+  @ n++
+  tail -n +13 $file > cavplt.tmp$n
+  #set title = `awk '{if(NR==1) print $0}'` < $file
+  set title=`awk '{if(NR==4) print substr($0,index($0,":")+2,12)}'< $file`
+  echo "title from $file is $title"
+  if($n == 1) then
+    echo 'plot "'cavplt.tmp$n'" using 6:2 w lines lw 2 t "'$title'"\'  >> gnuplt.cmd
+  else
+    echo    ', "'cavplt.tmp$n'" using 6:2 w lines lw 2 t "'$title'"\'  >> gnuplt.cmd
+  endif
+end
+echo ' '  >> gnuplt.cmd
+
+# setup hardcopy plot command
+echo 'set term postscript color' >> gnuplt.cmd
+echo 'set output "cav-plt.ps"'   >> gnuplt.cmd
+echo 'replot'                    >> gnuplt.cmd
+
+
+# call gnuplot to make plots
+gnuplot gnuplt.cmd
+
+
+
+# clean up temporary files unless we want to save them
+#if($cleanfiles) then
+# /bin/rm -f gnuplt.cmd
+ /bin/rm -f cavplt.tmp*
+#endif

@@ -24,7 +24,7 @@ C
 ***********************************************************************
 C --- Xplot11 utility routines
 C
-C     Version 4.46 11/28/01
+C     Version 4.56 01/16/23
 C
 C     Note:  These are additional routines that supply additional plot
 C            functionality.  Included are routines for axis scaling, 
@@ -46,6 +46,10 @@ C            = -1   no decimal point
 C            = -2   number of digits determined internally
 C           <= -3   no axis annotation (just hash marks)
 C.......................................................
+C---- added line thickness for annotation numbers
+      DATA IPADD / 2 /
+
+      CALL GETPEN(IPEN0)
 C
       XAX = ABS(XAXT)
       CH = ABS(CHT)
@@ -63,6 +67,9 @@ C
       CHX = CH
       CHY = CH*XFAC/YFAC
 C
+C---- Use thicker pen for numbers
+      IPEN = IPEN0 + IPADD
+
 C---- x-axis
       CALL PLOT(X1,Y1,3)
       CALL PLOT(X1+XAX,Y1,2)
@@ -87,10 +94,11 @@ C---- Numeric annotations
          XNUM = XT - 0.5*WIDTH + 0.1*CHX
          YNUM = Y1 - 2.1*CHY
          IF(CHT.LT.0.0) YNUM = Y1 + 0.9*CHY
+         CALL NEWPEN(IPEN)
          CALL PLNUMB(XNUM,YNUM,CH,RN,0.0,ND)
+         CALL NEWPEN(IPEN0)
    10 CONTINUE
    11 CONTINUE
-C
       RETURN
       END
  
@@ -109,6 +117,10 @@ C            = -1   no decimal point
 C            = -2   number of digits determined internally
 C           <= -3   no axis annotation (just hash marks)
 C.......................................................
+C---- added line thickness for annotation numbers
+      DATA IPADD / 2 /
+C
+      CALL GETPEN(IPEN0)
 C
       YAX = ABS(YAXT)
       CH = ABS(CHT)
@@ -126,6 +138,9 @@ C
       CHX = CH
       CHY = CH*XFAC/YFAC
 C
+C---- Use thicker pen for numbers
+      IPEN = IPEN0 + IPADD
+
 C---- y-axis
       CALL PLOT(X1,Y1,3)
       CALL PLOT(X1,Y1+YAX,2)
@@ -149,7 +164,9 @@ C---- Numeric annotations
          IF(RN.LT.0.0) WIDTH = WIDTH + CHX
          XT = X1 - (0.6*CHX + WIDTH)
          IF(CHT.LT.0.0) XT = X1 + CHX
+         CALL NEWPEN(IPEN)
          CALL PLNUMB(XT,YT-0.5*CHY,CH,RN,0.0,ND)
+         CALL NEWPEN(IPEN0)
    10 CONTINUE
    11 CONTINUE
 C
@@ -181,9 +198,10 @@ C     7  ***** * * * ***** * * * *****  DASH-DOT-DOT-DOT
 C     8  **** **** * * **** **** * *    DASH-DASH-DOT-DOT
 C
 C....................................................................
-      DIMENSION X(N), Y(N)
+      REAL X(N), Y(N)
 C
-      DIMENSION  NMOV(7), SMOV(8,7)
+      INTEGER NMOV(7)
+      REAL SMOV(8,7)
 C
       DATA  NPAT / 8 /
       DATA  SCL1  / 0.125 /
@@ -288,7 +306,7 @@ C            ISYM     Selects symbol type
 C                     if ISYM < 0 ... no plotting
 C.............................................................
 C
-      DIMENSION X(N), Y(N)
+      REAL X(N), Y(N)
 C
       IF(ISYM.LT.0) RETURN
 C
@@ -303,13 +321,13 @@ C
 
 
       subroutine CONT_GRID(IX,JX,II,JJ,X,Y,F,FCON,XOFF,YOFF,XWT,YWT)
-      DIMENSION X(IX,JX), Y(IX,JX), F(IX,JX)
+      REAL X(IX,JX), Y(IX,JX), F(IX,JX)
       CALL CONTGRID(IX,JX,II,JJ,X,Y,F,FCON,XOFF,YOFF,XWT,YWT)
       RETURN
       END
 
       subroutine CONTGRID(IX,JX,II,JJ,X,Y,F,FCON,XOFF,YOFF,XWT,YWT)
-      DIMENSION X(IX,JX), Y(IX,JX), F(IX,JX)
+      REAL X(IX,JX), Y(IX,JX), F(IX,JX)
 C--------------------------------------------------------------------------
 C
 C     Plots one contour of a function F on a logically rectangular grid.
@@ -468,12 +486,13 @@ C         contour points or polygons reset NCU=0,NCL=0,NA=0,NV=0 before
 C         each call to CONTQUAD.
 C
 C--------------------------------------------------------------------------
-      DIMENSION X(4), Y(4), F(4)
-      DIMENSION XP(1), YP(1), NE(1)
-      DIMENSION XCL(1), YCL(1), XCU(1), YCU(1)
+      REAL X(4), Y(4), F(4)
+      REAL XP(*), YP(*)
+      REAL XCL(*), YCL(*), XCU(*), YCU(*)
+      INTEGER NE(*)
 C
-      DIMENSION IANG(4)
-      DIMENSION XTMP(3), YTMP(3), FTMP(3)
+      INTEGER IANG(4)
+      REAL XTMP(3), YTMP(3), FTMP(3)
 C
 C----  NCU tracks the number of upper contour points
 C      NCL tracks the number of lower contour points
@@ -620,9 +639,12 @@ C  Note:  the NCU,NCL,NA,NV counters are cumulative in this routine!
 C         If you want to contour each triangle without accumulating
 C         contour points or polygons reset NCU=0,NCL=0,NA=0,NV=0 before
 C         each call to CONTTRI.
-C
-      DIMENSION X(3), Y(3), F(3), FH(3), FL(3),
-     &          XCU(1), YCU(1), XCL(1), YCL(1), XP(1), YP(1), NE(1)
+
+      REAL X(*), Y(*), F(*), 
+     &          XCU(*), YCU(*), XCL(*), YCL(*), XP(*), YP(*)
+      INTEGER NE(*)
+
+      REAL FH(3), FL(3)
 C
 C----  NCU tracks the number of upper contour points
 C      NCL tracks the number of lower contour points
@@ -796,8 +818,8 @@ C------------------------------------------------------
       CHARACTER*80 AA
       CHARACTER*1 OPT, KCHAR
 C
-      SAVE CHF, ISYMB
-      DATA CHF, ISYMB / 1.0, 0 /
+      SAVE CHF, ISYMB, IPENL
+      DATA CHF, ISYMB, IPENL / 1.0, 0, 2 /
 C
  900  CONTINUE
 C
@@ -806,7 +828,13 @@ C
  1020 FORMAT(A,F7.3,A,$)
  1030 FORMAT(A,I2  ,A,$)
 C
-      WRITE(*,1050)
+      CALL GETPEN(IPEN0)
+
+C---- pen widths for point symbols, characters
+      IPENP = IPENL + 1
+      IPENC = IPENL + 2
+
+      WRITE(*,1050) IPENL
  1050 FORMAT(/'   C haracters           |       '
      &       /'   S lant characters     |       '
      &       /'   M ath characters      |  plot '
@@ -814,13 +842,21 @@ C
      &       /'   L ine                 |       '
      &       /'   A rrow                |       '
      &       /' '
-     &       /'   W idth of characters  | modify'
-     &       /'   T ype of point symbol |       ')
+     &       /'   W idth of characters  |       '
+     &       /'   T ype of point symbol | modify'
+     &       /'   #  line width [',I1,']     |       ')
 C
  905  WRITE(*,*)
       WRITE(*,1010) ' Select option or <return>:  '
       READ(*,1000) OPT
-      IF(OPT.EQ.' ') RETURN
+      IF(OPT.EQ.' ') THEN
+       CALL NEWPEN(IPEN0)
+       RETURN
+      ELSEIF(INDEX('123456789',OPT) .NE. 0) THEN
+       IPENL = INDEX('123456789',OPT)
+       IPENP = IPENL + 1
+       IPENC = IPENL + 2
+      ENDIF
 C
       CHI = CHF*CH
 C
@@ -833,12 +869,12 @@ C
       READ (*,1000) AA
 C
 C---- find index of last non-blank character
-      DO 112 NA=80, 1, -1
+      DO NA = 80, 1, -1
         IF(AA(NA:NA).NE.' ') GO TO 113
-  112 CONTINUE
+      ENDDO
   113 CONTINUE
 C
-      CALL NEWPEN(3)
+      CALL NEWPEN(IPENC)
       IF(INDEX('Cc',OPT).NE.0) CALL PLCHAR(XX,YY,CHI,AA,0.0,NA)
       IF(INDEX('Ss',OPT).NE.0) CALL PLSLAN(XX,YY,CHI,AA,0.0,NA)
       IF(INDEX('Mm',OPT).NE.0) CALL PLMATH(XX,YY,CHI,AA,0.0,NA)
@@ -847,9 +883,9 @@ C
 C-------------------------------------------------------------
       ELSE IF(INDEX('Pp',OPT).NE.0) THEN
 C
-      WRITE(*,*) 'Click on symbol locations ...'
+      WRITE(*,*) 'Click on point symbol location ...'
       CALL GETCURSORXY(XX,YY,KCHAR)
-      CALL NEWPEN(2)
+      CALL NEWPEN(IPENP)
       CALL PLSYMB(XX,YY,CHI,ISYMB,0.0,0)
       CALL PLFLUSH
 C
@@ -858,7 +894,7 @@ C-------------------------------------------------------------
 C
       WRITE(*,*) 'Click on line points, twice on last point...'
 C
-      CALL NEWPEN(1)
+      CALL NEWPEN(IPEN0)
       CALL GETCURSORXY(XXM,YYM,KCHAR)
       CALL PLOT(XXM,YYM,3)
       CALL PLOT(XXM,YYM,2)

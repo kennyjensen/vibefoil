@@ -117,7 +117,7 @@ CFLAGS = -O -DUNDERSCORE
 ### Gfortran
 FC = gfortran
 CHK = 
-CHK = -fbounds-check -finit-real=inf -ffpe-trap=invalid,zero
+#CHK = -fbounds-check -finit-real=inf -ffpe-trap=invalid,zero,denormal
 DBL = -fdefault-real-8
 FFLAGS = -O $(CHK) $(DBL)
 FFLOPT = -O $(CHK) $(DBL)

@@ -38,7 +38,7 @@ C      PLSLANABS - plots characters using SLAN font (slanted ASCII)
 C      PLMATHABS - plots characters using MATH font (LaTex-like symbols)
 C      PLSYMBABS - plots plot-point symbol
 C
-C     Version 4.46 11/28/01
+C     Version 4.56 01/16/23
 C
 C     Notes:  These routines require the include files that define the 
 C             stroked fonts CHAR, MATH, SLAN, SYMB.

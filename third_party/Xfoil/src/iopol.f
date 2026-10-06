@@ -23,14 +23,16 @@ C***********************************************************************
      &                   REYN1,MACH1,ACRIT,XTRIP,
      &                   PTRAT,ETAP,
      &                   NAME, IRETYP,IMATYP,
-     &                   ISX,NBL,CPOLSD,
+     &                   NBX,NBL,CPOLSD,CPOLEL,
      &                   CODE,VERSION )
       INCLUDE 'PINDEX.INC'
       CHARACTER*(*) FNPOL, NAME
       LOGICAL ERROR
       CHARACTER*(*) CODE
-      REAL CPOL(NAX,IPTOT), CPOLSD(NAX,ISX,JPTOT)
-      REAL MACH1, ACRIT(ISX), XTRIP(ISX)
+      REAL CPOL(NAX,IPTOT),
+     &     CPOLSD(NAX,2*NBX,JPTOT),
+     &     CPOLEL(NAX,NBX,KPTOT)
+      REAL MACH1, ACRIT(2*NBX), XTRIP(2*NBX)
 C--------------------------------------------------------
 C     Reads in polar save file
 C
@@ -40,7 +42,8 @@ C     FNPOL   name of polar file to be read,
 C               if FNPOL(1:1).eq.' ', unit LU will be read
 C               if it is already open
 C     NAX     polar point array dimension
-C     ISX     airfoil side array dimension
+C     NBX     airfoil element array dimension
+C     NBL     number of airfoil elements
 C
 C  Output:
 C     ERROR   T if a READ error occurred
@@ -57,19 +60,23 @@ C     IRETYP  flag giving type of Re variation with CL
 C     IMATYP  flag giving type of Ma variation with CL
 C     NBL     number of airfoil elements
 C     CPOLSD  airfoil side-related parameters
+C     CPOLEL  airfoil element-related parameters
 C     CODE    code used to compute polar
 C     VERSION code version
 C--------------------------------------------------------
-      CHARACTER*128 LINE
+      CHARACTER*256 LINE
       CHARACTER*1 DUMMY
-      REAL RINP(0:IPTOT+2*JPTOT)
+
+      PARAMETER (NBXL=5)
+      REAL RINP(0:IPTOT + 2*NBXL*JPTOT + NBXL*KPTOT)
 C
-      INTEGER IPOL(IPTOT), ISPOL(2,IPTOT)
+      INTEGER IPOL(IPTOT), ISPOL(2,JPTOT), KPOL(KPTOT)
       INTEGER ITMP(IPTOT+2*JPTOT), ITMP0(IPTOT+2*JPTOT)
       LOGICAL LOPEN, LHEAD, LDLAB
       LOGICAL LIRE, LIMA, LJNC, LJTP
       CHARACTER*20 CPNAME
 C
+      LLEN = LEN(LINE)
 C
       ERROR = .FALSE.
       LHEAD = .TRUE.
@@ -88,7 +95,10 @@ C
         ISPOL(1,JP) = 0
         ISPOL(2,JP) = 0
       ENDDO
-C
+      DO KP = 1, KPTOT
+        KPOL(KP) = 0
+      ENDDO
+
 C---- assume Re,Mach will not be given in header
       IRETYP = 0
       IMATYP = 0
@@ -114,14 +124,14 @@ C--------------------------------------------
        K = INDEX(LINE,'Version')
        IF(K.NE.0) THEN
 C------ code,version line
-        DO K1=1, 128
+        DO K1=1, LLEN
           IF(LINE(K1:K1).NE.' ') GO TO 10
         ENDDO
 C
  10     CONTINUE
         IF(K.GT.K1) THEN
          CODE = LINE(K1:K-1)
-         READ(LINE(K+7:128),*,ERR=11) VERSION
+         READ(LINE(K+7:LLEN),*,ERR=11) VERSION
         ENDIF
  11     CONTINUE
         LDLAB = .FALSE.
@@ -131,7 +141,7 @@ C--------------------------------------------
        KF = INDEX(LINE,'for:')
        IF(KF.NE.0) THEN
 C------ airfoil name line
-        NAME = LINE(KF+5:128)
+        NAME = LINE(KF+5:LLEN)
         LDLAB = .FALSE.
        ENDIF
 C
@@ -143,8 +153,8 @@ C------ element-number line
 C------ truncate name line to eliminate elements #
         NAME = LINE(KF+5:KE-4)
 C
-        IF(2*NBL .GT. ISX) THEN
-         NBL = ISX/2
+        IF(NBL .GT. NBX) THEN
+         NBL = NBX
          WRITE(*,*) 
      &   'POLREAD: Number of elements set to array limit', NBL
         ENDIF
@@ -160,7 +170,7 @@ C------ Re-type line
         IF(KM.GT.KR) THEN
          KEND = KM-1
         ELSE
-         KEND = 128
+         KEND = LLEN
         ENDIF
         IF    (INDEX(LINE(KR:KEND),'fixed').NE.0) THEN
          IRETYP = 1
@@ -177,7 +187,7 @@ C------ Ma-type line
         IF(KR.GT.KM) THEN
          KEND = KR-1
         ELSE
-         KEND = 128
+         KEND = LLEN
         ENDIF
         IF    (INDEX(LINE(KM:KEND),'fixed').NE.0) THEN
          IMATYP = 1
@@ -223,7 +233,7 @@ C
 C--------------------------------------------
        K = INDEX(LINE,'Mach =')
        IF(K.NE.0) THEN
-        READ(LINE(K+6:128),*,ERR=31) MACH1
+        READ(LINE(K+6:LLEN),*,ERR=31) MACH1
  31     CONTINUE
         LDLAB = .FALSE.
        ENDIF
@@ -231,7 +241,7 @@ C
 C--------------------------------------------
        K = INDEX(LINE,'Re =')
        IF(K.NE.0) THEN
-        READ(LINE(K+4:128),*,ERR=32) REYN1
+        READ(LINE(K+4:LLEN),*,ERR=32) REYN1
         REYN1 = REYN1 * 1.0E6
  32     CONTINUE
         LDLAB = .FALSE.
@@ -241,7 +251,7 @@ C--------------------------------------------
        K = INDEX(LINE,'Ncrit =')
        IF(K.NE.0) THEN
         NINP = 2
-        CALL GETFLT(LINE(k+7:128),RINP(1),NINP,ERROR)
+        CALL GETFLT(LINE(k+7:LLEN),RINP(1),NINP,ERROR)
         IF(NINP.LE.0 .OR. ERROR) GO TO 33
 C
         IF(NINP.EQ.1) THEN
@@ -258,7 +268,7 @@ C
 C--------------------------------------------
        K = INDEX(LINE,'pi_p =')
        IF(K.NE.0) THEN
-        READ(LINE(K+6:128),*,ERR=34) PTRAT
+        READ(LINE(K+6:LLEN),*,ERR=34) PTRAT
  34     CONTINUE
         LDLAB = .FALSE.
        ENDIF
@@ -266,7 +276,7 @@ C
 C--------------------------------------------
        K = INDEX(LINE,'eta_p =')
        IF(K.NE.0) THEN
-        READ(LINE(K+7:128),*,ERR=35) ETAP
+        READ(LINE(K+7:LLEN),*,ERR=35) ETAP
  35     CONTINUE
         LDLAB = .FALSE.
        ENDIF
@@ -313,7 +323,7 @@ C------ bubble-sort data label positions in line string
         ENDDO
 C
 C------ assign data position to each parameter
-        DO IPT = 1, IPTOT+2*JPTOT
+        DO IPT = 1, IPTOT + 2*JPTOT
           IF(ITMP(IPT).GT.0) THEN
            NIPOL = NIPOL + 1
            DO IP = 1, IPTOT
@@ -338,23 +348,48 @@ C--------------------------------------------------------------
 C----- read polar data lines
        IA = NA + 1
 C
-       NINP = IPTOT+2*JPTOT
+       NINP = IPTOT + 2*NBL*JPTOT + NBL*KPTOT
+       DO IINP = 1, NINP
+         RINP(IINP) = 0.
+       ENDDO
        CALL GETFLT(LINE,RINP(1),NINP,ERROR)
        IF(ERROR) GO TO 90
 C
        DO IP = 1, IPTOT
-         CPOL(IA,IP) = RINP(IPOL(IP))
+         IF(IPOL(IP) .GT. 0) THEN
+          CPOL(IA,IP) = RINP(IPOL(IP))
+         ELSE
+          CPOL(IA,IP) = 0.
+         ENDIF
        ENDDO
 C
        DO JP = 1, JPTOT
          DO N = 1, NBL
            IS1 = 2*N-1
            IS2 = 2*N
-           CPOLSD(IA,IS1,JP) = RINP(ISPOL(1,JP)+2*(N-1))
-           CPOLSD(IA,IS2,JP) = RINP(ISPOL(2,JP)+2*(N-1))
+           IF(ISPOL(1,JP) .GT. 0) THEN
+            CPOLSD(IA,IS1,JP) = RINP(ISPOL(1,JP)+2*(N-1))
+           ELSE
+            CPOLSD(IA,IS1,JP) = 0.
+           ENDIF
+           IF(ISPOL(2,JP) .GT. 0) THEN
+            CPOLSD(IA,IS2,JP) = RINP(ISPOL(2,JP)+2*(N-1))
+           ELSE
+            CPOLSD(IA,IS2,JP) = 0.
+           ENDIF
          ENDDO
        ENDDO
 C
+       DO KP = 1, KPTOT
+         DO N = 1, NBL
+           IF(KPOL(KP) .GT. 0) THEN
+            CPOLEL(IA,N,KP) = RINP(KPOL(KP))
+           ELSE
+            CPOLEL(IA,N,KP) = 0.
+           ENDIF
+         ENDDO
+       ENDDO
+
        ACL = MAX( CPOL(IA,ICL) , 0.001 )
 C
 C
@@ -366,8 +401,8 @@ C----- try to find Re, Ma, Ncrit, Xtrip  in polar data
        DO KP = 1, NIPOL
          IF(IPOL(KP) .EQ. IRE) LIRE = .TRUE.
          IF(IPOL(KP) .EQ. IMA) LIMA = .TRUE.
-         IF(ISPOL(1,KP) .EQ. JNC) LJNC = .TRUE.
-         IF(ISPOL(1,KP) .EQ. JTP) LJTP = .TRUE.
+c         IF(ISPOL(1,KP) .EQ. JNC) LJNC = .TRUE.
+c         IF(ISPOL(1,KP) .EQ. JTP) LJTP = .TRUE.
        ENDDO
 C
        IF(.NOT. LIRE) THEN
@@ -434,15 +469,18 @@ C..........................................
      &                   REYN1,MACH1,ACRIT,XTRIP,
      &                   PTRAT,ETAP,
      &                   NAME, IRETYP,IMATYP,
-     &                   ISX,NBL,CPOLSD, JPOL,NJPOL,
+     &                   NBX,NBL,CPOLSD,JPOL,NJPOL, 
+     &                           CPOLEL,KPOL,NKPOL,
      &                   CODE,VERSION, LQUERY )
       INCLUDE 'PINDEX.INC'
       CHARACTER*(*) FNPOL, NAME
       LOGICAL ERROR, LHEAD,LQUERY
       CHARACTER*(*) CODE
-      REAL CPOL(NAX,IPTOT), CPOLSD(NAX,ISX,JPTOT)
-      REAL MACH1, ACRIT(ISX), XTRIP(ISX)
-      INTEGER IPOL(IPTOT), JPOL(JPTOT)
+      REAL CPOL(NAX,IPTOT),
+     &     CPOLSD(NAX,2*NBX,JPTOT),
+     &     CPOLEL(NAX,NBX,KPTOT)
+      REAL MACH1, ACRIT(2*NBX), XTRIP(2*NBX)
+      INTEGER IPOL(IPTOT), JPOL(JPTOT), KPOL(KPTOT)
 C--------------------------------------------------------
 C     Writes polar save file
 C
@@ -452,7 +490,8 @@ C     FNPOL    name of polar file to be read,
 C                if FNPOL(1:1).eq.' ', unit LU is assumed 
 C                to be already open
 C     NAX      polar point array dimension
-C     ISX      airfoil side array dimension
+C     NBX      airfoil element array dimension
+C     NBL      number of airfoil elements
 C     IA1,IA2  only polar points IA1..IA2 are written
 C     CPOL     polar coefficients and parameters
 C     IPOL(.)  indices of data quantities to be written
@@ -470,6 +509,9 @@ C     NBL      number of airfoil elements
 C     CPOLSD   airfoil side-related parameters
 C     JPOL(.)  indices of side data quantities to be written
 C     NJPOL    number  of side data quantities to be written
+C     CPOLEL   airfoil element-related parameters
+C     KPOL(.)  indices of element data quantities to be written
+C     NKPOL    number  of element data quantities to be written
 C     LHEAD    T if header and column label are to be written
 C     CODE     code used to compute polar
 C     VERSION  code version
@@ -479,7 +521,8 @@ C  Output:
 C     ERROR   T if a OPER or WRITE error occurred
 C--------------------------------------------------------
       CHARACTER*29 LINE1, LINE2
-      CHARACTER*128 LINEL, LINED, LINEF
+      CHARACTER*512 LINEL, LINED, LINEF
+      CHARACTER*20 CPNAME
       CHARACTER*1 ANS
       LOGICAL LOPEN
 C
@@ -563,58 +606,98 @@ C
 C
        LINEL = ' '
        LINED = ' '
-C
+
        KL = 1
        KD = 1
-C
-       DO 30 KP = 1, NIPOL
-         IP = IPOL(KP)
+
+       DO 30 I = 1, NIPOL
+         IP = IPOL(I)
          IF(IP.EQ.0) GO TO 30
-C
+
          KDOT = INDEX(CPOLFORM(IP),'.')
          IF(KDOT.EQ.0) KDOT = LEN(CPOLFORM(IP))
          READ(CPOLFORM(IP)(2:KDOT-1),*,ERR=95) NFORM
-C
+
          CALL STRIP(CPOLNAME(IP),NNAME) 
          NBLANK = MAX( (NFORM-NNAME+2)/2 , 0 )
-C
+
          LINEL(KL+1+NBLANK:KL+NNAME+NBLANK) = CPOLNAME(IP)(1:NNAME)
          KL = KL + NFORM
-C
+
          LINED(KD+2:KD+NFORM) = '--------------------------------'
          KD = KD + NFORM
  30    CONTINUE
-C
-       DO 32 KP = 1, NJPOL
-         JP = JPOL(KP)
+
+       DO 32 J = 1, NJPOL
+         JP = JPOL(J)
          IF(JP.EQ.0) GO TO 32
-C
+
          KDOT = INDEX(CPOLSFORM(JP),'.')
          IF(KDOT.EQ.0) KDOT = LEN(CPOLSFORM(JP))
          READ(CPOLSFORM(JP)(2:KDOT-1),*,ERR=95) NFORM
-C
+
          CALL STRIP(CPOLSNAME(JP),NNAME)
          NBLANK = MAX( (NFORM-NNAME-2)/2 , 0 )
-C
+
          DO N = 1, NBL
+           LINEL(KL+1:KL+1) = ' '
+           LINED(KD+1:KD+1) = ' '
+           KL = KL + 1
+           KD = KD + 1
+
            LINEL(KL+1+NBLANK:KL+4+NNAME+NBLANK) = 
      &      'Top_' // CPOLSNAME(JP)(1:NNAME)
            KL = KL + NFORM
-C
+
            LINED(KD+2:KD+NFORM) = '--------------------------------'
            KD = KD + NFORM
-C
+
            LINEL(KL+1+NBLANK:KL+4+NNAME+NBLANK) = 
      &      'Bot_' // CPOLSNAME(JP)(1:NNAME)
            KL = KL + NFORM
-C
+
            LINED(KD+2:KD+NFORM) = '--------------------------------'
            KD = KD + NFORM
          ENDDO
  32    CONTINUE
-C
-C 
-C
+
+
+       IZERO = ICHAR('0')
+
+       DO 35 N = 1, NBL
+         LINEL(KL+1:KL+2) = '  '
+         LINED(KD+1:KD+2) = '  '
+         KL = KL + 2
+         KD = KD + 2
+
+         DO 34 K = 1, NKPOL
+           KP = KPOL(K)
+           IF(KP.EQ.0) GO TO 34
+
+           KDOT = INDEX(CPOLNFORM(KP),'.')
+           IF(KDOT.EQ.0) KDOT = LEN(CPOLNFORM(KP))
+           READ(CPOLNFORM(KP)(2:KDOT-1),*,ERR=95) NFORM
+
+           CPNAME = CPOLNNAME(KP)
+           CALL STRIP(CPNAME,NNAME)
+           NBLANK = MAX( (NFORM-NNAME-1)/2 , 0 )
+           
+           KN = INDEX(CPNAME(1:NNAME),'_n') + 1
+
+           CPNAME(KN:KN) = CHAR(IZERO+N)
+
+           LINEL(KL+1+NBLANK:KL+NNAME+NBLANK) = CPNAME(1:NNAME)
+           KL = KL + NFORM
+
+           LINED(KD+2:KD+NFORM) = '--------------------------------'
+           KD = KD + NFORM
+
+ 34      CONTINUE
+
+ 35    CONTINUE
+
+ 
+
 C       LINEL = 
 C     & '  alpha     CL        CD       CDp       CM    Top_Xtr Bot_Xtr'
 CCC     1234567890123456789012345678901234567890123456789012345678901234567890
@@ -635,33 +718,42 @@ C
 
       LINEF = '(1X'
       KF = 3
-      DO KP = 1, NIPOL
-        IP = IPOL(KP)
+      DO I = 1, NIPOL
+        IP = IPOL(I)
         NF = LEN(CPOLFORM(IP))
-C
         LINEF(KF+1:KF+NF+1) = ',' // CPOLFORM(IP)
         KF = KF + NF + 1
       ENDDO
-      DO KP = 1, NJPOL
-        JP = JPOL(KP)
-        NF = LEN(CPOLSFORM(JP))
-C
-        DO N = 1, NBL
+      DO N = 1, NBL
+        LINEF(KF+1:KF+3) = ',1X'
+        KF = KF + 3
+        DO J = 1, NJPOL
+          JP = JPOL(J)
+          NF = LEN(CPOLSFORM(JP))
           LINEF(KF+1:KF+NF+1) = ',' // CPOLSFORM(JP)
           KF = KF + NF + 1
-C
           LINEF(KF+1:KF+NF+1) = ',' // CPOLSFORM(JP)
+          KF = KF + NF + 1
+        ENDDO
+      ENDDO
+      DO N = 1, NBL
+        LINEF(KF+1:KF+3) = ',2X'
+        KF = KF + 3
+        DO K = 1, NKPOL
+          KP = KPOL(K)
+          NF = LEN(CPOLNFORM(KP))
+          LINEF(KF+1:KF+NF+1) = ',' // CPOLNFORM(KP)
           KF = KF + NF + 1
         ENDDO
       ENDDO
       LINEF(KF+1:KF+1) = ')'
       KF = KF + 1
-C
-C
+
       DO 40 IA = IA1, IA2
         WRITE(LU,LINEF)
-     &         (CPOL(IA,IPOL(KP)), KP=1, NIPOL),
-     &        ((CPOLSD(IA,IS,JPOL(KP)), IS=1, 2*NBL), KP=1, NJPOL)
+     &         (CPOL(IA,IPOL(I)), I=1, NIPOL),
+     &        ((CPOLSD(IA,IS,JPOL(J)), J=1, NJPOL), IS=1, 2*NBL),
+     &        ((CPOLEL(IA,N ,KPOL(K)), K=1, NKPOL), N=1, NBL)
    40 CONTINUE
 C
 C

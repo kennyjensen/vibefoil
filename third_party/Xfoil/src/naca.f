@@ -18,11 +18,13 @@ C    along with this program; if not, write to the Free Software
 C    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 C***********************************************************************
 
-      SUBROUTINE NACA4(IDES,XX,YT,YC,NSIDE,XB,YB,NB,NAME)
+      SUBROUTINE NACA4(IDES,XX,YT,YC,NSIDE,XB,YB,NB,NAME,LTES)
       REAL XX(NSIDE), YT(NSIDE), YC(NSIDE)
       REAL XB(2*NSIDE), YB(2*NSIDE)
-      REAL M
       CHARACTER*(*) NAME
+      LOGICAL LTES
+
+      REAL M
 C
       CHARACTER*10 DIGITS
       DATA DIGITS / '0123456789' /
@@ -30,6 +32,10 @@ C
 C---- TE point bunching parameter
       DATA AN / 1.5 /
 C
+C---- X location where YT = 0  (sharp trailing edge)
+      DATA XTES / 1.00893041136514270931482193883054 /
+
+
       N4 =  IDES                             / 1000
       N3 = (IDES - N4*1000                 ) / 100
       N2 = (IDES - N4*1000 - N3*100        ) / 10
@@ -47,11 +53,20 @@ C
         ELSE
          XX(I) = 1.0 - ANP*FRAC*(1.0-FRAC)**AN - (1.0-FRAC)**ANP
         ENDIF
-        YT(I) = ( 0.29690*SQRT(XX(I))
-     &          - 0.12600*XX(I)
-     &          - 0.35160*XX(I)**2
-     &          + 0.28430*XX(I)**3
-     &          - 0.10150*XX(I)**4) * T / 0.20
+
+        IF(LTES) THEN
+C------- stretch x to get a sharp TE
+         X = XX(I) * XTES 
+        ELSE
+C------- standard NACA 4-digit form
+         X = XX(I)
+        ENDIF
+        YT(I) = ( 0.29690*SQRT(X)
+     &          - 0.12600*X
+     &          - 0.35160*X**2
+     &          + 0.28430*X**3
+     &          - 0.10150*X**4) * T / 0.20
+
         IF(XX(I).LT.P) THEN
          YC(I) = M/P**2 * (2.0*P*XX(I) - XX(I)**2)
         ELSE
@@ -82,12 +97,13 @@ C
       END
 
 
-      SUBROUTINE NACA5(IDES,XX,YT,YC,NSIDE,XB,YB,NB,NAME)
+      SUBROUTINE NACA5(IDES,XX,YT,YC,NSIDE,XB,YB,NB,NAME,LTES)
       REAL XX(NSIDE), YT(NSIDE), YC(NSIDE)
       REAL XB(2*NSIDE), YB(2*NSIDE)
-      REAL M
-C
       CHARACTER*(*) NAME
+      LOGICAL LTES
+C
+      REAL M
 C
       CHARACTER*10 DIGITS
       DATA DIGITS / '0123456789' /
@@ -95,6 +111,10 @@ C
 C---- TE point bunching parameter
       DATA AN / 1.5 /
 C
+C---- X location where YT = 0  (sharp trailing edge)
+      DATA XTES / 1.00893041136514270931482193883054 /
+
+
       N5 =  IDES                                        / 10000
       N4 = (IDES - N5*10000                           ) / 1000
       N3 = (IDES - N5*10000 - N4*1000                 ) / 100
@@ -130,7 +150,6 @@ cc     P = 0.25
        RETURN
       ENDIF
 C
-C
       T = FLOAT(N2*10 + N1) / 100.0
 C
       ANP = AN + 1.0
@@ -141,12 +160,20 @@ C
         ELSE
          XX(I) = 1.0 - ANP*FRAC*(1.0-FRAC)**AN - (1.0-FRAC)**ANP
         ENDIF
-C
-        YT(I) = ( 0.29690*SQRT(XX(I))
-     &          - 0.12600*XX(I)
-     &          - 0.35160*XX(I)**2
-     &          + 0.28430*XX(I)**3
-     &          - 0.10150*XX(I)**4) * T / 0.20
+
+        IF(LTES) THEN
+C------- stretch x to get a sharp TE
+         X = XX(I) * XTES 
+        ELSE
+C------- standard NACA 4-digit form
+         X = XX(I)
+        ENDIF
+        YT(I) = ( 0.29690*SQRT(X)
+     &          - 0.12600*X
+     &          - 0.35160*X**2
+     &          + 0.28430*X**3
+     &          - 0.10150*X**4) * T / 0.20
+
         IF(XX(I).LT.M) THEN
          YC(I) = (C/6.0) * (XX(I)**3 - 3.0*M*XX(I)**2
      &                          + M*M*(3.0-M)*XX(I))

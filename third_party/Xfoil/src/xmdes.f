@@ -442,7 +442,7 @@ C
 C--------------------------------------------------------
       ELSEIF(COMAND.EQ.'SMOO') THEN
 C----- smooth Qspec within target segment
-       KQSP = KQTARG
+       KQSP = 1
        CALL SMOOQ(IQ1,IQ2,KQSP)
        CALL CNCALC(QSPEC(1,KQSP),LQSYM)
        CALL QSPCIR

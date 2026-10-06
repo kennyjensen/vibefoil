@@ -209,7 +209,7 @@ C     Reads N integer variables, leaving unchanged
 C     if only <return> is entered.
 C--------------------------------------------------
       DIMENSION IVTMP(40)
-      CHARACTER*80 LINE
+      CHARACTER*256 LINE
 C
       READ(*,1000) LINE
  1000 FORMAT(A80)
@@ -240,7 +240,7 @@ C     Reads N real variables, leaving unchanged
 C     if only <return> is entered.
 C-------------------------------------------------
       DIMENSION VTMP(40)
-      CHARACTER*80 LINE
+      CHARACTER*256 LINE
 C
       READ(*,1000) LINE
  1000 FORMAT(A80)
@@ -278,13 +278,13 @@ C     in INPUT will be extracted.
 C
 C     N returns how many numbers were actually extracted.
 C----------------------------------------------------------
-      CHARACTER*130 REC
+      CHARACTER*258 REC
       CHARACTER*1 TAB
 C
       TAB = CHAR(9)
 C
-C---- only first 128 characters in INPUT will be parsed
-      ILEN = MIN( LEN(INPUT) , 128 )
+C---- only first 256 characters in INPUT will be parsed
+      ILEN = MIN( LEN(INPUT) , 256 )
       ILENP = ILEN + 2
 C
 C---- put input into local work string (which will be munched)
@@ -361,13 +361,13 @@ C     in INPUT will be extracted.
 C
 C     N returns how many numbers were actually extracted.
 C----------------------------------------------------------
-      CHARACTER*130 REC
+      CHARACTER*258 REC
       CHARACTER*1 TAB
 C
       TAB = CHAR(9)
 C
-C---- only first 128 characters in INPUT will be parsed
-      ILEN = MIN( LEN(INPUT) , 128 )
+C---- only first 256 characters in INPUT will be parsed
+      ILEN = MIN( LEN(INPUT) , 256 )
       ILENP = ILEN + 2
 C
 C---- put input into local work string (which will be munched)

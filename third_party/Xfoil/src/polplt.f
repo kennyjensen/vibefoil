@@ -45,22 +45,40 @@ C
       REAL CPOLPLF(3,*)
       REAL REYN(NPOL),MACH(NPOL),ACRIT(ISX,NPOL),PTRAT(NPOL),ETAP(NPOL)
 C----------------------------------------------------------------
+      PARAMETER(ISX1=10,NPX1=40)
+      REAL XTR(ISX1,NPX1)
+
       LOGICAL NAMVAR,REYVAR,MACVAR,ACRVAR
       REAL XLIN(3), YLIN(3)
       CHARACTER*1 CC
 C
       DATA LMASK1, LMASK2, LMASK3 / -32640, -30584, -21846 /
 C
+      IF(NPOL .EQ. 0) THEN
+       WRITE(*,*) 'POLPLT: No polars passed in'
+       WRITE(*,*)
+       RETURN
+      ENDIF
+
       CALL GETVAR(NPOL,NAME,REYN,MACH,ACRIT,PTRAT,ETAP, ISX,NBL,
      &            NAMVAR,REYVAR,MACVAR,ACRVAR)
 C
 C---- polar and data-symbol pen width
-      IPEN = 4
+      IPEN = 5
       IFPEN = 3
 C
 C---- symbol height for data
       SH = 0.7*CH2
 C
+C---- set trip locations for label
+      IF(2*NBL(1) .GT. ISX1) STOP 'POLPLT: Array overflow on ISX1'
+      IF(NPOL     .GT. NPX1) STOP 'POLPLT: Array overflow on NPX1'
+      DO IP = 1, NPOL
+        DO IS = 1, 2*NBL(IP)
+          XTR(IS,IP) = CPOLSD(1,IS,JTP,IP)
+        ENDDO
+      ENDDO
+
 C---- unpack plot limit array
       CLMIN = CPOLPLF(1,ICL)
       CLMAX = CPOLPLF(2,ICL)
@@ -144,6 +162,7 @@ C
       CALL POLLAB(NPOL, NAME ,ICOL, ISX,NBL,
      &           IMATYP, IRETYP,
      &           MACH, REYN, ACRIT, PTRAT, ETAP,
+     &           ISX1,XTR,
      &           TITLE,
      &           XPLT0,YPLT0, PLOTAR, CH,CH2, 
      &           LLIST, CCLEN,NCLEN )
@@ -161,7 +180,7 @@ C---- CL axis for CL-CD polar
       CALL YAXIS(CDWT*CDMIN,CLWT*CLMIN,PLOTAR,CLWT*CLDEL,
      &           CLMIN,CLDEL,CH2,NDIG)
 C
-      CALL NEWPEN(3)
+      CALL NEWPEN(4)
       IF(NCLEN.GT.0) THEN
        XPLT = CDWT* CDMIN            - 3.0*CH - FLOAT(NCLEN)*1.2*CH
        YPLT = CLWT*(CLMAX-1.5*CLDEL) - 0.5*CH
@@ -186,7 +205,7 @@ C---- CD axis for CL-CD polar
       CALL XAXIS(CDWT*CDMIN,CLWT*CLMIN,-XCD,CDWT*CDDEL,
      &           10000.*CDMIN,10000.*CDDEL,CH2,-1)
 C
-      CALL NEWPEN(3)
+      CALL NEWPEN(4)
       NXL = INT((CDMAX-CDMIN)/CDDEL + 0.5)
       XPLT = CDWT*(CDMAX - (FLOAT((NXL+1)/2) - 0.5)*CDDEL) - 4.5*CH2
       YPLT = CLWT* CLMIN - 4.8*CH2
@@ -203,7 +222,7 @@ C--- Put legend data in legend box in upper left of CL/CD plot
       IF(LEGND) THEN
 C
       YLINE = CLWT*CLMAX - 2.0*CH2
-      CALL NEWPEN(3)
+      CALL NEWPEN(4)
 C
       IF(NAMVAR) THEN
        XPLT = CDWT*CDMIN + 6.0*CH2
@@ -257,7 +276,7 @@ C
       ENDIF
 C
       ENDIF
-C
+
 C---- plot CL-CD polar(s)
       DO IP=1, NPOL
         CALL NEWCOLOR(ICOL(IP))
@@ -284,7 +303,7 @@ C---- label each polar with legend
          YLIN(3) = YLINE + 0.5*CH2
          CALL NEWPEN(IPEN)
          CALL XYLINE(3,XLIN,YLIN,0.0,1.0,0.0,1.0,ILIN(IP))
-         CALL NEWPEN(2)
+         CALL NEWPEN(4)
          XPT = CDWT*CDMIN + 7.5*CH2
          IF(NAMVAR) CALL PLCHAR(XPT,YLINE,.8*CH2,NAME(IP) ,0.,14)
          IF(REYVAR) CALL PLNUMB(XPT,YLINE,.8*CH2,REYN(IP) ,0.,-1)
@@ -308,7 +327,7 @@ C---- plot CL-CD reference data
          YPLT = YLINE + 0.5*CH2
          CALL PLSYMB(XPLT,YPLT,SH,IFSYM(ID),0.0,0)
          XPLT = CDWT*CDMIN + 3.0*CH2
-         CALL NEWPEN(2)
+         CALL NEWPEN(4)
          LABLEN = LEN(LABREF(ID))
          CALL PLCHAR(XPLT,YLINE,0.8*CH2,LABREF(ID),0.0,LABLEN)
          YLINE = YLINE - 2.0*CH2
@@ -398,7 +417,7 @@ C---- CL axis for CL-a plot
       CALL NEWPEN(2)
       CALL YAXIS(0.0,CLWT*CLMIN,-PLOTAR,CLWT*CLDEL,CLMIN,CLDEL,-CH2,1)
 C
-      CALL NEWPEN(3)
+      CALL NEWPEN(4)
       YPLT = CLWT*(CLMAX-0.5*CLDEL) - 0.6*CH
       IF(NCLEN.GT.0) THEN
       CALL PLCHAR(0.9*CH,YPLT       ,1.1*CH,CC ,0.0,1)
@@ -418,7 +437,7 @@ C---- a-axis for CL-a plot
      &            ALDEL,CH2,-1)
       ENDIF
 C
-      CALL NEWPEN(3)
+      CALL NEWPEN(4)
       XPLT = ALWT*(ALMAX - 1.5*ALDEL) - 0.5*CH
       YPLT = -4.5*CH
       CALL PLMATH(XPLT,YPLT,1.4*CH,'a',0.0,1)
@@ -486,7 +505,7 @@ C
       CALL NEWPEN(2)
       CALL YAXIS(0.0,CMOFF,-YCM,CMWT*CMDEL,-CM0,DIR*CMDEL,CH2,NDIG)
 C
-      CALL NEWPEN(3)
+      CALL NEWPEN(4)
       XPLT = -4.5*CH
       YPLT = CMOFF + CMWT*DIR*CM1 - CMWT*0.5*CMDEL - 0.6*CH
       IF(NCLEN.GT.0) THEN
@@ -528,7 +547,7 @@ C
       NDIG = 1
       CALL XAXIS(0.0,CLWT*CLMIN,XOC,0.5*XOC,0.0,0.5,CH2,NDIG)
 C
-      CALL NEWPEN(3)
+      CALL NEWPEN(4)
       XPLT = 0.75*XOC    - 2.2*CH2
       YPLT = CLWT*CLMIN  - 4.7*CH2
       CALL PLCHAR(XPLT,YPLT,1.3*CH2,'x  /c',0.0,5)
@@ -591,7 +610,7 @@ C==================================================================
 C---- aerodynamic center
       IF(LAECEN) THEN
 C
-      CALL NEWPEN(2)
+      CALL NEWPEN(4)
       XPLT = 0.25*XOC   - 2.2*CH2
       YPLT = CLWT*CLMIN - 4.7*CH2
       CALL PLCHAR(XPLT,YPLT,1.3*CH2,'x  /c',0.0,5)
@@ -629,7 +648,7 @@ C==================================================================
 C---- code and version identifier
  300  CONTINUE
       CHI = 0.75*CH2
-      CALL NEWPEN(2)
+      CALL NEWPEN(3)
       XPLT = XOC        - 12.0*CHI
       YPLT = CLWT*CLMAX +  0.5*CHI
       CALL PLCHAR(XPLT        ,YPLT,CHI,CODE   ,0.0,5)
@@ -645,9 +664,11 @@ C
  
 
 
+
       SUBROUTINE POLLAB(NPOL, NAME ,ICOL, ISX,NBL,
      &                 IMATYP, IRETYP,
      &                 MACH, REYN, ACRIT, PTRAT, ETAP,
+     &                 ISX1,XTR,
      &                 TITLE,
      &                 XPLT0,YPLT0, PLOTAR, CH,CH2, 
      &                 LLIST, CCLEN,NCLEN )
@@ -657,8 +678,9 @@ C
       CHARACTER*(*) NAME(NPOL)
       CHARACTER*(*) TITLE, CCLEN
 C
-      DIMENSION ICOL(NPOL), IMATYP(NPOL),IRETYP(NPOL)
+      DIMENSION ICOL(NPOL),NBL(NPOL),IMATYP(NPOL),IRETYP(NPOL)
       REAL MACH(NPOL),REYN(NPOL),ACRIT(ISX,NPOL),PTRAT(NPOL),ETAP(NPOL)
+      REAL XTR(ISX1,NPOL)
       LOGICAL LLIST
 C----------------------------------------------
 C     Generates label for polar plot
@@ -678,7 +700,7 @@ C
        ELSE
         YPLT = YPLT + 0.5*CH4
       ENDIF
-      CALL NEWPEN(3)
+      CALL NEWPEN(4)
       LENT = LEN(TITLE)
       CALL PLCHAR(XPLT,YPLT,1.2*CH4,TITLE,0.0,LENT)
 C
@@ -699,11 +721,11 @@ C
       XPLT = XPLT0
       YPLT = YPLT0 + YSPC*(NPOL-IP+1)
 C
-      CALL NEWPEN(3)
+      CALL NEWPEN(4)
       CALL PLCHAR(XPLT,YPLT,CH4,NAME(IP),0.0,NMAX)
       XPLT = XPLT + CH4*FLOAT(NMAX)
 C
-      CALL NEWPEN(2)
+      CALL NEWPEN(3)
 C
        ITYP = IRETYP(IP)
        IF(ITYP.EQ.1) THEN
@@ -752,7 +774,32 @@ C
         CALL PLNUMB(XPLT,YPLT,    CH3,ACRIT(2,IP) ,0.0,3)
         XPLT = XPLT + CH3*6.0
        ENDIF
+       XPLT = XPLT + CH3*3.0
 C
+       DO IS = 1, 2*NBL(IP), 2
+         IF(XTR(IS,IP) .LT. 0.999) THEN
+          CALL PLCHAR(XPLT,YPLT,CH3,'Top x/c',0.0,7)
+          XPLT = XPLT + CH3*7.3
+          CALL PLCHAR(XPLT,YPLT,0.8*CH3,'tr',0.0,2)
+          XPLT = XPLT + CH3*1.6
+          CALL PLCHAR(XPLT,YPLT,    CH3,' = ' ,0.0,3)
+          XPLT = XPLT + CH3*3.0
+          CALL PLNUMB(XPLT,YPLT,    CH3,XTR(IS,IP) ,0.0,3)
+          XPLT = XPLT + CH3*9.0
+         ENDIF
+
+         IF(XTR(IS+1,IP) .LT. 0.999) THEN
+          CALL PLCHAR(XPLT,YPLT,CH3,'Bot x/c',0.0,7)
+          XPLT = XPLT + CH3*7.3
+          CALL PLCHAR(XPLT,YPLT,0.8*CH3,'tr',0.0,2)
+          XPLT = XPLT + CH3*1.6
+          CALL PLCHAR(XPLT,YPLT,    CH3,' = ' ,0.0,3)
+          XPLT = XPLT + CH3*3.0
+          CALL PLNUMB(XPLT,YPLT,    CH3,XTR(IS+1,IP) ,0.0,3)
+          XPLT = XPLT + CH3*9.0
+         ENDIF
+       ENDDO
+
        IF(PTRAT(IP) .NE. 0.0) THEN
         CALL PLMATH(XPLT,YPLT,1.3*CH3,'   p',0.0,4)
         XPLT = XPLT + CH3*5.0
@@ -783,6 +830,7 @@ C
       SUBROUTINE GETVAR(NPOL,NAME,REYN,MACH,ACRIT,PTRAT,ETAP, ISX,NBL,
      &                  NAMVAR,REYVAR,MACVAR,ACRVAR)
       CHARACTER*(*) NAME(NPOL)
+      INTEGER NBL(NPOL)
       LOGICAL NAMVAR,REYVAR,MACVAR,ACRVAR
 C
       REAL REYN(NPOL),MACH(NPOL),ACRIT(ISX,NPOL),PTRAT(NPOL),ETAP(NPOL)
@@ -814,7 +862,7 @@ C
       END DO
 C
       DO IP=1, NPOL-1
-        DO N = 1, NBL
+        DO N = 1, NBL(IP)
           IS1 = 2*N-1
           IS2 = 2*N
           IF(ACRIT(IS1,IP) .NE. ACRIT(IS1,IP+1) .OR.
@@ -843,10 +891,10 @@ C...Returns number of significant (non-zero) fractional digits
       END
 
 
-      SUBROUTINE VEPPLT(NAX,NPOL,NA,VPOL, ISX,NBL,
+      SUBROUTINE VEPPLT(NAX,NPOL,NA,VPOL,
      &                  REYN,MACH,ACRIT,PTRAT,ETAP,
      &                  NAME ,ICOL,ILIN,
-     &                  IMATYP,IRETYP,
+     &                  ISX,NBL,CPOLSD, IMATYP,IRETYP,
      &                  TITLE,CODE,VERSION,
      &                  PLOTAR, CH,CH2,
      &                  LGRID,LLIST,LEGND,
@@ -854,6 +902,8 @@ C...Returns number of significant (non-zero) fractional digits
 C----------------------------------------------------------------
 C     Generates velocity-polar plot
 C----------------------------------------------------------------
+      INCLUDE 'PINDEX.INC'
+      INTEGER NBL(NPOL)
       CHARACTER*(*) NAME(NPOL)
       CHARACTER*(*) CODE, TITLE
       LOGICAL LGRID, LLIST, LEGND
@@ -865,6 +915,9 @@ C
       REAL VPOLPLF(3,*)
       REAL REYN(NPOL),MACH(NPOL),ACRIT(ISX,NPOL),PTRAT(NPOL),ETAP(NPOL)
 C----------------------------------------------------------------
+      PARAMETER(ISX1=10,NPX1=40)
+      REAL XTR(ISX1,NPX1)
+
       LOGICAL NAMVAR,REYVAR,MACVAR,ACRVAR
       REAL XLIN(3), YLIN(3)
       CHARACTER*1 CC
@@ -881,6 +934,15 @@ C
 C---- symbol height for data
       SH = 0.7*CH2
 C
+C---- set trip locations for label
+      IF(2*NBL(1) .GT. ISX1) STOP 'VEPPLT: Array overflow on ISX1'
+      IF(NPOL     .GT. NPX1) STOP 'VEPPLT: Array overflow on NPX1'
+      DO IP = 1, NPOL
+        DO IS = 1, 2*NBL(IP)
+          XTR(IS,IP) = CPOLSD(1,IS,JTP,IP)
+        ENDDO
+      ENDDO
+
 C---- unpack plot limit array
       VHMIN = VPOLPLF(1,1)
       VHMAX = VPOLPLF(2,1)
@@ -935,9 +997,11 @@ C           airfoils: Name, Mach, Re, and Ncrit
 C
       XPLT0 = VHWT*VHMIN
       YPLT0 = VZWT*VZMAX
+
       CALL POLLAB(NPOL, NAME ,ICOL, ISX,NBL,
      &           IMATYP,IRETYP,
-     &           MACH, REYN, ACRIT, PTRAT, ETAP,
+     &           MACH, REYN, ACRIT, PTRAT, ETAP, 
+     &           ISX1, XTR,
      &           TITLE,
      &           XPLT0,YPLT0, PLOTAR, CH,CH2, 
      &           LLIST, ' ',0 )

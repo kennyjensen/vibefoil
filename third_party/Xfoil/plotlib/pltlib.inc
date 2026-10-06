@@ -24,10 +24,10 @@ C
 C
 C*******************************
 C --- Global data for Xplot11
-C     Version 4.46 11/28/01
+C     Version 4.56 01/16/23
 C*******************************
 C
-      parameter (Nstore_max=100000,Ncolors_max=256,MaxPolyLine=1001)
+      parameter (Nstore_max=200000,Ncolors_max=256,MaxPolyLine=501)
 C
       Real    DEFAULT_PAGEHEIGHT,
      &        DEFAULT_PAGEWIDTH,
@@ -78,17 +78,19 @@ C
       LOGICAL   LPRIM_OPEN,
      &          LGW_GEN, LGW_OPEN, LGW_COLOR, LGW_REVVIDEO, 
      &          LGW_CHANGED, LGW_RESIZE,
-     &          LPS_GEN, LPS_OPEN, LPS_COLOR, 
-     &          LPS_UNSTROKED, LPS_EXTERNAL, LPS_ONEFILE
+     &          LPS_GEN,  LPS_OPEN, 
+     &          LPDF_GEN, LPDF_OPEN,
+     &          LP_COLOR, LP_UNSTROKED,
+     &          LP_ONEFILE, LP_PORT
       INTEGER   GX_LOC, GY_LOC, 
      &          GX_ORG, GY_ORG, 
      &          GX_SIZ, GY_SIZ,
      &          GX_CRS, GY_CRS,
      &          G_WIDTH, G_HEIGHT, G_DEPTH,  
      &          G_COLOR_CINDEX
-      INTEGER   COLOR_RGB
+      INTEGER   COLOR_RGB1, COLOR_RGB2
       CHARACTER COLOR_NAME*22
-      CHARACTER PS_FILE*80
+      CHARACTER PS_FILE*256, PDF_FILE*256
 C
 C...Common storing current plot primitives
       Common /PL_PRIML/
@@ -105,7 +107,7 @@ C
 C...Global data for plotting, clipping, etc.
       Common /PL_PLOTI/
      &       I_DEV, I_PAGETYPE,
-     &       I_PEN, LST_PEN,
+     &       I_PEN, LST_PEN, I_PEN_MAX,
      &       I_PAT, LST_PAT,
      &       I_CLR, LST_CLR
       Common /PL_PLOTR/
@@ -121,9 +123,12 @@ C
 C...Global data for color definition
       Common /PL_COLORI/
      &       N_COLOR, N_SPECTRUM, IFIRST_SPECTRUM,
-     &       COLOR_RGB(Ncolors_max)
+     &       COLOR_RGB1(Ncolors_max),
+     &       COLOR_RGB2(Ncolors_max)
       Common /PL_COLORC/
      &       COLOR_NAME(Ncolors_max)
+      Common /PL_COLORR/
+     &       COL12FAC
 C
 C...Global data for X-window output
       Common /PL_XWINL/
@@ -141,16 +146,18 @@ C...Global data for X-window output
 C
 C...Global data for PostScript output
       Common /PL_PSL/
-     &       LPS_GEN, LPS_OPEN, LPS_COLOR, LPS_UNSTROKED, 
-     &       LPS_EXTERNAL, LPS_ONEFILE
+     &       LPS_GEN, LPS_OPEN,
+     &       LPDF_GEN, LPDF_OPEN,
+     &       LP_COLOR, LP_UNSTROKED,
+     &       LP_ONEFILE, LP_PORT
       Common /PL_PSI/
      &       IPS_MODE, NPS_UNIT, N_PAGES, I_PAGES, N_VECS
       Common /PL_PSR/
      &       PX_ORG,  PY_ORG, PX_SIZ, PY_SIZ, P_SCALE,
-     &       BB_XMIN, BB_XMAX, BB_YMIN, BB_YMAX,
+     &       BB_XMIN, BB_XMAX, BB_YMIN, BB_YMAX, BB_MARG,
      &       PS_LSTX, PS_LSTY
       Common /PL_PSC/
-     &       PS_FILE
+     &       PS_FILE, PDF_FILE
 
 
 C
@@ -189,7 +196,8 @@ C
 C   N_COLOR             total number of defined colors        1..i..N_COLORS
 C   N_SPECTRUM          number of defined colors in Spectrum  0..s..N_SPECTRUM
 C   IFIRST_SPECTRUM     gives index i of first Spectrum color
-C   COLOR_RGB(i)        rgb color index
+C   COLOR_RGB1(i)       rgb color index
+C   COLOR_RGB2(i)       rgb color index, modified
 C   COLOR_NAME(i)       color name string
 C
 C   LGW_GEN             T if X-window graphics are to be generated
@@ -211,15 +219,16 @@ C   G_DEPTH             color bit depth of screen
 C   G_COLOR_CINDEX(i)   X-colormap index of Xplot11 color i
 C
 C   LPS_GEN             T if PostScript output is to be generated
-C   LPS_OPEN            T is PostScript file is currently open
-C   LPS_COLOR           T if color PostScript is to be generated
-C   LPS_UNSTROKED       T if current PostScript page has not been stroked
-C   LPS_EXTERNAL        T if postscript file opened/closed outside of Xplot11
-C   LPS_ONEFILE         T if one postscript file used for each plot, otherwise
+C   LPS_OPEN            T if PostScript file is currently open
+C   LPDF_GEN            T if PDF output is to be generated
+C   LPDF_OPEN           T if PDF file is currently open
+C   LP_COLOR            T if color ps/pdft is to be generated
+C   LP_UNSTROKED        T if current ps/pdf page has not been stroked
+C   LP_ONEFILE          T if one postscript file used for each plot, otherwise
 C                         separate numbered plot files will be used for each
 C                         plot
 C
-C   IPS_MODE            0 if Portrait PostScript, 1 if Lansdcape PostScript
+C   IPS_MODE            0 if Portrait ps/pdf, 1 if Lansdcape ps/pdf
 C
 C   PX_ORG, PY_ORG      location of user-specified origin (in points)
 C   PX_SIZ, PY_SIZ      size of PostScript page (in points)
@@ -235,6 +244,7 @@ C   BB_YMIN, BB_YMAX
 C
 C   PS_LSTX, PS_LSTY    last PostScript move-to or line-to location
 C   PS_FILE             PostScript output filename
+C   PDF_FILE            PDF output filename
 
 
 

@@ -24,7 +24,7 @@ C
 C***********************************************************************
 C --- Xplot11 internal processing routines 
 C
-C     Version 4.46 11/28/01
+C     Version 4.56 01/16/23
 C
 C     Note:  These are plot-handling routines intended only
 C            for internal use, including handling the replot buffer,
@@ -36,8 +36,9 @@ C***********************************************************************
 C...Sets current pen width in pixels
       include 'pltlib.inc'
       LST_PEN = ipen
-      if(LGW_GEN) call gw_pen(ipen)
-      if(LPS_GEN) call ps_pen(ipen)
+      if(LGW_GEN)  call gw_pen(ipen)
+      if(LPS_GEN)  call ps_pen(ipen)
+      if(LPDF_GEN) call pdf_pen(ipen)
       return
       end
 
@@ -46,8 +47,9 @@ C...Sets current pen width in pixels
 C...Sets current line pattern as integer bit pattern
       include 'pltlib.inc'
       LST_PAT = ipat
-      if(LGW_GEN) call gw_linepattern(ipat)
-      if(LPS_GEN) call ps_linepattern(ipat)
+      if(LGW_GEN)  call gw_linepattern(ipat)
+      if(LPS_GEN)  call ps_linepattern(ipat)
+      if(LPDF_GEN) call pdf_linepattern(ipat)
       return
       end
 
@@ -56,8 +58,9 @@ C...Sets current line pattern as integer bit pattern
 C...Sets foreground color for plotting
       include 'pltlib.inc'
       LST_CLR = icolor
-      if(LGW_GEN) call gw_color(icolor)
-      if(LPS_GEN) call ps_color(icolor)
+      if(LGW_GEN)  call gw_color(icolor)
+      if(LPS_GEN)  call ps_color(icolor)
+      if(LPDF_GEN) call pdf_color(icolor)
       return
       end
 
@@ -205,8 +208,8 @@ C
 
       subroutine rd_array(lunit,n,ityp,iprim,xprim,yprim)
 c--- Fast unformatted reading of 2 integer and 2 real arrays from log file
-      dimension ityp(n),  iprim(n),
-     &          xprim(n), yprim(n)
+      integer ityp(n), iprim(n)
+      real xprim(n), yprim(n)
       read(lunit,err=10) ityp,iprim
       read(lunit,err=10) xprim,yprim
       go to 20
@@ -217,8 +220,8 @@ c--- Fast unformatted reading of 2 integer and 2 real arrays from log file
 
       subroutine wr_array(lunit,n,ityp,iprim,xprim,yprim)
 c--- Fast unformatted writing of 2 integer and 2 real arrays to log file
-      dimension ityp(n),  iprim(n),
-     &          xprim(n), yprim(n)
+      integer ityp(n), iprim(n)
+      real xprim(n), yprim(n)
       write(lunit) ityp,iprim
       write(lunit) xprim,yprim
       return
@@ -285,8 +288,9 @@ C...check for change in pen, line pattern or color
           if(I_CLR.NE.LST_CLR)  call set_color(I_CLR)
 C
 C...plot line segment in page coordinates
-          if(LGW_GEN) call gw_line(XX1,YY1,XX2,YY2)
-          if(LPS_GEN) call ps_line(XX1,YY1,XX2,YY2)
+          if(LGW_GEN)  call gw_line(XX1,YY1,XX2,YY2)
+          if(LPS_GEN)  call ps_line(XX1,YY1,XX2,YY2)
+          if(LPDF_GEN) call pdf_line(XX1,YY1,XX2,YY2)
         endif
       endif
 C
@@ -372,10 +376,10 @@ C    n      number of x,y points
 C    ifill  fill flag, 0 for no fill, 1 for filled polygon
 C
       include 'pltlib.inc'
-      dimension X(n), Y(n)
-      dimension XZ(MaxPolyLine),   YZ(MaxPolyLine)
-      dimension XOUT(MaxPolyLine), YOUT(MaxPolyLine)
-      dimension XCLP(5), YCLP(5)
+      real X(n), Y(n)
+      real XZ(MaxPolyLine),   YZ(MaxPolyLine)
+      real XOUT(MaxPolyLine), YOUT(MaxPolyLine)
+      real XCLP(5), YCLP(5)
 C
 C...For unfilled polyline treat this as a set of standard line segments
 C   This avoids putting an unfilled polyline into the more complex filled
@@ -468,8 +472,9 @@ C...check for change in pen, line pattern or color
         if(I_PAT.NE.LST_PAT)  call set_pat(I_PAT)
         if(I_CLR.NE.LST_CLR)  call set_color(I_CLR)
 C...plot polyline in page coordinates
-        if(LGW_GEN) call gw_polyline(XOUT,YOUT,nout,ifill)
-        if(LPS_GEN) call ps_polyline(XOUT,YOUT,nout,ifill)
+        if(LGW_GEN)  call gw_polyline(XOUT,YOUT,nout,ifill)
+        if(LPS_GEN)  call ps_polyline(XOUT,YOUT,nout,ifill)
+        if(LPDF_GEN) call pdf_polyline(XOUT,YOUT,nout,ifill)
       endif
       return
       end
@@ -484,11 +489,12 @@ C   Clipping algorithm is a Sutherland-Hodgman clipper, implemented here
 C   as a recursive (in Fortran!!) routine that clips each vertex in order
 C   against each of the window edges.
 C
-      dimension xp(np),     yp(np), 
-     &          xclp(nclp), yclp(nclp),
-     &          xout(nout), yout(nout)
-      dimension xfrst(5),   yfrst(5),
-     &          xlst(5),    ylst(5),  ivis(5) 
+      real xp(np),  yp(np), 
+     &     xclp(*), yclp(*),
+     &     xout(*), yout(*)
+      real xfrst(5),   yfrst(5),
+     &     xlst(5),    ylst(5)
+      integer ivis(5) 
 C
       do n = 1, nclp
         ivis(n) = -1
@@ -510,7 +516,7 @@ C... Now do finish the clipping with a final call with last flag set
      &                xfrst,yfrst,xlst,ylst,ivis,nlvl)
 c  
       return
-      end
+      end ! clip_poly0
 
 
       subroutine clip_poly1(x,y,ilast,xclp,yclp,nclp,xout,yout,nout,
@@ -519,10 +525,11 @@ C...Clipping routine for polylines clipped by polyline xclp,yclp,nclp
 C   This routine is a recursive (via a faked-out call of clip_poly2)
 C
       logical intsct
-      dimension xclp(nclp), yclp(nclp),
-     &          xout(nout), yout(nout)
-      dimension xfrst(5), yfrst(5),
-     &          xlst(5),  ylst(5),  ivis(5) 
+      real xclp(*), yclp(*),
+     &     xout(*), yout(*)
+      real xfrst(5), yfrst(5),
+     &     xlst(5),  ylst(5)
+      integer ivis(5) 
 C
 C... Check for end of clipping process (ilast>0)
       if(nlvl.GE.nclp-1) THEN 
@@ -597,21 +604,22 @@ C... Call next level with vertex (if visible) or to close next level
 c
       nlvl = nlvl - 1
       return
-      end
+      end ! clip_poly1
 
 
       subroutine clip_poly2(x,y,ilast,xclp,yclp,nclp,xout,yout,nout,
      &                      xfrst,yfrst,xlst,ylst,ivis,nlvl)
 C...Dummy calling routine to allow recursion of clip_poly1
-      dimension xclp(nclp), yclp(nclp),
-     &          xout(nout), yout(nout)
-      dimension xfrst(5), yfrst(5),
-     &          xlst(5),  ylst(5),  ivis(5) 
+      real xclp(*), yclp(*),
+     &     xout(*), yout(*)
+      real xfrst(5), yfrst(5),
+     &     xlst(5),  ylst(5)
+      integer ivis(5) 
 C
       call clip_poly1(x,y,ilast,xclp,yclp,nclp,xout,yout,nout,
      &                xfrst,yfrst,xlst,ylst,ivis,nlvl)
       return
-      end
+      end ! clip_poly2
 
 
 

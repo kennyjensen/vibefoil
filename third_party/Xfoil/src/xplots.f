@@ -51,10 +51,10 @@ C---- draw plot page outline offset by margins
         CALL PLOTABS(XPAGE-XMARG,YPAGE-YMARG,2)
       ENDIF
       CALL NEWPEN(1)
-C
+
       CALL PLOTABS(XMARG,YMARG,-3)
+
       CALL NEWCLIPABS( XMARG, XPAGE-XMARG, YMARG, YPAGE-YMARG )
-C
       CALL NEWFACTOR(SIZE)
 C
       RETURN
@@ -1413,7 +1413,7 @@ C
       CALL GETCOLOR(ICOL0)
 C
       CALL NEWPEN(2)
-      CALL PLTAIR(X,XP,Y,YP,S,N, XOFF,XSF,YOFF,YSF,'black')
+      CALL PLTAIR(X,XP,Y,YP,S,N, XOFF,XSF,YOFF,YSF,NTS,'black')
 C
       XLAB = XL0
       YLAB = YL0
@@ -1432,7 +1432,7 @@ C
           CALL NEWCOLOR(ICOLP(IP))
           CALL PLTAIR(CPOLXY(1,1,IP),W1,
      &                CPOLXY(1,2,IP),W2, W3,NXY,
-     &                XOFF,XSF,YOFF,YSF,' ')
+     &                XOFF,XSF,YOFF,YSF,NTS,' ')
 C
 C-------- also plot its number and name
           CALL STRIP(NAMEPOL(IP),NNAMEP)

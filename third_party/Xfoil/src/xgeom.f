@@ -38,14 +38,19 @@ C---- set trailing edge point coordinates
       XTE = 0.5*(X(1) + X(N))
       YTE = 0.5*(Y(1) + Y(N))
 C
+      IF(N .LT. 5) I = N/2
+
 C---- get first guess for SLE
       DO 10 I=3, N-2
         DXTE = X(I) - XTE
         DYTE = Y(I) - YTE
-        DX = X(I+1) - X(I)
-        DY = Y(I+1) - Y(I)
-        DOTP = DXTE*DX + DYTE*DY
-        IF(DOTP .LT. 0.0) GO TO 11
+        DXM = X(I) - X(I-1)
+        DYM = Y(I) - Y(I-1)
+        DXP = X(I+1) - X(I)
+        DYP = Y(I+1) - Y(I)
+        DOTM = DXTE*DXM + DYTE*DYM
+        DOTP = DXTE*DXP + DYTE*DYP
+        IF(DOTM .GT. 0.0 .AND. DOTP .LE. 0.0) GO TO 11
    10 CONTINUE
 C
    11 SLE = S(I)
@@ -127,6 +132,8 @@ C
 C------ drive DXDS to zero
         RES  = DXDS
         RESS = DXDD
+
+        IF(RESS .EQ. 0.0) GO TO 21
 C
 C------ Newton delta for SLE 
         DSLE = -RES/RESS
@@ -136,7 +143,7 @@ C
         SLE = SLE + DSLE
         IF(ABS(DSLE) .LT. DSEPS) RETURN
    20 CONTINUE
-      WRITE(*,*) 'XLFIND:  Left point not found.  Continuing...'
+ 21   WRITE(*,*) 'XLFIND:  Left point not found.  Continuing...'
       SLE = S(I)
       RETURN
       END ! XLFIND
@@ -293,7 +300,7 @@ C
 
 
  
-      SUBROUTINE NORM(X,XP,Y,YP,S,N)
+      SUBROUTINE NORM(X,XP,Y,YP,S,N,XSHIFT,YSHIFT,SCALE)
       DIMENSION X(*),XP(*),Y(*),YP(*),S(*)
 C-----------------------------------------------
 C     Scales coordinates to get unit chord
@@ -305,15 +312,20 @@ C
 C
       CALL LEFIND(SLE,X,XP,Y,YP,S,N)
 C
-      XMAX = 0.5*(X(1) + X(N))
-      XMIN = SEVAL(SLE,X,XP,S,N)
-      YMIN = SEVAL(SLE,Y,YP,S,N)
-C
-      FUDGE = 1.0/(XMAX-XMIN)
+      XTE = 0.5*(X(1) + X(N))
+      YTE = 0.5*(Y(1) + Y(N))
+      XLE = SEVAL(SLE,X,XP,S,N)
+      YLE = SEVAL(SLE,Y,YP,S,N)
+      CHORD = SQRT((XTE-XLE)**2 + (YTE-YLE)**2)
+
+      XSHIFT = -XLE
+      YSHIFT = -YLE
+      SCALE = 1.0/CHORD
+      
       DO 40 I=1, N
-        X(I) = (X(I)-XMIN)*FUDGE
-        Y(I) = (Y(I)-YMIN)*FUDGE
-        S(I) = S(I)*FUDGE
+        X(I) = (X(I)+XSHIFT)*SCALE
+        Y(I) = (Y(I)+YSHIFT)*SCALE
+        S(I) = S(I)*SCALE
    40 CONTINUE
 C
       RETURN
@@ -375,8 +387,8 @@ cc      CALL GETMAX(XTHK,YTHK,YTHKP,NTHK,XTHICK,THICK)
 cc      THICK = 2.0*THICK
 C
       WRITE(*,1000) THICK,XTHICK,CAMBR,XCAMBR
- 1000 FORMAT( ' Max thickness = ',F12.6,'  at x = ',F7.3,
-     &       /' Max camber    = ',F12.6,'  at x = ',F7.3)
+ 1000 FORMAT( ' Max thickness = ',F12.6,'  at x = ',F8.4,
+     &       /' Max camber    = ',F12.6,'  at x = ',F8.4)
 
 
 C
@@ -1124,8 +1136,8 @@ C---- go over each point, calculating corner angle
       DO 30 I=2, N-1
         DX1 = X(I) - X(I-1)
         DY1 = Y(I) - Y(I-1)
-        DX2 = X(I) - X(I+1)
-        DY2 = Y(I) - Y(I+1)
+        DX2 = X(I+1) - X(I)
+        DY2 = Y(I+1) - Y(I)
 C
 C------ allow for doubled points
         IF(DX1.EQ.0.0 .AND. DY1.EQ.0.0) THEN
@@ -1133,13 +1145,14 @@ C------ allow for doubled points
          DY1 = Y(I) - Y(I-2)
         ENDIF
         IF(DX2.EQ.0.0 .AND. DY2.EQ.0.0) THEN
-         DX2 = X(I) - X(I+2)
-         DY2 = Y(I) - Y(I+2)
+         DX2 = X(I+2) - X(I)
+         DY2 = Y(I+2) - Y(I)
         ENDIF
 C
-        CROSSP = (DX2*DY1 - DY2*DX1)
-     &         / SQRT((DX1**2 + DY1**2) * (DX2**2 + DY2**2))
-        ANGL = ASIN(CROSSP)*(180.0/3.1415926)
+        CRS = DX1*DY2 - DY1*DX2
+        DOT = DX1*DX2 + DY1*DY2
+        ANGL = ATAN2(CRS,DOT)*(180.0/3.1415926)
+C
         IF(IPRINT.EQ.2) WRITE(*,1100) I, X(I), Y(I), ANGL
         IF(ABS(ANGL) .GT. ABS(AMAX)) THEN
          AMAX = ANGL
@@ -1790,4 +1803,164 @@ C
       RETURN
       END ! HALF
 
+
+      SUBROUTINE SQTE(X,XS,Y,YS,S,N,XNEW,YNEW)
+C-------------------------------------------------------------
+C     "Squares" blunt trailing edge.
+C     Adjusts top and bottom TE points so TE base
+C     is exactly orthogonal to TE bisector.
+C------------------------------------------------------
+      REAL X(*), Y(*), S(*), XS(*), YS(*), XNEW(*), YNEW(*)
+
+      XTE = 0.5*(X(1)+X(N))
+      YTE = 0.5*(Y(1)+Y(N))
+
+      XS1 = -XS(1)
+      YS1 = -YS(1)
+
+      XS2 = XS(N)
+      YS2 = YS(N)
+
+      XSA = XS1 + XS2
+      YSA = YS1 + YS2
+
+c     SSA = SQRT(XSA**2 + YSA**2)
+c     XSA = XSA/SSA
+c     YSA = YSA/SSA
+
+      S1 = S(1)
+      S2 = S(N)
+
+      STOL = (S(N) - S(1)) * 1.0E-7
+
+      DO ITER = 1, 8
+        X1  = SEVAL(S1,X,XS,S,N)
+        Y1  = SEVAL(S1,Y,YS,S,N)
+        X2  = SEVAL(S2,X,XS,S,N)
+        Y2  = SEVAL(S2,Y,YS,S,N)
+
+        XS1 = DEVAL(S1,X,XS,S,N)
+        YS1 = DEVAL(S1,Y,YS,S,N)
+        XS2 = DEVAL(S2,X,XS,S,N)
+        YS2 = DEVAL(S2,Y,YS,S,N)
+
+        RES1 =      (X1-X2)     *XSA
+     &       +      (Y1-Y2)     *YSA
+        RES2 = (0.5*(X1+X2)-XTE)*XSA
+     &       + (0.5*(Y1+Y2)-YTE)*YSA
+
+        A11  =       XS1        *XSA
+     &              +YS1        *YSA
+        A12  =         -XS2     *XSA
+     &                 -YS2     *YSA
+        A21  =  0.5* XS1        *XSA
+     &        + 0.5* YS1        *YSA
+        A22  =  0.5*    XS2     *XSA
+     &        + 0.5*    YS2     *YSA
+
+        DET = A11*A22 - A12*A21
+
+        DS1 = -(RES1*A22  - A12 *RES2) / DET
+        DS2 = -(A11 *RES2 - RES1*A21 ) / DET
+
+        S1 = S1 + DS1
+        S2 = S2 + DS2
+        
+c        write(*,*) iter, ds1, ds2
+
+        IF(ABS(DS1) .LT. STOL .AND.
+     &     ABS(DS2) .LT. STOL       ) THEN
+         GO TO 5
+        ENDIF
+       ENDDO
+
+       WRITE(*,*) 'SQTE: S1,S2 convergence failed.  ds1,2 =', DS1, DS2
+
+ 5     CONTINUE
+
+       DO I = 1, N
+         SFRAC = (S(I) - S(1)) / (S(N) - S(1))
+         SNEW = S1*(1.0-SFRAC) + S2*SFRAC
+
+         XNEW(I) = SEVAL(SNEW,X,XS,S,N)
+         YNEW(I) = SEVAL(SNEW,Y,YS,S,N)
+       ENDDO
+
+       RETURN
+       END ! SQTE
+
+
+
+      SUBROUTINE TECIRC(X,XS,Y,YS,S,N,XNEW,YNEW,NHCIRC)
+C-------------------------------------------------------------
+C     Adds TE circle
+C------------------------------------------------------
+      REAL X(*), Y(*), S(*), XS(*), YS(*), XNEW(*), YNEW(*)
+
+      PI = 4.0*ATAN(1.0)
+
+      CALL SQTE(X,XS,Y,YS,S,N,XNEW,YNEW)
+
+C---- set and re-spline new geometry
+      DO I = 1, N
+        X(I) = XNEW(I)
+        Y(I) = YNEW(I)
+      ENDDO
+
+      CALL SCALC(X,Y,S,N)
+      CALL SEGSPL(X,XS,S,N)
+      CALL SEGSPL(Y,YS,S,N)
+      
+      XTE = 0.5*(X(1)+X(N))
+      YTE = 0.5*(Y(1)+Y(N))
+
+      DX1 = X(1)-XTE
+      DY1 = Y(1)-YTE
+      DX2 = X(N)-XTE
+      DY2 = Y(N)-YTE
+
+      DOTP = -(XS(1)*XS(N) + YS(1)*YS(N))
+      CRSP =  -XS(1)*YS(N) + YS(2)*XS(N)
+
+C---- TE half-angle
+      HANG = 0.5*ATAN2( CRSP , DOTP )
+      TRAD = SQRT(DX1**2 + DY1**2) / COS(HANG)
+
+c---- circle half-angle
+      CANG = 0.5*PI - HANG
+
+c---- angle of TE bisector
+      TBIS = ATAN2( X(N)-X(1) , Y(1)-Y(N) )
+
+      write(*,*) 'tbis hang', tbis*180.0/3.14, hang*180.0/3.14
+
+      XO = XTE - TRAD*TAN(HANG)*COS(TBIS)
+      YO = YTE - TRAD*TAN(HANG)*SIN(TBIS)
+
+c---- set new array, making room for half circle
+      DO I = 1, N
+        XNEW(I+NHCIRC) = X(I)
+        YNEW(I+NHCIRC) = Y(I)
+      ENDDO
+      N = N + NHCIRC
+
+      DO K = 1, NHCIRC
+        T = CANG * FLOAT(K-1)/FLOAT(NHCIRC)
+
+        I = K
+        COST = COS(TBIS + T)
+        SINT = SIN(TBIS + T)
+        XNEW(I) = XO + TRAD*COST
+        YNEW(I) = YO + TRAD*SINT
+
+        I = N + NHCIRC - K + 1
+        COST = COS(TBIS - T)
+        SINT = SIN(TBIS - T)
+        XNEW(I) = XO + TRAD*COST
+        YNEW(I) = YO + TRAD*SINT
+      ENDDO
+      N = N + NHCIRC
+
+      RETURN
+      END ! TECIRC
 

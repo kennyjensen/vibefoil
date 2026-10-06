@@ -22,14 +22,13 @@
 #***********************************************************************
 
 
-#================================#
-# Makefile for Xplot11 library   #
-#  edit the config.make file to  #
-#  set specific options for your #
-#  system                        #
-#================================#
+#=======================================#
+# Makefile for Xplot11 library          #
+#  use or edit the config.make file to  #
+#  set specific options for your system #
+#=======================================#
 
-# Point to your install directory
+# Point to your install directory (if you have one...)
 #INSTALLDIR = /home/codes/bin
 #INSTALLDIR = /usr/local/lib
 INSTALLDIR = .
@@ -38,106 +37,87 @@ INSTALLDIR = .
 PLTLIB = libPlt.a
 #PLTLIB = libPltDP.a
 
+LINKLIB =
+INCDIR  =
 
-###========================================================
-###  Basic plot library object files
-OBJ     = plt_base.o plt_font.o plt_util.o plt_color.o \
-          set_subs.o gw_subs.o ps_subs.o Xwin2.o
+WSRC = xwin11
+WOBJ = Xwin2.o
+PDFSRC = pdf
+#PDFOBJ = hpdf-interface.o
 OBJMISC =
 OBJ3D   =
 OBJOLD  =
-
 ###--------------------------------------------------------
 ###  Uncomment to add the old plot compatibility routines
 OBJOLD  = plt_old.o
-
 ###--------------------------------------------------------
 ###  Uncomment to add the primitive 3D-view routines
 OBJ3D  = plt_3D.o
 
-###--------------------------------------------------------
-###  Uncomment for f77 compiler w/o AND() and RSHIFT/LSHIFT functions.
-###   This adds some functions to duplicate these using IAND and ISHFT
-###   which often appear in these offending fortran's libraries.
-###   The compilers that this has affected include:
-###      HPUX f77
-###      Absoft f77 on Linux
-###
-#OBJMISC = util-ops.o
 
 
-###-------------------------------------------------------------------------
-### Set compiler, compiler flags, name of output object library
-include ./config.make
-
-
-###-------------------------------------------------------------------------
-### Basic make targets - build library, test programs
-
-$(PLTLIB):  $(OBJ) $(OBJOLD) $(OBJ3D) $(OBJMISC)
-	$(AR)     $(PLTLIB) $(OBJ) $(OBJOLD) $(OBJ3D) $(OBJMISC)
-	$(RANLIB) $(PLTLIB)
-
-test:  $(PLTLIB)
-	(cd examples; make test)
-
+help:	
+	@echo
+	@echo "Usage:"
+	@echo "  type: make <MACHINE>" 
+	@echo "   where <MACHINE> is one of the following:"
+	@echo "   gfortran - Linux/OSX/Cygwin using gcc toolset"
+	@echo "   ifort    - Linux/OSX with ifort/gcc"
+	@echo "   mingw    - Windows using MinGW"
+	@echo "   gfortranDP - Linux/OSX/Cygwin using gcc toolset, dbleprecision"
+	@echo "   ifortDP    - Linux/OSX with ifort/gcc, dblprecision"
+	@echo "   mingwDP    - Windows using MinGW, dblprecision"
+	@echo " "
+	@echo "   gfortran-PDF   - Linux/OSX/Cygwin using gcc toolset with PDF output"
+	@echo "   gfortranDP-PDF - Linux/OSX/Cygwin using gcc toolset dblprecision w. PDF output"
+	@echo "   mingw-PDF    - Windows using MinGW with PDF outout"
+	@echo "   mingwDP-PDF  - Windows using MinGW dblprecision with PDF outout"
+	@echo "   clean    - cleanup directory"
+	@exit
 
 ###-------------------------------------------------------------------------
-### Utility functions - install the library, clean the directory
-
-install:  $(PLTLIB)
-	mv $(PLTLIB) $(INSTALLDIR)
-	$(RANLIB)   $(INSTALLDIR)/$(PLTLIB)
+### Set compiler, compiler flags, name of output library, PDF option
+gfortran:	
+		@cp ./config.make.gfortran	./config.make
+		@make -f Makefile.all lib
+ifort:
+		@cp ./config.make.ifort		./config.make
+		@make -f Makefile.all lib
+mingw:
+		@cp ./config.make.mingw		./config.make
+		@make -f Makefile.all lib
+gfortranDP:	
+		cp ./config.make.gfortranDP	./config.make
+		make -f Makefile.all lib
+ifortDP:
+		@cp ./config.make.ifortDP	./config.make
+		@make -f Makefile.all lib
+mingwDP:
+		@cp ./config.make.mingwDP	./config.make
+		@make -f Makefile.all lib
+gfortran-PDF:	
+		@cp ./config.make.gfortran-PDF	./config.make
+		@make -f Makefile.all lib
+gfortranDP-PDF:	
+		@cp ./config.make.gfortranDP-PDF	./config.make
+		@make -f Makefile.all lib
+mingw-PDF:
+		@cp ./config.make.mingw-PDF		./config.make
+		@make -f Makefile.all lib
+mingwDP-PDF:
+		@cp ./config.make.mingwDP-PDF		./config.make
+		@make -f Makefile.all lib
+test-PDF:	
+		@cp ./config.make.test-PDF	./config.make
+		@make -f Makefile.all lib
 
 clean:
-	-/bin/rm $(OBJ) $(OBJOLD) $(OBJ3D) $(OBJMISC)
-	-/bin/rm $(PLTLIB)
-	-/bin/rm plot*.ps
-	(cd examples; make clean)
-
-
-###-------------------------------------------------------------------------
-### compile plot package routines
-
-plt_base.o: plt_base.f pltlib.inc
-	$(FC) -c $(FFLAGS)  plt_base.f
-
-plt_color.o: plt_color.f  pltlib.inc
-	$(FC) -c $(FFLAGS)  plt_color.f
-
-plt_font.o: plt_font.f CHAR.INC SLAN.INC MATH.INC SYMB.INC
-	$(FC) -c $(FFLAGS)  plt_font.f
-
-plt_util.o: plt_util.f
-	$(FC) -c $(FFLAGS)  plt_util.f
-
-plt_3D.o: plt_3D.f
-	$(FC) -c $(FFLAGS)  plt_3D.f
-
-plt_old.o: plt_old.f pltlib.inc
-	$(FC) -c $(FFLAGS)  plt_old.f
-
-set_subs.o: set_subs.f  pltlib.inc
-	$(FC) -c $(FFLAGS)  set_subs.f
-
-gw_subs.o: gw_subs.f  pltlib.inc
-	$(FC) -c $(FFLAGS)  gw_subs.f
-
-ps_subs.o: ps_subs.f  pltlib.inc
-	$(FC) -c $(FFLAGS)  ps_subs.f
-
-util-ops.o: util-ops.f 
-	$(FC) -c $(FFLAGS)  util-ops.f
-
-Xwin.o: Xwin.c
-	$(CC) -c $(CFLAGS) Xwin.c
-Xwin2.o: Xwin2.c
-	$(CC) -c $(CFLAGS) Xwin2.c
-
-
-### May need to specify these on a brain-dead make system
-#.f.o:	$(FC) -c $(FFLAGS) $<
-#.c.o:	$(CC) -c $(CFLAGS) $<
-
+		@cp ./config.make.gfortran	./config.make
+		@make -f Makefile.all clean
+		-/bin/rm W32*.o
+		-/bin/rm Xwin*.o
+		-/bin/rm hpdf-interface.o
+		-/bin/rm hpdf-stubs.o
+		-/bin/rm libPlt*.a
 
 

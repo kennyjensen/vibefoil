@@ -1,5 +1,5 @@
 
-XFOIL 6.9  User Primer                   THE last update   30 Nov 2001
+XFOIL 6.996 User Primer            THE last update (promise)  13 Jan 2023
 
 Mark Drela, MIT Aero & Astro
 Harold Youngren, Aerocraft, Inc.
@@ -261,21 +261,25 @@ When the program starts, the following top level menu and prompt appear:
 
    QUIT   Exit program
 
-  .OPER   Direct operating point(s)
-  .MDES   Complex mapping design routine
-  .QDES   Surface speed design routine
-  .GDES   Geometry design routine
+  .OPER    Direct operating point(s)
+  .MDES    Complex mapping design routine
+  .QDES    Surface speed design routine
+  .GDES    Geometry design routine
 
-   SAVE f Write airfoil to labeled coordinate file
-   PSAV f Write airfoil to plain coordinate file
-   ISAV f Write airfoil to ISES coordinate file
-   MSAV f Write airfoil to MSES coordinate file
-   REVE   Reverse written-airfoil node ordering
+   SAVE f  Write airfoil to labeled coordinate file
+   PSAV f  Write airfoil to plain coordinate file
+   ISAV f  Write airfoil to ISES coordinate file
+   MSAV f  Write airfoil to MSES coordinate file
+   REVE    Reverse written-airfoil node ordering
+   DELI i  Change written-airfoil file delimiters
 
-   LOAD f Read buffer airfoil from coordinate file
-   NACA i Set NACA 4,5-digit airfoil and buffer airfoil
-   INTE   Set buffer airfoil by interpolating two airfoils
-   NORM   Buffer airfoil normalization toggle
+
+   LOAD f  Read buffer airfoil from coordinate file
+   NACA i  Set NACA 4,5-digit airfoil and buffer airfoil
+   INTE    Set buffer airfoil by interpolating two airfoils
+   NORM    Buffer airfoil normalization toggle
+   HALF    Halve the number of points in buffer airfoil
+   XYCM rr Change CM reference location, currently  0.25000 0.00000
 
    BEND   Display structural properties of current airfoil
 
@@ -492,7 +496,7 @@ A         B     C
 0.0       1.0   1.4  ...
 
 So airfoil C has 40% more of the change received by B in the redesign.  
-Aifoil C's polar will also be changed about 40% more as intended.
+Airfoil C's polar will also be changed about 40% more as intended.
 
 
 Airfoil node distribution matching
@@ -632,7 +636,6 @@ The OPER command, for instance, will produce the prompt
 
 Typing a " ? " will result in the OPER analysis menu being displayed:
 
-
    <cr>     Return to Top Level
    !        Redo last ALFA,CLI,CL,ASEQ,CSEQ,VELS
 
@@ -662,7 +665,7 @@ Typing a " ? " will result in the OPER analysis menu being displayed:
    PSOR i   Sort stored polar
    PPlo ii. Plot stored polar(s)
    APlo ii. Plot stored airfoil(s) for each polar
-   ASET i   Copy stored airfoil into current airfoil
+   ASET i   Copy stored polar airfoil into current airfoil
    PREM ir. Remove point(s) from stored polar
    PNAM i   Change airfoil name of stored polar
    PPAX     Change polar plot axis limits
@@ -671,6 +674,7 @@ Typing a " ? " will result in the OPER analysis menu being displayed:
    RDEL i   Delete stored reference polar
 
    GRID     Toggle Cp vs x grid overlay
+   CPIO     Toggle inviscid Cp overlay on viscous Cp(x)
    CREF     Toggle reference Cp data overlay
    FREF     Toggle reference CL,CD.. data display
 
@@ -688,12 +692,15 @@ Typing a " ? " will result in the OPER analysis menu being displayed:
 
    FMOM     Calculate flap hinge moment and forces
    FNEW rr  Set new flap hinge point
+
    VELS rr  Calculate velocity components at a point
    DUMP f   Output Ue,Dstar,Theta,Cf vs s,x,y to file
    CPWR f   Output x vs Cp to file
    CPMN     Report minimum surface Cp
+
    NAME s   Specify new airfoil name
    NINC     Increment name version number
+
 
 The commands are not case sensitive.  Some commands expect multiple 
 arguments, but if the arguments are not typed, prompts will be issued.
@@ -775,11 +782,15 @@ Boundary-layer quantities are plotted from the VPLO menu:
    RT     Plot Re_theta
    RTL    Plot log(Re_theta)
 
+   DUMP f Write current plot variable to file
+   OVER f Overlay current plot variable from file
+
    X  rrr Change x-axis limits
    Y  rrr Change y-axis limits on current plot
+   XPLO   Toggle plotting  vs  x or s
 
-   Blow   Cursor blowup of current plot
-   Rese   Reset to default x,y-axis limits
+   BLOW   Cursor blowup of current plot
+   RESE   Reset to default x,y-axis limits
    SIZE r Change absolute plot-object size
   .ANNO   Annotate plot
    HARD   Hardcopy current plot
@@ -788,6 +799,7 @@ Boundary-layer quantities are plotted from the VPLO menu:
    SYMB   Toggle node-symbol plotting
    LABE   Toggle label plotting
    CLIP   Toggle line-plot clipping
+   FRPL   Toggle TS frequency plotting
 
 
 This menu is largely self-explanatory.  The skin friction
@@ -1292,26 +1304,25 @@ analyze/fix cycles.  The MDES menu is shown below.
    Modi   Modify Qspec
    MARK   Mark off target segment for smoothing
    SMOO   Smooth Qspec inside target segment
-   FILT   Apply Hanning filter to entire Qspec
+   Filt   Apply Hanning filter to entire Qspec
    SLOP   Toggle modified-Qspec slope matching flag
 
    eXec   Execute  full-inverse calculation
 
-   Plot   Replot Qspec (line) and Q (symbols)
-   VISC   Qvis overlay toggle
+   Visc   Qvis overlay toggle
    REFL   Reflected Qspec overlay toggle
    SPEC   Plot mapping coefficient spectrum
 
+   Plot   Replot Qspec (line) and Q (symbols)
    Blow   Blowup plot region
    Rese   Reset plot scale and origin
-   Wind   Plot window adjust via cursor and keys
+   Wind     Plot window adjust via cursor and keys
 
    SIZE r Change absolute plot-object size
   .ANNO   Annotate plot
    HARD   Hardcopy current plot
 
    PERT   Perturb one Cn and generate geometry
-
 
 As described above, the initial Qspec distribution is taken from 
 "Q", the speed distribution corresponding to the current 
@@ -1456,13 +1467,13 @@ circumstances.  The Mixed-Inverse menu is shown below.
    REST   Restore geometry from buffer airfoil
    CPXX   CPxx endpoint constraint toggle
 
-   Plot   Plot Qspec (line) and Q (symbols)
-   VISC   Qvis overlay toggle
+   Visc   Qvis overlay toggle
    REFL   Reflected Qspec overlay toggle
 
+   Plot   Plot Qspec (line) and Q (symbols)
    Blow   Blowup plot region
    Rese   Reset plot scale and origin
-   Wind   Plot window adjust via cursor and keys
+   Wind     Plot window adjust via cursor and keys
 
    SIZE r Change absolute plot-object size
   .ANNO   Annotate plot
@@ -1532,7 +1543,7 @@ airfoil.
 Geometry Design Routine
 =======================
 Executing the GDES command from the top level menu will put the user
-into the GDES routine.  It has a rather extensive menu:
+into the GDES routine, which has a rather extensive menu:
 
    <cr>     Return to Top Level
    !        Redo previous command
@@ -1541,15 +1552,17 @@ into the GDES routine.  It has a rather extensive menu:
    eXec     Set current airfoil <== buffer  airfoil
    SYMM     Toggle y-symmetry flag
 
-   ADEG r   Rotate about origin (degrees)
+   Adeg r   Rotate about origin (degrees)
    ARAD r   Rotate about origin (radians)
    Tran rr  Translate
    Scal r   Scale about origin
+   SYTB rr  Scale top and bottom y values separately
    LINS rr. Linearly-varying y scale
    DERO     Derotate (set chord line level)
 
-   TGAP rr  Change trailing edge gap
+   TGAP rrr Change trailing edge gap
    LERA rr  Change leading edge radius
+   SQTE     Make TE gap square to TE bisector
 
    TCPL     Toggle thickness and camber plotting
    TFAC rr  Scale existing thickness and camber
@@ -1565,9 +1578,10 @@ into the GDES routine.  It has a rather extensive menu:
    SLOP     Toggle modified-contour slope matching flag
 
    CORN     Double point with cursor (set sharp corner)
-   ADDP     Add    point with cursor
+   ADDP     Add    point with cursor or keyboard x,y
+   MOVP     Move   point with cursor or keyboard x,y
    DELP     Delete point with cursor
-   MOVP     Move   point with cursor
+   NMOV r   Move all points in surface-normal direction
 
    UNIT     Normalize buffer airfoil to unit chord
    Dist     Determine distance between 2 cursor points
@@ -1582,8 +1596,9 @@ into the GDES routine.  It has a rather extensive menu:
    Rese     Reset plot scale and origin
    Wind     Plot window adjust via cursor and keys
 
-   TSIZ     Change tick-mark size
-   TICK r   Toggle node tick-mark plotting
+   NSPL i   Number of spline sub-intervals for airfoil plot
+   TSIZ r   Change tick-mark size
+   TICK     Toggle node tick-mark plotting
    GRID     Toggle grid plotting
    GPAR     Toggle geometric parameter plotting
    Over f   Overlay disk file airfoil
@@ -1606,8 +1621,8 @@ by LOAD at Top Level, or coordinates generated by EXEC from the MDES
 menu, depending on what was done last.  In either of these cases, GSET 
 is skipped.  
 
-Point addition (typ. to Eppler and Selig airfoils)
---------------------------------------------------
+Point addition (useful for Eppler and Selig airfoils)
+------------------------------------------------------
 If the buffer airfoil has an excessively coarse point spacing,
 additional points can be added with the CADD command.  Using the
 PANE command at top level also does this, but CADD allows the point
@@ -1662,7 +1677,8 @@ The new camber line can then be added in the CAMB sub-menu:
    TFAC rr Scale existing thickness and camber
    TSET rr Set new thickness and camber
    HIGH rr Move camber and thickness highpoints
-   WRTC    Write airfoil camber x/c,y/c to file
+   WRTT f  Write airfoil thickness x/c,t/c to file
+   WRTC f  Write airfoil camber    x/c,y/c to file
 
    RDAC    Read   added camber  x/c,y/c from file
    SETC    Set    added camber  x/c,y/c from camberline

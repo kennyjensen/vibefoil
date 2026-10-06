@@ -42,7 +42,8 @@ C
 C...ALTER ACTUAL DATA SCALES
       DO 10 I=1,24
       X(I) = X(I) * 1000
-   10 Y(I) = Y(I) / 10000
+      Y(I) = Y(I) / 10000
+ 10   CONTINUE
 C
       IDUM = 0
       ICNT = 0

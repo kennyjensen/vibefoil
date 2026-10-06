@@ -5,12 +5,14 @@ C     NAX    number of points in one polar
 C     NPX    number of polars
 C     NFX    number of points in one reference polar
 C     NDX    number of reference polars
-C     ISX    number of airfoil sides
+C     NBX    number of airfoil elements
 C
+C     ISX    number of airfoil element sides
 C
       INCLUDE 'PINDEX.INC'
 C
-      PARAMETER (NAX=500, NPX=20, NFX=128, NDX=20, ISX=10)
+      PARAMETER (NAX=500, NPX=20, NFX=128, NDX=20, NBX=5)
+      PARAMETER (ISX=2*NBX)
       CHARACTER*80 FNPOL, FNREF, FNAME
       CHARACTER*32 NAME, LABREF, TITLE
       CHARACTER*16 CODE, CCLEN
@@ -20,13 +22,13 @@ C
      &  LGRID,LPLOT,
      &  LCDW,LLIST,LEGND,LCLIP,
      &  LCLEN,LAECEN,
-     &  LCDH,LCMDOT,LAUTO
+     &  LCDH,LCMDOT,LAUTO,LSORT
 C
       COMMON/PPCOM_L/
      &  LGRID,LPLOT,
      &  LCDW,LLIST,LEGND,LCLIP,
      &  LCLEN,LAECEN,
-     &  LCDH,LCMDOT,LAUTO
+     &  LCDH,LCMDOT,LAUTO,LSORT
 C
       COMMON/PPCOM_I/
      &  IDEV, IDEVRP, IPSLU, ICOL0, NCOLOR,
@@ -43,7 +45,8 @@ C
      &  ACRIT(ISX,NPX),XTRIP(ISX,NPX),
      &  CPOL(NAX,IPTOT,NPX),
      &  CPOLSD(NAX,ISX,JPTOT,NPX),
-     &  CDLMOD(5,NPX),CDLFIT(5,NPX),VPPARS(6,NPX),DXMREF(NPX),
+     &  CPOLEL(NAX,NBX,KPTOT,NPX),
+     &  CDLMOD(6,NPX),CDLFIT(5,NPX),VPPARS(6,NPX),DXMREF(NPX),
      &  XYREF(NFX,2,4,NDX),
      &  VERSION
 C

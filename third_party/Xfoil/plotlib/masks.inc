@@ -21,7 +21,7 @@ C    Report problems to:    guppy@maine.com
 C                        or drela@mit.edu  
 C***********************************************************************
 C
-C     Version 4.46 11/28/01
+C     Version 4.56 01/16/23
 C
 C---- dot-pattern masks for use with PLGRID, NEWPAT, etc.
 C

@@ -16,7 +16,7 @@ C
       CHARACTER*128 COMARG
       CHARACTER*80 FILDEF, LINE
       CHARACTER*32 COLNAM
-      CHARACTER*2 FILSUF(12)
+      CHARACTER*2 FILSUF(14)
       CHARACTER*1 CXXBL
 C
       DIMENSION IINPUT(20)
@@ -26,12 +26,15 @@ C
       DIMENSION DYGARR(10)
       INTEGER NUMBL(2)
 C
+      REAL MSMAX,MSMIN,MSDEL
+      REAL MPMAX,MPMIN,MPDEL
+
       EXTERNAL PLCHAR, PLSLAN, PLMATH
 C
       DATA LMASK1, LMASK2, LMASK3 / -32640, -30584, -21846 /
       DATA FILSUF / 'hk', 'dT', 'dB', 'ue', 'cf',
      &              'cd', 'nc', 'ct', 'rt', 'rl',
-     &              'G2', 'be' /
+     &              'G2', 'be', 'mT', 'mB' /
 C
 C---- number of grid intervals per axis annotation interval
       NGR = 2
@@ -86,11 +89,11 @@ C
       HKMIN = 0.0
       HKDEL = 1.0
 C
-      GAMAX = 5.0
+      GAMAX = 10.0
       GAMIN = 0.0
-      GADEL = 1.0
+      GADEL = 2.0
 C
-      BEMAX =  5.0
+      BEMAX =  7.0
       BEMIN = -1.0
       BEDEL =  1.0
 C
@@ -162,6 +165,15 @@ C
       RLMIN = 1.0
       RLDEL = 1.0
 C
+      CALL SCALIT(NUMBL(1),MDEF(2,1),0.0,YFAC)
+      MSMAX = 0.5/YFAC
+      MSMIN = 0.0
+      MSDEL = (MSMAX-MSMIN)/5.0
+C
+      CALL SCALIT(NUMBL(2),MDEF(2,2),0.0,YFAC)
+      MPMAX = 0.5/YFAC
+      MPMIN = 0.0
+      MPDEL = (MPMAX-MPMIN)/5.0
 C
   500 CONTINUE
       CALL ASKC('..VPLO^',COMAND,COMARG)
@@ -192,21 +204,25 @@ C
       IF(COMAND.EQ.'RTL ') GO TO 100
       IF(COMAND.EQ.'G   ') GO TO 110
       IF(COMAND.EQ.'BE  ') GO TO 120
-      IF(COMAND.EQ.'DUMP') GO TO 140
-      IF(COMAND.EQ.'OVER') GO TO 140
-      IF(COMAND.EQ.'XPLO') GO TO 145
-      IF(COMAND.EQ.'XLIM' .OR. COMAND.EQ.'X   ') GO TO 147
-      IF(COMAND.EQ.'YLIM' .OR. COMAND.EQ.'Y   ') GO TO 148
-      IF(COMAND.EQ.'BLOW' .OR. COMAND.EQ.'B   ') GO TO 150
+      IF(COMAND.EQ.'AS  '.OR.
+     &   COMAND.EQ.'AT  ') GO TO 130
+      IF(COMAND.EQ.'AP  '.OR.
+     &   COMAND.EQ.'AB  ') GO TO 140
+      IF(COMAND.EQ.'DUMP') GO TO 160
+      IF(COMAND.EQ.'OVER') GO TO 160
+      IF(COMAND.EQ.'XPLO') GO TO 162
+      IF(COMAND.EQ.'XLIM' .OR. COMAND.EQ.'X   ') GO TO 164
+      IF(COMAND.EQ.'YLIM' .OR. COMAND.EQ.'Y   ') GO TO 166
+      IF(COMAND.EQ.'BLOW' .OR. COMAND.EQ.'B   ') GO TO 168
       IF(COMAND.EQ.'RESE' .OR. COMAND.EQ.'R   ') GO TO 5
-      IF(COMAND.EQ.'GRID') GO TO 152
-      IF(COMAND.EQ.'SYMB') GO TO 153
-      IF(COMAND.EQ.'LABE') GO TO 154
-      IF(COMAND.EQ.'CLIP') GO TO 155
-      IF(COMAND.EQ.'FRPL') GO TO 157
-      IF(COMAND.EQ.'HARD') GO TO 160
-      IF(COMAND.EQ.'SIZE') GO TO 165
-      IF(COMAND.EQ.'ANNO') GO TO 170
+      IF(COMAND.EQ.'GRID') GO TO 170
+      IF(COMAND.EQ.'SYMB') GO TO 172
+      IF(COMAND.EQ.'LABE') GO TO 174
+      IF(COMAND.EQ.'CLIP') GO TO 176
+      IF(COMAND.EQ.'FRPL') GO TO 178
+      IF(COMAND.EQ.'HARD') GO TO 182
+      IF(COMAND.EQ.'SIZE') GO TO 184
+      IF(COMAND.EQ.'ANNO') GO TO 186
       IF(COMAND.EQ.'Z   ') then
         call usetzoom(.true.,.true.)
         call replot(idev)
@@ -1321,8 +1337,109 @@ C
 ccc      CALL ASKC('Hit <cr>^',CHDUM,COMARG)
       GO TO 500
 C
+
+
 C===================================================
- 140  IF(KPLOT.EQ.0) THEN
+C---- plot top delta*, theta
+ 130  KPLOT = 13
+      IS = 1
+      YMIN = MSMIN
+      YMAX = MSMAX
+      YDEL = MSDEL
+      GO TO 145
+C
+C===================================================
+C---- plot bottom m, P, K
+ 140  KPLOT = 14
+      IS = 2
+      YMIN = MPMIN
+      YMAX = MPMAX
+      YDEL = MPDEL
+      GO TO 145
+C
+C
+ 145  CONTINUE
+      CALL PLTINI
+      CALL PLOT(8.0*CH,6.0*CH,-3)
+C
+      XSF = XWIDTH/(XMAX-XMIN)
+      YSF = PLOTAR/(YMAX-YMIN)
+C
+C---- draw and annotate axes
+      CALL NEWPEN(2)
+      CALL XAXIS(0.0,0.0,XSF*(XMAX-XMIN),XSF*XDEL,XMIN,XDEL,CH,-2)
+      CALL YAXIS(0.0,0.0,YSF*(YMAX-YMIN),YSF*YDEL,YMIN,YDEL,CH,-2)
+C
+      IF(LBLGRD) THEN
+       NXG = NGR * INT((XMAX-XMIN)/XDEL + 0.001)
+       NYG = NGR * INT((YMAX-YMIN)/YDEL + 0.001)
+       DXG = XSF*XDEL / FLOAT(NGR)
+       DYG = YSF*YDEL / FLOAT(NGR)
+       CALL NEWPEN(1)
+       CALL PLGRID(0.0,0.0, NXG,DXG, NYG,DYG, LMASK2 )
+      ENDIF
+C
+      CALL NEWPEN(3)
+      XL = XSF*(XMAX-XMIN-1.5*XDEL)
+      CALL PLCHAR(XL-0.6*CH,-3.5*CH,1.2*CH,CXXBL,0.0,1)
+C
+      CALL NEWPEN(3)
+      IF((YMAX-YMIN)/YDEL .GT. 2.99) THEN
+       YL1 = YSF*(YMAX-YMIN-0.5*YDEL)
+       YL2 = YSF*(YMAX-YMIN-1.5*YDEL)
+       YL3 = YSF*(YMAX-YMIN-2.5*YDEL)
+       YL4 = YSF*(YMAX-YMIN-3.5*YDEL)
+      ELSE
+       YL1 = YSF*(YMAX-YMIN-0.25*YDEL)
+       YL2 = YSF*(YMAX-YMIN-0.50*YDEL)
+       YL3 = YSF*(YMAX-YMIN-0.75*YDEL)
+       YL4 = YSF*(YMAX-YMIN-1.00*YDEL)
+      ENDIF
+C
+      IF(LVLAB) CALL VLABEL(0.0,YSF*(YMAX-YMIN),CH,
+     &                      NAME,
+     &                      REINF,MINF,ACRIT(1),ALFA,
+     &                      CL,CD,XOCTR(1),XOCTR(2),
+     &                      ICOLS(1),ICOLS(2),LVCONV)
+C
+      CALL NEWCOLOR(ICOLS(IS))
+C
+      IF(IS.EQ.1)
+     & CALL PLCHAR(-4.5*CH,YL1-0.6*CH,1.3*CH,'Top',0.0, 3)
+      IF(IS.EQ.2)
+     & CALL PLCHAR(-4.5*CH,YL1-0.6*CH,1.3*CH,'Bot',0.0, 3)
+      CALL PLCHAR(-4.0*CH,YL2-0.6*CH,1.5*CH,'m'  ,0.0,1)
+      CALL PLCHAR(-4.0*CH,YL3-0.6*CH,1.5*CH,'P'  ,0.0,1)
+      CALL PLCHAR(-4.0*CH,YL4-0.6*CH,1.5*CH,'K'  ,0.0,1)
+C
+      CALL GETCLIP(XCLIP1,XCLIP2,YCLIP1,YCLIP2)
+      IF(LCLIP) CALL NEWCLIP(MAX(XCLIP1,0.),MIN(XCLIP2,XSF*(XMAX-XMIN)),
+     &                       MAX(YCLIP1,0.),MIN(YCLIP2,YSF*(YMAX-YMIN)))
+C
+C---- plot upper and lower distributions
+      CALL NEWPEN(3)
+      CALL XYLINE(NUMBL(IS),XXBL(2,IS),MDEF(2,IS),XMIN,XSF,YMIN,YSF,1)
+      CALL XYLINE(NUMBL(IS),XXBL(2,IS),PDEF(2,IS),XMIN,XSF,YMIN,YSF,2)
+      CALL XYLINE(NUMBL(IS),XXBL(2,IS),KDEF(2,IS),XMIN,XSF,YMIN,YSF,3)
+C
+      IF(LBLSYM) THEN
+       CALL XYSYMB(NUMBL(IS),XXBL(2,IS),MDEF(2,IS),
+     &             XMIN,XSF,YMIN,YSF,SH,1)
+       CALL XYSYMB(NUMBL(IS),XXBL(2,IS),PDEF(2,IS),
+     &             XMIN,XSF,YMIN,YSF,SH,1)
+       CALL XYSYMB(NUMBL(IS),XXBL(2,IS),KDEF(2,IS),
+     &             XMIN,XSF,YMIN,YSF,SH,1)
+      ENDIF
+C
+      CALL NEWCOLOR(ICOL0)
+      CALL NEWCLIP(XCLIP1,XCLIP2,YCLIP1,YCLIP2)
+      CALL PLFLUSH
+ccc      CALL ASKC('Hit <cr>^',CHDUM,COMARG)
+      GO TO 500
+C
+
+C===================================================
+ 160  IF(KPLOT.EQ.0) THEN
        WRITE(*,*) 'No current plot'
        GO TO 500
       ENDIF
@@ -1610,7 +1727,7 @@ C
       GO TO 500
 C
 C===================================================
- 145  CONTINUE
+ 162  CONTINUE
       IF(IXBLP.EQ.1) THEN
        IXBLP = 2
        CALL SBLSET(IVX,XXBL,XXTR,NSIDE,NUMBL,CXXBL)
@@ -1619,11 +1736,11 @@ C===================================================
        CALL XBLSET(IVX,XXBL,XXTR,NSIDE,NUMBL,CXXBL)
       ENDIF
 C
-      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120) KPLOT+1
+      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120,130,140) KPLOT+1
       GO TO 500
 C
 C===================================================
- 147  CONTINUE
+ 164  CONTINUE
       IF(NINPUT.GE.3) THEN
        XMIN = RINPUT(1)
        XMAX = RINPUT(2)
@@ -1632,14 +1749,14 @@ C===================================================
        WRITE(*,9101) XMIN, XMAX, XDEL
  9101  FORMAT(/' Currently, Xmin,Xmax,Xdel =', 3F11.4,
      &        /' Enter new  Xmin,Xmax,Xdel: ', $ )
-       READ(*,*,ERR=147) XMIN, XMAX, XDEL
+       READ(*,*,ERR=164) XMIN, XMAX, XDEL
       ENDIF
 C
-      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120) KPLOT+1
+      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120,130,140) KPLOT+1
       GO TO 500
 C
 C===================================================
- 148  IF(KPLOT.EQ.0) THEN
+ 166  IF(KPLOT.EQ.0) THEN
        WRITE(*,*) 'No current plot'
        GO TO 500
       ENDIF
@@ -1652,7 +1769,7 @@ C
        WRITE(*,9201) YMIN, YMAX, YDEL
  9201  FORMAT(/' Currently, Ymin,Ymax,Ydel =', 3F11.4,
      &        /' Enter new  Ymin,Ymax,Ydel :    ', $ )
-       READ(*,*,ERR=140) YMIN, YMAX, YDEL
+       READ(*,*,ERR=160) YMIN, YMAX, YDEL
       ENDIF
 C
       IF     (KPLOT.EQ.1) THEN
@@ -1703,13 +1820,21 @@ CCC    RLDEL = YDEL
        BEMIN = YMIN
        BEMAX = YMAX
        BEDEL = YDEL
+      ELSE IF(KPLOT.EQ.13) THEN
+       MSMIN = YMIN
+       MSMAX = YMAX
+       MSDEL = YDEL
+      ELSE IF(KPLOT.EQ.14) THEN
+       MPMIN = YMIN
+       MPMAX = YMAX
+       MPDEL = YDEL
       ENDIF
 C
-      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,110) KPLOT+1
+      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120,130,140) KPLOT+1
       GO TO 500
 C
 C===================================================
- 150  IF(KPLOT.EQ.0) THEN
+ 168  IF(KPLOT.EQ.0) THEN
        WRITE(*,*) 'No current plot'
        GO TO 500
       ENDIF
@@ -1782,52 +1907,52 @@ CCC    RLDEL = YDEL
        BEDEL = YDEL
       ENDIF
 C
-      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120) KPLOT+1
+      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120,130,140) KPLOT+1
       GO TO 500
 C
 C===================================================
- 152  LBLGRD = .NOT.LBLGRD
-      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120) KPLOT+1
+ 170  LBLGRD = .NOT.LBLGRD
+      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120,130,140) KPLOT+1
       GO TO 500
 C
 C===================================================
- 153  LBLSYM = .NOT.LBLSYM
-      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120) KPLOT+1
+ 172  LBLSYM = .NOT.LBLSYM
+      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120,130,140) KPLOT+1
       GO TO 500
 C
 C===================================================
- 154  LVLAB = .NOT.LVLAB
-      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120) KPLOT+1
+ 174  LVLAB = .NOT.LVLAB
+      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120,130,140) KPLOT+1
       GO TO 500
 C
 C===================================================
- 155  LCLIP = .NOT.LCLIP
-      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120) KPLOT+1
+ 176  LCLIP = .NOT.LCLIP
+      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120,130,140) KPLOT+1
       GO TO 500
 C
 C===================================================
- 157  LFREQP = .NOT.LFREQP
-      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120) KPLOT+1
+ 178  LFREQP = .NOT.LFREQP
+      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120,130,140) KPLOT+1
       GO TO 500
 C
 C===================================================
- 160  IF(LPLOT) CALL PLEND
+ 182  IF(LPLOT) CALL PLEND
       LPLOT = .FALSE.
       CALL REPLOT(IDEVRP)
       GO TO 500
 C
 C===================================================
- 165  IF(NINPUT.GE.1) THEN
+ 184  IF(NINPUT.GE.1) THEN
        SIZE = RINPUT(1)
       ELSE
        WRITE(*,*) 'Current plot-object size =', SIZE
        CALL ASKR('Enter new plot-object size^',SIZE)
       ENDIF
 C
-      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120) KPLOT+1
+      GO TO (500,10,20,30,40,50,60,70,80,90,100,110,120,130,140) KPLOT+1
       GO TO 500
 C===================================================
- 170  IF(LPLOT) THEN
+ 186  IF(LPLOT) THEN
        CALL ANNOT(CH)
       ELSE
        WRITE(*,*) 'No active plot to annotate'

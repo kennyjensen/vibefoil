@@ -60,7 +60,7 @@ C
      &            THICKB,CAMBRB )
 C
       CALL NEWPEN(2)
-      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
       LGEOPL = .FALSE.
 C
       GO TO 5
@@ -158,7 +158,7 @@ C
      &            THICKB,CAMBRB )
 C
       CALL NEWPEN(2)
-      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
       LGEOPL = .FALSE.
 C
       GO TO 5
@@ -202,7 +202,7 @@ C
      &            THICKB,CAMBRB )
 C
       CALL NEWPEN(2)
-      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
       LGEOPL = .FALSE.
       LGSAME = .FALSE.
 C

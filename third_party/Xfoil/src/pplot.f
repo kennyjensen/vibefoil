@@ -34,6 +34,7 @@ C
 C***********************************************************************
 C
       PROGRAM PPLOT
+      IMPLICIT REAL (A-H,M,O-Z)
       INCLUDE 'PPLOT.INC'
 C
       LOGICAL ERROR, LGETFN, LERR
@@ -45,6 +46,7 @@ C
       PI = 4.0*ATAN(1.0)
 C
       CALL PLINITIALIZE
+      CALL PLPORT
 C
 C...Get default settings
       CALL GETDEF
@@ -110,7 +112,7 @@ C
  1010 FORMAT(/' 11  Re-read current polars'
      &       /' 12  Re-read current reference data')
  1020 FORMAT(/' 13  Plot Vz(V)'
-     &       /' 19  Set aicraft parameters')
+     &       /' 19  Set aircraft parameters')
  1050 FORMAT(/'   Select option (0=quit): ', $)
 C
       READ(*,*,ERR=5) IOPTS
@@ -149,7 +151,7 @@ C
      &    REYN(IP),MACH(IP),ACRIT(1,IP),XTRIP(1,IP),
      &    PTRAT(IP),ETAP(IP),
      &    NAME(IP),IRETYP(IP),IMATYP(IP),
-     &    ISX,NBL(IP),CPOLSD(1,1,1,IP),
+     &    ISX,NBL(IP),CPOLSD(1,1,1,IP),CPOLEL(1,1,1,IP),
      &    CODE,VERSION )
         IF(ERROR) THEN
          WRITE(*,*) 'Polar file READ error'
@@ -265,31 +267,66 @@ C=============================================
 C---- Make the CD(CL) Plot
  30   IF (NPOL.EQ.0 .AND. NDAT.EQ.0) GO TO 5
 C
-C---- sort each polar by increasing alpha
-      DO IP=1, NPOL
-        CALL PLRSRT(IP,IAL)
-      ENDDO
-C
+      IF(LSORT) THEN
+C----- sort each polar by increasing alpha
+       DO IP=1, NPOL
+         CALL PLRSRT(IP,IAL)
+       ENDDO
+      ENDIF
+
 C---- set modified polars
       DO IP = 1, NPOL
         DO IA = 1, NA(IP)
           DO I = 1, IPTOT
             CPOLO(IA,I,IP) = CPOL(IA,I,IP)
           ENDDO
-          CPOLO(IA,ICM,IP) = CPOL(IA,ICM,IP)
-     &                     + DXMREF(IP)*CPOL(IA,ICL,IP)
-C
-          CPOLO(IA,ICD,IP) = CPOL(IA,ICD,IP)
-     &                     + CDLMOD(1,IP)
-     &                     + CDLMOD(2,IP)*CPOL(IA,ICL,IP)
-     &                     + CDLMOD(3,IP)*CPOL(IA,ICL,IP)**2
-          IF(CDLMOD(4,IP) .NE. 1.0) THEN
-           CPOLO(IA,ICL,IP) = ABS(CPOL(IA,ICL,IP))**CDLMOD(4,IP)
+
+cc        CM_plotted = CM + DXMREF*CL
+cc        CD_plotted = M^expM * (CD  +  CD0 + CD1*CL + CD2*CL^2)*CL^expD
+cc        CL_plotted = M^expM *  CL^expL
+
+          CM = CPOL(IA,ICM,IP)
+          CD = CPOL(IA,ICD,IP)
+          CL = CPOL(IA,ICL,IP)
+          MA = CPOL(IA,IMA,IP)
+
+          CD0 = CDLMOD(1,IP)
+          CD1 = CDLMOD(2,IP)
+          CD2 = CDLMOD(3,IP)
+          EXPM = CDLMOD(4,IP)
+          EXPL = CDLMOD(5,IP)
+          EXPD = CDLMOD(6,IP)
+
+          IF(EXPM .EQ. 0.0) THEN
+           MAXM = 1.0
+          ELSE
+           MAXM = MA**EXPM
           ENDIF
-          IF(CDLMOD(5,IP) .NE. 0.0) THEN
-           CPOLO(IA,ICD,IP) = CPOLO(IA,ICD,IP)
-     &                      * ABS(CPOL(IA,ICL,IP))**CDLMOD(5,IP)
+
+          IF    (EXPL .EQ. 0.0) THEN
+           CLXL = 1.0
+          ELSEIF(EXPL .EQ. 1.0) THEN
+           CLXL = CL
+          ELSEIF(EXPL .LT. 0.0 .AND. CL .EQ. 0.0) THEN
+           CLXL = 1.0
+          ELSE
+           CLXL = ABS(CL)**EXPL
           ENDIF
+
+          IF    (EXPD .EQ. 0.0) THEN
+           CLXD = 1.0
+          ELSEIF(EXPD .EQ. 1.0) THEN
+           CLXD = CL
+          ELSEIF(EXPD .LT. 0.0 .AND. CL .EQ. 0.0) THEN
+           CLXD = 1.0
+          ELSE
+           CLXD = ABS(CL)**EXPD
+          ENDIF
+
+          CPOLO(IA,ICM,IP) = CM + DXMREF(IP)*CL
+          CPOLO(IA,ICD,IP) = MAXM*(CD + CD0 + CD1*CL + CD2*CL**2)*CLXD
+          CPOLO(IA,ICL,IP) = MAXM* CLXL
+
         ENDDO
       ENDDO
 
@@ -317,14 +354,14 @@ c      write(*,*)
      &            NFX,NDAT,NF,XYREF,LABREF,IFCOL,IFSYM,
      &            ISX,NBL,CPOLSD, IMATYP,IRETYP,
      &            TITLE,CODE,VERSION,
-     &            PLOTAR, XCD,XAL,XOC, CH,CH2, CDLMOD(4,1),
+     &            PLOTAR, XCD,XAL,XOC, CH,CH2, CDLMOD(5,1),
      &            LGRID,LCDW,LLIST,LEGND,LAECEN,LCDH,LCMDOT,
      &            CPOLPLF, CCLEN,NCLEN )
 C
 c      CALL POLFIT(NAX,NPOL,NA,CPOLO,
 c     &            REYN,MACH,ACRIT, NAME ,ICOL,ILIN,
 c     &            IMATYP,IRETYP,
-c     &            PLOTAR, XCD,XAL,XOC, CH,CH2, CDLMOD(4,1),
+c     &            PLOTAR, XCD,XAL,XOC, CH,CH2, CDLMOD(5,1),
 c     &            CPOLPLF, CCLEN,NCLEN )
 C
       GO TO 5
@@ -365,14 +402,16 @@ C=============================================
 C---- get modifiers
  90   CONTINUE
       WRITE(*,4900)
- 4900 FORMAT(/' CD_plotted  = (CD  +  CD0 + CD1*CL + CD2*CL^2)*CL^expD'
-     &       /' CL_plotted  =  CL^exp')
+ 4900 FORMAT(
+     &/' CD_plotted = M^expM * (CD  +  CD0 + CD1*CL + CD2*CL^2)*CL^expD'
+     &/' CL_plotted = M^expM *  CL^expL')
       DO IP = 1, NPOL
- 91     WRITE(*,4910) IP, (CDLMOD(K,IP), K=1, 5)
- 4910   FORMAT(/' Polar', I3,'...'
-     &         /' Currently CD0,CD1,CD2,exp,expD = ', 3F10.6, 2F10.4,
-     &         /' Input new CD0,CD1,CD2,exp,expD:    ', $)
-        CALL READR(5,CDLMOD(1,IP),ERROR)
+ 91     WRITE(*,4910) IP, (CDLMOD(K,IP), K=1, 6)
+ 4910   FORMAT(
+     &   /' Polar', I3,'...'
+     &   /' Currently CD0,CD1,CD2,expM,expL,expD = ', 3F10.6, 3F10.4,
+     &   /' Input new CD0,CD1,CD2,expM,expL,expD:    ', $)
+        CALL READR(6,CDLMOD(1,IP),ERROR)
         IF(ERROR) GO TO 91
       ENDDO
       GO TO 5
@@ -381,10 +420,12 @@ C=============================================
 C---- Make the Vz(V) Plot
  130  IF (NPOL.EQ.0 .AND. NDAT.EQ.0) GO TO 5
 C
-C---- sort each polar by increasing alpha
-      DO IP=1, NPOL
-        CALL PLRSRT(IP,IAL)
-      ENDDO
+      IF(LSORT) THEN
+C----- sort each polar by increasing alpha
+       DO IP=1, NPOL
+         CALL PLRSRT(IP,IAL)
+       ENDDO
+      ENDIF
 C
 C---- set V and Vz for plotting
       DO IP = 1, NPOL
@@ -445,10 +486,11 @@ C---- set 0.3" left,bottom margins
       CALL NEWFACTOR(SIZE)
       CALL PLOT(6.0*CH,6.0*CH,-3)
 C
-      CALL VEPPLT(NAX,NPOL,NA,VPOLO, ISX,NBL,
+C---- set trip locations for label
+      CALL VEPPLT(NAX,NPOL,NA,VPOLO,
      &            REYN,MACH,ACRIT,PTRAT,ETAP,
      &            NAME ,ICOL,ILIN,
-     &            IMATYP,IRETYP,
+     &            ISX,NBL,CPOLSD, IMATYP,IRETYP,
      &            TITLE,CODE,VERSION,
      &            PLOTAR, CH,CH2, 
      &            LGRID,LLIST,LEGND,
@@ -628,6 +670,9 @@ C
 C---- automatic scaling for axes
       LAUTO  = .TRUE.
 C
+C---- sort polars by alpha
+      LSORT = .TRUE.
+C
       CPOLPLF(1,ICL) = 0.0   ! CLmax
       CPOLPLF(2,ICL) = 1.5   ! CLmin
       CPOLPLF(3,ICL) = 0.5   ! Axis CL increment
@@ -654,8 +699,9 @@ C---- Set CL,CD modifiers
         CDLMOD(1,IP) = 0.
         CDLMOD(2,IP) = 0.
         CDLMOD(3,IP) = 0.
-        CDLMOD(4,IP) = 1.0
-        CDLMOD(5,IP) = 0.
+        CDLMOD(4,IP) = 0.
+        CDLMOD(5,IP) = 1.0
+        CDLMOD(6,IP) = 0.
       ENDDO
 C
 cC---- Set CL,CD quadratic-fit polar parameters
@@ -874,6 +920,7 @@ C
       LCOLH = IDEVRP .EQ. 4
 C
       WRITE(*,1000)
+     &    LSORT,
      &    LAUTO,
      &    LCDW,
      &    LLIST,
@@ -892,7 +939,8 @@ C
      &      // '  5   Plot Layout'
      &       / '  6   Plot Title'
      &       / '  7   Plot Size'
-     &      // ' 10',L3,' autoscaling?'
+     &      // '  9',L3,' sort polars by alpha?'
+     &       / ' 10',L3,' autoscaling?'
      &       / ' 11',L3,' plot pressure-CD?'
      &       / ' 12',L3,' plot airfoil list?'
      &       / ' 13',L3,' plot CL-CD legend box?'
@@ -989,6 +1037,9 @@ C--- Get plot size
         READ(*,1005)  LINE
         IF(LINE.EQ.' ') GO TO 1
         READ(LINE,*,ERR=60) SIZE
+C
+      ELSE IF(OPTION.EQ.'9 ') THEN
+        LSORT = .NOT. LSORT
 C
       ELSE IF(OPTION.EQ.'10') THEN
         LAUTO = .NOT. LAUTO

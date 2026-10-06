@@ -20,12 +20,12 @@ C
 C---- include polar variable indexing parameters
       INCLUDE 'PINDEX.INC'
 C
-      PARAMETER (IQX=370, IPX=5, ISX=2)
+      PARAMETER (IQX=601, IPX=5, ISX=2)
       PARAMETER (IWX=IQX/8+2)
       PARAMETER (IBX=4*IQX)
       PARAMETER (IZX=IQX+IWX)
       PARAMETER (IVX=IQX/2 + IWX + 50)
-      PARAMETER (NAX=800,NPX=12,NFX=128)
+      PARAMETER (NAX=800,NPX=20,NFX=128)
       PARAMETER (NTX=2*IBX)
       CHARACTER*32 LABREF
       CHARACTER*64 FNAME, PFNAME, PFNAMX, ONAME, PREFIX, OCNAME
@@ -39,11 +39,11 @@ C
      &        LPLCAM, LQSYM ,LGSYM , LQGRID, LGGRID, LGTICK, 
      &        LQSLOP,LGSLOP, LCSLOP, LQSPPL, LGEOPL, LGPARM,
      &        LCPGRD,LBLGRD, LBLSYM, LCMINP, LHMOMP, LFREQP,
-     &        LCPINV
+     &        LCPINV,LPPORT
       LOGICAL LPLOT,LSYM,LIQSET,LCLIP,LVLAB,LCURS,LLAND
       LOGICAL LPGRID, LPCDW, LPLIST, LPLEGN, LAECEN, LPCDH, LPCMDOT
       LOGICAL TFORCE
-      REAL NX, NY, MASS, MINF1, MINF, MINF_CL, MVISC, MACHP1
+      REAL NX, NY, MASS, MDEF, KDEF, MINF1, MINF, MINF_CL, MVISC, MACHP1
       INTEGER RETYP, MATYP, AIJPIV
       CHARACTER*1 VMXBL
 C
@@ -85,7 +85,7 @@ C
       COMMON/CI01/ IQ1,IQ2,NSP,NQSP,KQTARG,IACQSP,NC1,NNAME,NPREFIX
       COMMON/CR09/ ADEG,ALFA,AWAKE,MVISC,AVISC,
      &             XCMREF,YCMREF,
-     &             CL,CM,CD,CDP,CDF,CL_ALF,CL_MSQ,
+     &             CL,CM,CD,CDP,CDF,CL_ALF,CL_MSQ,CLF,
      &             PSIO,CIRC,COSA,SINA,QINF,
      &             GAMMA,GAMM1,
      &             MINF1,MINF,MINF_CL,TKLAM,TKL_MSQ,CPSTAR,QSTAR,
@@ -96,10 +96,12 @@ C
      &             IMATYP(NPX),IRETYP(NPX), NXYPOL(NPX),
      &             NPOLREF, NDREF(4,NPX),
      &             IPOL(IPTOT), NIPOL, NIPOL0,
-     &             JPOL(JPTOT), NJPOL
+     &             JPOL(JPTOT), NJPOL,
+     &             KPOL(KPTOT), NKPOL
       COMMON/CR10/ XPREF(IQX),CPREF(IQX), VERSPOL(NPX),
      &             CPOL(NAX,IPTOT,NPX),
      &             CPOLSD(NAX,ISX,JPTOT,NPX),
+     &             CPOLEL(NAX,1  ,KPTOT,NPX),
      &             CPOLXY(IQX,2,NPX),
      &             MACHP1(NPX),
      &             REYNP1(NPX),
@@ -115,7 +117,7 @@ C
       COMMON/CI04/ N,NB,NW,NPAN,IST,KIMAGE,KDELIM,
      &             ITMAX,NSEQEX,RETYP,MATYP,AIJPIV(IQX),
      &             IDEV,IDEVRP,IPSLU,NCOLOR,
-     &             ICOLS(ISX),NOVER, NCM,NTK
+     &             ICOLS(ISX),NOVER, NCM,NTK, NTS
       COMMON/CR13/ SIZE,SCRNFR,PLOTAR, PFAC,UFAC,QFAC,VFAC,
      &             XWIND,YWIND,
      &             XPAGE,YPAGE,XMARG,YMARG,
@@ -137,7 +139,7 @@ C
      &             LPLOT,LSYM,LIQSET,LCLIP,LVLAB,LCURS,LLAND,
      &             LPGRID,LPCDW,LPLIST,LPLEGN,LAECEN,LPCDH,LPCMDOT,
      &             LCMINP, LHMOMP, LFREQP,
-     &             LCPINV
+     &             LCPINV,LPPORT
       COMMON/CR14/ XB(IBX),YB(IBX),
      &             XBP(IBX),YBP(IBX),SB(IBX),SNEW(5*IBX),
      &             XBF,YBF,XOF,YOF,HMOM,HFX,HFY,
@@ -151,7 +153,9 @@ C
 C
       COMMON/CR15/ XSSI(IVX,ISX),UEDG(IVX,ISX),UINV(IVX,ISX),
      &             MASS(IVX,ISX),THET(IVX,ISX),DSTR(IVX,ISX),
+     &             MDEF(IVX,ISX),PDEF(IVX,ISX),KDEF(IVX,ISX),
      &             CTAU(IVX,ISX),DELT(IVX,ISX),TSTR(IVX,ISX),
+     &             DSSR(IVX,ISX),
      &             USLP(IVX,ISX),GUXQ(IVX,ISX),GUXD(IVX,ISX),
      &             TAU(IVX,ISX),DIS(IVX,ISX),CTQ(IVX,ISX),
      &             VTI(IVX,ISX),
@@ -394,6 +398,7 @@ C   ICOLS(1)    color indices of top side
 C   ICOLS(2)    color indices of bottom side
 C
 C   NOVER       number of airfoils overlaid on GDES geometry plot
+C   NTS         number of points per spline interval for airfoil plots
 C
 C   SCRNFR      screen fraction taken up by initial plot window
 C   SIZE        plot width (inches)

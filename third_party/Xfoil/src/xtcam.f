@@ -866,7 +866,7 @@ C
      &            EI11BT,EI22BT,APX1BT,APX2BT,
      &            THICKB,CAMBRB )
 C
-      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
       CALL PLNEWP('magenta')
 C
       LGEOPL = .FALSE.
@@ -889,8 +889,8 @@ C--- find the current buffer airfoil camber and thickness
       CALL GETMAX(XTK,YTK,YTKP,NTK,TXMAX,TYMAX)
 C
       WRITE(*,1000) 2.0*TYMAX,TXMAX, CYMAX,CXMAX
- 1000 FORMAT( ' Max thickness = ',F8.4,'  at x = ',F7.3,
-     &       /' Max camber    = ',F8.4,'  at x = ',F7.3)
+ 1000 FORMAT( ' Max thickness = ',F10.6,'  at x = ',F8.4,
+     &       /' Max camber    = ',F10.6,'  at x = ',F8.4)
 C
       RETURN
       END ! TCBUF
@@ -943,8 +943,8 @@ C
 cc      IPLT = 1
 cc      CALL PLOTC
 C
- 1000 FORMAT(/' Max thickness = ',F8.4,'  at x = ',F7.3,
-     &       /' Max camber    = ',F8.4,'  at x = ',F7.3/)
+ 1000 FORMAT( ' Max thickness = ',F10.6,'  at x = ',F8.4,
+     &       /' Max camber    = ',F10.6,'  at x = ',F8.4)
 C
       RETURN
       END ! TCSCAL

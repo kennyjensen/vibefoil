@@ -24,7 +24,7 @@ C
 C***********************************************************************
 C --- Xplot11 3D routines
 C
-C     Version 4.46 11/28/01
+C     Version 4.56 01/16/23
 C
 C     Note:  These are routine(s) that provide some means of displaying 
 C            3D objects in conjunction with the usual XPlot11 routines.  
@@ -35,8 +35,8 @@ C***********************************************************************
 
 
       subroutine VIEW(X,Y,Z,N,XP,YP,XOB,YOB,ZOB,ROBINV,XUP,YUP,ZUP)
-      DIMENSION X(N), Y(N), Z(N)
-      DIMENSION XP(N), YP(N)
+      REAL X(N), Y(N), Z(N)
+      REAL XP(N), YP(N)
 C........................................................................
 C
 C        Projects one or more points in 3-D Cartesian space
@@ -118,9 +118,9 @@ C
 
 
       subroutine VIEWR(R,N,RP,ROB,ROBINV,RUP)
-      DIMENSION R(3,N)
-      DIMENSION RP(3,N)
-      DIMENSION ROB(3), RUP(3)
+      REAL R(3,N)
+      REAL RP(3,N)
+      REAL ROB(3), RUP(3)
 C........................................................................
 C
 C     Same as VIEW, but vectors are passed in R(1:3,...) array form.
@@ -201,7 +201,7 @@ C             ROTY  rotation of viewpoint about new Y axis (deg)
 C
 C...Output:   RMAT  3x3 rotation and perspective matrix
 C
-      DIMENSION   RMAT(3,3)
+      REAL   RMAT(3,3)
 C
       DTR = 4.0*ATAN(1.0)/180.0
       COSZ = COS(ROTZ*DTR)
@@ -251,7 +251,7 @@ C             RDIST distance from origin to observer along viewpoint
 C
 C...Output:   RMAT  4x4 rotation and perspective matrix
 C
-      DIMENSION  AMAT(4,4),PMAT(4,4), RMAT(4,4)
+      REAL  AMAT(4,4),PMAT(4,4), RMAT(4,4)
 C
       DTR = 4.0*ATAN(1.0)/180.0
       COSZ = COS(ROTZ*DTR)
@@ -338,8 +338,8 @@ C             NPTS     number of points in arrays
 C
 C...Output:   PTS_OUT  array (3xNPTS) of transformed points 
 C
-      DIMENSION  PTS_IN(3,NPTS), PTS_OUT(3,NPTS)
-      DIMENSION  RMAT(4,4)
+      REAL  PTS_IN(3,NPTS), PTS_OUT(3,NPTS)
+      REAL  RMAT(4,4)
 C
       DO I = 1, NPTS
 C
@@ -376,8 +376,8 @@ C...Note:     You may need to translate your points to recenter them
 C             about the origin to get good perspective views.  Points 
 C             off to the side get pretty distorted...
 C
-      DIMENSION  PTS_IN(3,NPTS), PTS_OUT(3,NPTS)
-      DIMENSION  RMAT(4,4), PTMP(4), PPTMP(4)
+      REAL PTS_IN(3,NPTS), PTS_OUT(3,NPTS)
+      REAL RMAT(4,4), PTMP(4), PPTMP(4)
 C
       DO I = 1, NPTS
 C

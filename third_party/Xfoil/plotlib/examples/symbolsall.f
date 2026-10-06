@@ -32,7 +32,7 @@ C---Decide about what devices to plot to
       WRITE(*,*) 'Font plot test'
       WRITE(*,*) ' You may just <cr> for each question to take defaults'
       WRITE(*,*) ' '
-   1  WRITE(*,*) ' Enter -1 for no PS, 0 for B&W PS, 1 for color PS'
+   1  WRITE(*,*) ' Enter -1 no PS, 0 B&W PS, 1 color PS, 2 color PDF'
       READ(*,1000,end=2000) INP
       itype = -1
       if(INP.ne.' ') then
@@ -40,7 +40,8 @@ C---Decide about what devices to plot to
       endif
       IDEV = 1
       IF(itype.eq.0) IDEV = 3
-      IF(itype.ge.1) IDEV = 5
+      IF(itype.eq.1) IDEV = 5
+      IF(itype.ge.2) IDEV = 9
 C
       WRITE(*,*) ' '
       WRITE(*,*) ' Enter  0 for default  PSfile'

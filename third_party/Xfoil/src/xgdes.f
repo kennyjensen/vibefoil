@@ -116,14 +116,17 @@ C--------------------------------------------------------
      &//'   GSET     Set buffer  airfoil <== current airfoil'
      & /'   eXec     Set current airfoil <== buffer  airfoil'
      & /'   SYMM     Toggle y-symmetry flag'
-     &//'   ADEG r   Rotate about origin (degrees)'
+     &//'   Adeg r   Rotate about origin (degrees)'
      & /'   ARAD r   Rotate about origin (radians)'
      & /'   Tran rr  Translate'
      & /'   Scal r   Scale about origin'
+     & /'   SYTB rr  Scale top and bottom y values separately'
      & /'   LINS rr. Linearly-varying y scale'
      & /'   DERO     Derotate (set chord line level)'
-     &//'   TGAP rr  Change trailing edge gap'
+     &//'   TGAP rrr Change trailing edge gap'
      & /'   LERA rr  Change leading edge radius'
+     & /'   SQTE     Make TE gap square to TE bisector'
+     & /'   CIRC i   Add TE circle'
      &//'   TCPL     Toggle thickness and camber plotting'
      & /'   TFAC rr  Scale existing thickness and camber'
      & /'   TSET rr  Set new thickness and camber'
@@ -149,7 +152,8 @@ C--------------------------------------------------------
      & /'   Blow     Blowup plot region'
      & /'   Rese     Reset plot scale and origin'
      & /'   Wind     Plot window adjust via cursor and keys'
-     &//'   TSIZ r   Change tick-mark size'
+     &//'   NSPL i   Number of spline sub-intervals for airfoil plot'       
+     & /'   TSIZ r   Change tick-mark size'
      & /'   TICK     Toggle node tick-mark plotting'
      & /'   GRID     Toggle grid plotting'
      & /'   GPAR     Toggle geometric parameter plotting'
@@ -213,8 +217,10 @@ C
 C=================================================
 C---- rotate airfoil by degrees
       ELSEIF(COMAND.EQ.'ADEG' .OR.
+     &       COMAND.EQ.'A   ' .OR.
      &       COMAND.EQ.'ARAD'     ) THEN
-       IF(COMAND.EQ.'ADEG') THEN
+       IF(COMAND.EQ.'ADEG' .OR.
+     &    COMAND.EQ.'A   '      ) THEN
          IF(NINPUT.GE.1) THEN
           ADEG = RINPUT(1)
          ELSE
@@ -242,9 +248,10 @@ C
        APX2BT = APX2BT - ARAD
 C
        CALL NEWPEN(2)
-       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
        CALL PLNEWP('magenta')
        LGEOPL = .FALSE.
+       LGSAME = .FALSE.
 C
 C--------------------------------------------------------
       ELSEIF(COMAND.EQ.'TRAN' .OR.
@@ -268,7 +275,7 @@ C--------------------------------------------------------
        ENDDO
 C
        CALL NEWPEN(2)
-       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
        CALL PLNEWP('magenta')
        LGEOPL = .FALSE.
        LGSAME = .FALSE.
@@ -298,11 +305,20 @@ C
          CALL ASKR('Enter y scale factor^',YYFAC)
         ENDIF
        ENDIF
-C
+
+c       do i = 1, nb
+c         write(*,*) i, xb(i), yb(i)
+c       enddo
+
        DO I=1, NB
          XB(I) = XB(I)*XXFAC
          YB(I) = YB(I)*YYFAC
        ENDDO
+
+c       do i = 1, nb
+c         write(*,*) i, xb(i), yb(i)
+c       enddo
+
 C
 C----- re-order if necessary to maintain counterclockwise ordering 
        IF(XXFAC*YYFAC .LT. 0.0) THEN
@@ -328,7 +344,56 @@ C
      &             THICKB,CAMBRB )
 C
        CALL NEWPEN(2)
-       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
+       CALL PLNEWP('magenta')
+       LGEOPL = .FALSE.
+       LGSAME = .FALSE.
+C
+C--------------------------------------------------------
+      ELSEIF(COMAND.EQ.'SYTB') THEN
+       IF(NINPUT.GE.2) THEN
+        YTFAC = RINPUT(1)
+        YBFAC = RINPUT(2)
+       ELSEIF(NINPUT.EQ.1) THEN
+        YTFAC = RINPUT(1)
+        YBFAC = 1.0
+        CALL ASKR('Enter bottom y scale factor^',YBFAC)
+       ELSE
+        YTFAC = 1.0
+        YBFAC = 1.0
+        CALL ASKR('Enter top y scale factor^',YTFAC)
+        CALL ASKR('Enter bottom y scale factor^',YBFAC)
+       ENDIF
+C
+       CALL LEFIND(SBLE,XB,XBP,YB,YBP,SB,NB)
+       XLE = SEVAL(SBLE,XB,XBP,SB,NB)
+       YLE = SEVAL(SBLE,YB,YBP,SB,NB)
+       XTE = 0.5*(XB(1) + XB(NB))
+       YTE = 0.5*(YB(1) + YB(NB))
+       DO I=1, NB
+         XOC = (XB(I)-XLE) / (XTE-XLE)
+         YAX = YLE*(1.0-XOC) + YTE*XOC
+         DY = YB(I) - YAX
+         IF(SB(I) .LT. SBLE) THEN
+          YB(I) = YAX + DY*YTFAC
+         ELSE
+          YB(I) = YAX + DY*YBFAC
+         ENDIF
+       ENDDO
+C
+C----- re-spline new geometry
+       CALL SCALC(XB,YB,SB,NB)
+       CALL SEGSPL(XB,XBP,SB,NB)
+       CALL SEGSPL(YB,YBP,SB,NB)
+C
+       CALL GEOPAR(XB,XBP,YB,YBP,SB,NB,W1,
+     &             SBLE,CHORDB,AREAB,RADBLE,ANGBTE,
+     &             EI11BA,EI22BA,APX1BA,APX2BA,
+     &             EI11BT,EI22BT,APX1BT,APX2BT,
+     &             THICKB,CAMBRB )
+C
+       CALL NEWPEN(2)
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
        CALL PLNEWP('magenta')
        LGEOPL = .FALSE.
        LGSAME = .FALSE.
@@ -380,7 +445,7 @@ C
      &             THICKB,CAMBRB )
 C
        CALL NEWPEN(2)
-       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
        CALL PLNEWP('magenta')
        LGEOPL = .FALSE.
        LGSAME = .FALSE.
@@ -408,10 +473,88 @@ C
      &             THICKB,CAMBRB )
 C
        CALL NEWPEN(2)
-       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
        CALL PLNEWP('magenta')
        LGEOPL = .FALSE.
        LGSAME = .FALSE.
+C
+C--------------------------------------------------------
+      ELSEIF(COMAND.EQ.'XCEN') THEN
+ 50    CONTINUE
+       IF(NINPUT.GE.2) THEN
+         XOC = RINPUT(1)
+         YOT = RINPUT(2)
+       ELSE
+ 51      WRITE(*,1001) 'Enter center-point x/c: '
+         READ(*,*,ERR=51) XOC
+ 52      WRITE(*,1001) 'Enter center-point y/t: '
+         READ(*,*,ERR=52) YOT
+       ENDIF
+C
+       CALL LEFIND(SBLE,XB,XBP,YB,YBP,SB,NB)
+       XLE = SEVAL(SBLE,XB,XBP,SB,NB)
+       YLE = SEVAL(SBLE,YB,YBP,SB,NB)
+       XTE = 0.5*(XB(1) + XB(NB))
+       YTE = 0.5*(YB(1) + YB(NB))
+       CHBSQ = (XTE-XLE)**2 + (YTE-YLE)**2
+
+       DO I = 1, NB
+         XOC1 = ( (XB(I)-XLE)*(XTE-XLE)
+     &          + (YB(I)-YLE)*(YTE-YLE) ) / CHBSQ
+         SB1 = SB(I)
+         IF(XOC1 .LE. XOC) GO TO 54
+       ENDDO
+       WRITE(*,*) 'x/c top point not found'
+ 54    CONTINUE
+       DO ITER = 1, 8
+         XB1  = SEVAL(SB1,XB,XBP,SB,NB)
+         YB1  = SEVAL(SB1,YB,YBP,SB,NB)
+         XBP1 = DEVAL(SB1,XB,XBP,SB,NB)
+         YBP1 = DEVAL(SB1,YB,YBP,SB,NB)
+         XOC1  = ( (XB1-XLE)*(XTE-XLE)
+     &           + (YB1-YLE)*(YTE-YLE) ) / CHBSQ
+         XOCP1 = (  XBP1    *(XTE-XLE)
+     &           +  YBP1    *(YTE-YLE) ) / CHBSQ
+         DSB1 = -(XOC1-XOC) / XOCP1
+         SB1 = SB1 + DSB1
+         IF(ABS(DSB1) .LT. (SB(NB)-SB(1))*1.0E-8) GO TO 541
+       ENDDO
+       WRITE(*,*) 'SB1 convergence failed'
+ 541   CONTINUE
+
+       DO I = NB, 1, -1
+         XOC2 = ( (XB(I)-XLE)*(XTE-XLE)
+     &          + (YB(I)-YLE)*(YTE-YLE) ) / CHBSQ
+         SB2 = SB(I)
+         IF(XOC2 .LE. XOC) GO TO 56
+       ENDDO
+       WRITE(*,*) 'x/c bot point not found'
+ 56    CONTINUE
+       DO ITER = 1, 8
+         XB2  = SEVAL(SB2,XB,XBP,SB,NB)
+         YB2  = SEVAL(SB2,YB,YBP,SB,NB)
+         XBP2 = DEVAL(SB2,XB,XBP,SB,NB)
+         YBP2 = DEVAL(SB2,YB,YBP,SB,NB)
+         XOC2  = ( (XB2-XLE)*(XTE-XLE)
+     &           + (YB2-YLE)*(YTE-YLE) ) / CHBSQ
+         XOCP2 = (  XBP2    *(XTE-XLE)
+     &           +  YBP2    *(YTE-YLE) ) / CHBSQ
+         DSB2 = -(XOC2-XOC) / XOCP2
+         SB2 = SB2 + DSB2
+         IF(ABS(DSB2) .LT. (SB(NB)-SB(1))*1.0E-8) GO TO 561
+       ENDDO
+       WRITE(*,*) 'SB2 convergence failed'
+ 561   CONTINUE
+
+       XBC = XB1*YOT + XB2*(1.0-YOT)
+       YBC = YB1*YOT + YB2*(1.0-YOT)
+
+       WRITE(*,*)
+       WRITE(*,5020) 'Top point  x,y =', XB1, YB1
+       WRITE(*,5020) 'y/t point  x,y =', XBC, YBC
+       WRITE(*,5020) 'Bot point  x,y =', XB2, YB2
+       WRITE(*,*)
+ 5020  FORMAT(1X, A, 2G15.6)
 C
 C--------------------------------------------------------
       ELSEIF(COMAND.EQ.'TGAP') THEN
@@ -420,6 +563,59 @@ C
 C--------------------------------------------------------
       ELSEIF(COMAND.EQ.'LERA') THEN
        CALL LERAD(RINPUT,NINPUT)
+C
+C--------------------------------------------------------
+      ELSEIF(COMAND.EQ.'SQTE') THEN
+       CALL SQTE(XB,XBP,YB,YBP,SB,NB,XBT,YBT)
+
+C----- set and re-spline new geometry
+       DO I = 1, NB
+         XB(I) = XBT(I)
+         YB(I) = YBT(I)
+       ENDDO
+
+       CALL SCALC(XB,YB,SB,NB)
+       CALL SEGSPL(XB,XBP,SB,NB)
+       CALL SEGSPL(YB,YBP,SB,NB)
+C
+       CALL GEOPAR(XB,XBP,YB,YBP,SB,NB,W1,
+     &             SBLE,CHORDB,AREAB,RADBLE,ANGBTE,
+     &             EI11BA,EI22BA,APX1BA,APX2BA,
+     &             EI11BT,EI22BT,APX1BT,APX2BT,
+     &             THICKB,CAMBRB )
+C
+       CALL NEWPEN(2)
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
+       CALL PLNEWP('magenta')
+       LGEOPL = .FALSE.
+       LGSAME = .FALSE.
+C
+C--------------------------------------------------------
+      ELSEIF(COMAND.EQ.'CIRC') THEN
+       NHCIRC = 15
+       CALL TECIRC(XB,XBP,YB,YBP,SB,NB,XBT,YBT,NHCIRC)
+
+C----- set and re-spline new geometry
+       DO I = 1, NB
+         XB(I) = XBT(I)
+         YB(I) = YBT(I)
+       ENDDO
+
+       CALL SCALC(XB,YB,SB,NB)
+       CALL SEGSPL(XB,XBP,SB,NB)
+       CALL SEGSPL(YB,YBP,SB,NB)
+C
+       CALL GEOPAR(XB,XBP,YB,YBP,SB,NB,W1,
+     &             SBLE,CHORDB,AREAB,RADBLE,ANGBTE,
+     &             EI11BA,EI22BA,APX1BA,APX2BA,
+     &             EI11BT,EI22BT,APX1BT,APX2BT,
+     &             THICKB,CAMBRB )
+C
+       CALL NEWPEN(2)
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
+       CALL PLNEWP('magenta')
+       LGEOPL = .FALSE.
+       LGSAME = .FALSE.
 C
 C--------------------------------------------------------
 cc      ELSEIF(COMAND.EQ.'TC  ') THEN
@@ -443,7 +639,7 @@ C--------------------------------------------------------
        ENDIF
        CALL TCSCAL(RINPUT,NINPUT)
        CALL NEWPEN(2)
-       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
        CALL PLNEWP('magenta')
        CALL PLTCAM('magenta')
        LGEOPL = .FALSE.
@@ -460,7 +656,7 @@ C--------------------------------------------------------
        ENDIF
        CALL TCSET(RINPUT,NINPUT)
        CALL NEWPEN(2)
-       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
        CALL PLNEWP('magenta')
        CALL PLTCAM('magenta')
        LGEOPL = .FALSE.
@@ -477,7 +673,7 @@ C--------------------------------------------------------
        ENDIF
        CALL HIPNT(RINPUT,NINPUT)
        CALL NEWPEN(2)
-       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
        CALL PLNEWP('magenta')
        CALL PLTCAM('magenta')
        LGEOPL = .FALSE.
@@ -592,7 +788,7 @@ C
      &             THICKB,CAMBRB )
 C
        CALL NEWPEN(2)
-       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
        CALL PLNEWP('magenta')
 C
        CALL CANG(XB,YB,NB,1, IMAX,AMAX)
@@ -663,7 +859,7 @@ C
      &             THICKB,CAMBRB )
 C
       CALL NEWPEN(2)
-      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
       CALL PLNEWP('magenta')
       LGEOPL = .FALSE.
 C
@@ -750,7 +946,7 @@ C
      &             THICKB,CAMBRB )
 C
        CALL NEWPEN(2)
-       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
        CALL PLNEWP('magenta')
        LGEOPL = .FALSE.
        LGSAME = .FALSE.
@@ -761,7 +957,11 @@ C--------------------------------------------------------
 C
 C--------------------------------------------------------
       ELSEIF(COMAND.EQ.'UNIT') THEN
-       CALL NORM(XB,XBP,YB,YBP,SB,NB)
+       CALL NORM(XB,XBP,YB,YBP,SB,NB,XSHIFT,YSHIFT,SCALE)
+       WRITE(*,1078) XSHIFT,YSHIFT, SCALE, 1.0/SCALE
+ 1078  FORMAT(/' Shifting airfoil by  Dx, Dy =', 2G14.6,
+     &        /' Scaling buffer airfoil by factor =', G14.6,
+     &         '  =  1 /', G14.6)
        LGSAME = .FALSE.
 C
 C----- re-spline new geometry
@@ -776,7 +976,7 @@ C
      &             THICKB,CAMBRB )
 C
        CALL NEWPEN(2)
-       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
        CALL PLNEWP('magenta')
        LGEOPL = .FALSE.
 C
@@ -858,6 +1058,19 @@ C
        ENDIF
 C
 C--------------------------------------------------------
+      ELSEIF(COMAND.EQ.'NSPL') THEN
+       IF(NINPUT.GE.1) THEN
+        NTS = IINPUT(1)
+       ELSE
+        WRITE(*,*)
+     &    'Current number of spline-plot sub-intervals =', NTS
+        CALL ASKI('Enter new number of plot sub-intervals^',NTS)
+        NTS = MAX( 1 , NTS )
+       ENDIF
+       CALL PLTINI
+       CALL PLOTG
+C
+C--------------------------------------------------------
       ELSEIF(COMAND.EQ.'TSIZ') THEN
        IF(NINPUT.GE.1) THEN
         GTICK = RINPUT(1)
@@ -933,9 +1146,9 @@ C
 C--------------------------------------------------------
       ELSEIF(COMAND.EQ.'SINT') THEN
        CALL SPLNXY(XB,XBP,YB,YBP,SB,NB)
-       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'cyan')
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'cyan')
        CALL NEWPEN(2)
-       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+       CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
        CALL PLNEWP('magenta')
        LGEOPL = .FALSE.
 C
@@ -1239,26 +1452,38 @@ C---- components of unit vector parallel to TE gap
        DXU = DXN / GAP
        DYU = DYN / GAP
       ELSE
-       DXU = -.5*(YBP(NB) - YBP(1))
-       DYU = 0.5*(XBP(NB) - XBP(1))
+       DXU = -0.5*(YBP(NB) - YBP(1))
+       DYU =  0.5*(XBP(NB) - XBP(1))
       ENDIF
-C
-      IF    (NINPUT .GE. 2) THEN
-       GAPNEW = RINPUT(1)
-       DOC    = RINPUT(2)
-      ELSEIF(NINPUT .GE. 1) THEN
-       GAPNEW = RINPUT(1)
-       DOC = 1.0
-       CALL ASKR('Enter blending distance/c (0..1)^',DOC)
-      ELSE
+
+      GAPNEW = GAP
+      DOC = 1.0
+      FTB = 0.0
+
+      GAPNEW = RINPUT(1)
+      DOC    = RINPUT(2)
+      FTB    = RINPUT(3)
+
+      IF(NINPUT .LT. 1) THEN
        WRITE(*,1000) GAP
  1000  FORMAT(/' Current gap =',F9.5)
-       GAPNEW = 0.0
+       GAPNEW = GAP
        CALL ASKR('Enter new gap^',GAPNEW)
+       NINPUT = 1
+      ENDIF
+
+      IF(NINPUT .LT. 2) THEN
        DOC = 1.0
        CALL ASKR('Enter blending distance/c (0..1)^',DOC)
+       NINPUT = 2
       ENDIF
-C
+
+      IF(NINPUT .LT. 3) THEN
+       FTB = 0.0
+       CALL ASKR('Enter top/bot blending split (-1 .. 0 ..+1)^',FTB)
+       NINPUT = 3
+      ENDIF
+
       DOC = MIN( MAX( DOC , 0.0 ) , 1.0 )
 C
       DGAP = GAPNEW - GAP
@@ -1280,11 +1505,11 @@ C------ thickness factor tails off exponentially away from trailing edge
         ENDIF
 C
         IF(SB(I).LE.SBLE) THEN
-         XB(I) = XB(I) + 0.5*DGAP*XOC*TFAC*DXU
-         YB(I) = YB(I) + 0.5*DGAP*XOC*TFAC*DYU
+         XB(I) = XB(I) + 0.5*(1.0+FTB)*DGAP*XOC*TFAC*DXU
+         YB(I) = YB(I) + 0.5*(1.0+FTB)*DGAP*XOC*TFAC*DYU
         ELSE
-         XB(I) = XB(I) - 0.5*DGAP*XOC*TFAC*DXU
-         YB(I) = YB(I) - 0.5*DGAP*XOC*TFAC*DYU
+         XB(I) = XB(I) - 0.5*(1.0-FTB)*DGAP*XOC*TFAC*DXU
+         YB(I) = YB(I) - 0.5*(1.0-FTB)*DGAP*XOC*TFAC*DYU
         ENDIF
    30 CONTINUE
       LGSAME = .FALSE.
@@ -1299,7 +1524,7 @@ C
      &            EI11BT,EI22BT,APX1BT,APX2BT,
      &            THICKB,CAMBRB )
 C
-      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
       CALL PLNEWP('magenta')
 C
       LGEOPL = .FALSE.
@@ -1364,7 +1589,7 @@ C
       WRITE(*,1000) RADIUS
  1000 FORMAT(/' New LE radius = ',F7.5)
 C
-      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
       CALL PLNEWP('magenta')
 C
       LGEOPL = .FALSE.
@@ -1591,8 +1816,14 @@ C
       SIND = SIN(RDEF)
       COSD = COS(RDEF)
 C
+
+c      print *, 'n  ', nb
+c      print *, 'it1, it2', it1, it2
+c      print *, 'ib1, ib2', ib1, ib2
+
+
 C---- rotate flap points about the hinge point (XBF,YBF)
-      DO 10 I=1, NB
+      DO 10 I = 1, NB
         IF(I.GE.IT1 .AND. I.LE.IB1) GO TO 10
 C
         XBAR = XB(I) - XBF
@@ -1839,7 +2070,7 @@ C
       CALL NEWCOLORNAME('red')
       CALL PLSYMB((XBF-XOFF)*XSF,(YBF-YOFF)*YSF,0.5*SHT,1,0.0,0)
 C
-      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'magenta')
+      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'magenta')
       CALL PLNEWP('magenta')
 C
       LGEOPL = .FALSE.
@@ -1948,7 +2179,7 @@ C
       CALL PLFLUSH
 C
       CALL NEWPEN(2)
-      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,'black')
+      CALL PLTAIR(XB,XBP,YB,YBP,SB,NB, XOFF,XSF,YOFF,YSF,NTS,'black')
 C
       IF(LGTICK) THEN
 C----- draw tiny tick mark normal to airfoil surface at each panel node
@@ -2028,11 +2259,12 @@ C
 C
       CALL NEWPEN(2)
       YOF = YOFF + DYOFFC
-      CALL PLTAIR(XTK,XTKP,YTK,YTKP,STK,NTK,XOFF,XSF, YOF, YSF,COLT)
-      CALL PLTAIR(XTK,XTKP,YTK,YTKP,STK,NTK,XOFF,XSF,-YOF,-YSF,COLT)
+      CALL PLTAIR(XTK,XTKP,YTK,YTKP,STK,NTK,XOFF,XSF, YOF, YSF,NTS,COLT)
+      CALL PLTAIR(XTK,XTKP,YTK,YTKP,STK,NTK,XOFF,XSF,-YOF,-YSF,NTS,COLT)
 C--- Offset for camber includes offset for LE camber point
       YOFF1C = YOFF + DYOFFC + YCM(1)
-      CALL PLTAIR(XCM,XCMP,YCM,YCMP,SCM,NCM,XOFF,XSF, YOFF1C,YSF,COLC)
+      CALL PLTAIR(XCM,XCMP,YCM,YCMP,SCM,NCM,
+     &            XOFF,XSF, YOFF1C,YSF,NTS,COLC)
 C
       RETURN
       END ! PLTCAM
@@ -2217,7 +2449,8 @@ C
 
 
 
-      SUBROUTINE PLTAIR(XX,XXP,YY,YYP,SS,NN, XOFF,XSF,YOFF,YSF,COLOR)
+      SUBROUTINE PLTAIR(XX,XXP,YY,YYP,SS,NN,
+     &                  XOFF,XSF,YOFF,YSF,NT,COLOR)
       DIMENSION XX(NN), XXP(NN), YY(NN), YYP(NN), SS(NN)
       CHARACTER*(*) COLOR
 C-----------------------------
@@ -2226,9 +2459,6 @@ C-----------------------------
       LOGICAL LCOLOR
       XMOD(XTMP) = XSF * (XTMP - XOFF)
       YMOD(YTMP) = YSF * (YTMP - YOFF)
-C
-      NT = 20
-ccc      NT = 50
 C
       LCOLOR = COLOR(1:1) .NE. ' '
 C
@@ -2296,7 +2526,7 @@ C---- set new default filename
 C
       IF(LNORM) THEN
 C----- normalize to unit chord
-       CALL NORM(W1,W3,W2,W4,W5,NN)
+       CALL NORM(W1,W3,W2,W4,W5,NN,XSHIFT,YSHIFT,SCALE)
       ELSE
        CALL SCALC(W1,W2,W5,NN)
        CALL SEGSPL(W1,W3,W5,NN)
@@ -2339,7 +2569,7 @@ C
       CALL NEWPEN(2)
       CALL NEWCOLOR(ICOL)
 C
-      CALL PLTAIR(W1,W3,W2,W4,W5,NN, XOFF,XSF, YOFF,YSF,' ')
+      CALL PLTAIR(W1,W3,W2,W4,W5,NN, XOFF,XSF, YOFF,YSF,NTS,' ')
       CALL PLNEWP(' ')
 C
       CALL NEWCOLOR(ICOL0)

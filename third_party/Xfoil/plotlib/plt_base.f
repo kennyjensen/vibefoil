@@ -28,33 +28,120 @@ C
 C     Dedicated to perpetuating ugly PLOT-10 and Versatec software 
 C     into the 21st century...
 C
-C     This library supports interactive graphics and hardcopy output using
-C     the interfaces defined in gw_subs.f and ps_subs.f.  
+C     This library supports interactive screen graphics in gw_subs.f
+C     and hardcopy output using interfaces ps_subs.f and pdf_subs.f.  
 C     Currently:   gw_subs supports X window graphics in B&W or color
 C                  ps_subs supports B&W or color hardcopy to Postscript file
+C                  pdf_subs supports B&W or color hardcopy to PDF file
 C     
-C     Version 4.46 11/28/01
+C     Version 4.56 1/12/23
 C
 C     Notes:   
 C
 C***********************************************************************
  
-
       subroutine PLINITIALIZE
 C
 C---Plot package initialization routine
 C   Must be called before any color plot calls
-C
       include 'pltlib.inc'
 C
+cc      print *, 'plinitialize'
+c---- rgb factor for making a darker version of user-specified color
+      COL12FAC = 0.9
+
+c---- BoundingBox extra margin around perimeter, in points
+      BB_MARG = 3.0
+
+c---- Pen width limit for NEWPEN
+      I_PEN_MAX = 12
+
+c---- PS output Portrait/Landscape orientation flag
+      LP_PORT = .FALSE.   ! PS/PDF orientation based on graphics window
+ccc   LP_PORT = .TRUE.    ! PS/PDF orientation is forced to be Portrait
+
       GX_SIZ = 1
       GY_SIZ = 1
 C---Check for user default for background and set up a colormap
       call gw_revflag
       call colormapdefault
 C
+C--- just in case, set rational plot scale and size
+      P_SCALE = 1.0
+      G_SCALE = 1.0
+      X_PAGE = 1.0
+      Y_PAGE = 1.0
+C
       return
-      end
+      end ! PLINITIALIZE
+
+
+      subroutine PLPORT
+      include 'pltlib.inc'
+C---- force PS output to be in Portrait mode, regardless of graphics window orientation
+      LP_PORT = .TRUE.
+      return
+      end ! PLPORT
+
+      subroutine PLUNPORT
+      include 'pltlib.inc'
+C---- do not force PS output to be in Portrait mode (undo PLPORT action)
+      LP_PORT = .FALSE.
+      return
+      end ! PLPORT
+
+
+      subroutine SETCFLAGS
+      include 'pltlib.inc'
+C---- control flags  (gw_init will set LGW_COLOR = T if screen has color)
+C     plot device # I_DEV controls output device (screen, PS file, PDF file)
+C     and B&W or color.
+C      
+C       idev    X-window   PostScript    PDF
+C    --------   --------   ----------   -----
+C        1        x                              
+C        2                  B & W  
+C        3        x         B & W  
+C        4                  Color  
+C        5        x         Color  
+C        6                              B & W  
+C        7        x                     B & W  
+C        8                              Color   
+C        9        x                     Color   
+C
+C--- check for PDF interface available
+C    if not enabled fall back from PDF to PS device for plotting   
+      call pdf_enabled(ipdfstat)
+cc      print *, 'I_DEV, ipdfstat ',I_DEV,ipdfstat
+      if(ipdfstat.EQ.0 .AND. I_DEV.GT.5) then
+         I_DEV = I_DEV - 4
+      endif
+cc      print *, 'I_DEV ',I_DEV
+         
+      LGW_GEN   = I_DEV.EQ.1 .OR.
+     &            I_DEV.EQ.3 .OR.
+     &            I_DEV.EQ.5 .OR.
+     &            I_DEV.EQ.7 .OR.
+     &            I_DEV.EQ.9 
+
+      LPS_GEN   = I_DEV.EQ.2 .OR.
+     &            I_DEV.EQ.3 .OR.
+     &            I_DEV.EQ.4 .OR.
+     &            I_DEV.EQ.5
+
+      LPDF_GEN  = I_DEV.EQ.6 .OR.
+     &            I_DEV.EQ.7 .OR.
+     &            I_DEV.EQ.8 .OR.
+     &            I_DEV.EQ.9
+      
+      LP_COLOR =  I_DEV.EQ.4 .OR.
+     &            I_DEV.EQ.5 .OR.
+     &            I_DEV.EQ.8 .OR.
+     &            I_DEV.EQ.9
+C
+cc      print *,'LGW_GEN,LPS_GEN,LPDF_GEN ',LGW_GEN,LPS_GEN,LPDF_GEN
+      RETURN
+      end ! SETCFLAGS
 
 
       subroutine PLOPEN(relsize,nunit,idev)
@@ -67,23 +154,30 @@ C    relsize   Fractional size of X-graphics window relative to screen
 C              if relsize < 0 the graphics page is in Portrait  mode 8.5x11
 C              if relsize >=0 the graphics page is in Landscape mode 11x8.5
 C
-C    nunit     Postscript output file specifier
-C         < 0     Postscript output enabled to individual files plotNNN.ps 
+C    nunit     PS/PDF output file specifier
+C         < 0     PS output enabled to individual files plotNNN.ps
 C                 on unit 80 where NNN is cumulative plot number
-C         = 0     Postscript output enabled to file plot.ps  on unit 80
-C         = NNN   Postscript output enabled to file plotUUU.ps on unit UUU
+C                 or PDF output enabled to individual files plotNNN.pdf
+C         = 0     PS output enabled to file plot.ps on unit 80
+C                 PDF output enabled to file plot.pdf
+C         = NNN   PS output enabled to file plotUUU.ps on unit UUU
+C                 PDF output enabled to file plotUUU.pdf on unit UUU
 C
-C    idev      Plotting output selector
+C    idev      Plotting selector
 C
-C                idev    X-window   PostScript
-C                ----    --------   ----------
-C                  1        x
-C                  2                  B & W
-C                  3        x         B & W
-C                  4                  Color
-C                  5        x         Color
+C                idev    X-window   PostScript     PDF
+C                ----    --------   ----------    -----
+C                  1        x                              
+C                  2                  B & W  
+C                  3        x         B & W  
+C                  4                  Color  
+C                  5        x         Color  
+C                  6                              B & W  
+C                  7        x                     B & W  
+C                  8                              Color   
+C                  9        x                     Color   
 C
-C        Note: idev<1 or idev>5  gives only X-window output
+C        Note: idev<1 or idev>9  gives only X-window output
 C              (for pseudo-compatibility with old PLTLIB versions)
 C              ((if you squint real hard))
 C
@@ -92,14 +186,14 @@ C
       SAVE ifirst, relsize_save, nunit_save
       DATA ifirst / 0 /
 C
+cc      print *, 'PLOPEN relsize, nunit, idev ',relsize, nunit, idev 
       I_DEV = idev
-      if(idev.GT.5)  I_DEV = 1
-C
-C---- control flags  (gw_init will set LGW_COLOR = T if screen has color)
-      LGW_GEN   = (I_DEV.EQ.1 .OR. I_DEV.EQ.3 .OR. I_DEV.EQ.5)
-      LPS_GEN   = (I_DEV.GE.2)
-      LPS_COLOR = (I_DEV.GE.4)
-C
+      if(idev.GT.9)  I_DEV = 1
+
+C---- set LGW_GEN, LPS_GEN, LP_COLOR  from  I_DEV
+      CALL SETCFLAGS
+
+c      call colormapdefault     !@@@
 C
 C---- clear primitives counter
       N_PRIM = 0
@@ -113,10 +207,12 @@ C...graphics window
         call gw_setup(relsize)
         LGW_RESIZE = .FALSE.
 C
-C...PostScript (file not yet opened, and no unstroked page exists)
+C...Hardcopy PS or PDF files not yet opened, and no unstroked page exists
         NPS_UNIT = -1
         N_PAGES  = 0
+C...Set up plot output filenames and PS logical IO unit using nunit flag
         call ps_setup(nunit)
+        call pdf_setup(nunit)
 C...No zooming to start off
         call CLRZOOM
 C...Primitives file initializers
@@ -127,7 +223,8 @@ C
 C------ Subsequent PLOPEN call
 C...if a postscript file has been opened we need to end the page with 
 C   bounding box information
-        if(LPS_OPEN) call ps_endpage
+        if(LPS_OPEN)  call ps_endpage
+        if(LPDF_OPEN) call pdf_endpage
 C
         if(abs(relsize-relsize_save) .GT. 0.01) then
 C...relsize specfied has changed from previous PLOPEN call.. 
@@ -138,23 +235,30 @@ C...re-setup aspect ratio and prepare to resize current graphics window
 C
         if(nunit.NE.nunit_save .OR. nunit.LT.0) then
 C...nunit changed from previous PLOPEN call or individual plots are desired
-C   close current PostScript file
-          call ps_close
-C...set up for new PostScript file
-          call ps_setup(nunit)
+C   close current PS/PDF file and set up for new PS/PDF file
+           if(LPS_OPEN)  then
+             call ps_close
+             call ps_setup(nunit)
+           endif
+           if(LPDF_OPEN) then
+             call pdf_close
+             call pdf_setup(nunit)
+           endif
         endif
 C
 C...If the prims file is open, rewind to be ready to write from the beginning
         if(LPRIM_OPEN) then
           rewind(NPRIM_UNIT)
         endif
-C
+C     
       endif
 C
+cc      print *,'PLOPEN pre-initialize LPS_GEN,LPDF_GEN ',LPS_GEN,LPDF_GEN
 C...Initialize selected plot devices
-      if(LGW_GEN) call gw_init
-      if(LPS_GEN) call ps_init
-C
+      if(LGW_GEN)  call gw_initialize
+      if(LPS_GEN)  call ps_initialize
+      if(LPDF_GEN) call pdf_initialize
+C     
       if(LGW_GEN) then 
         if(LGW_CHANGED) write(*,1000) X_WIND, Y_WIND
  1000   format(/1x,'X-window size changed to ',f6.2,'" x',f6.2,'"')
@@ -187,7 +291,7 @@ C...Save current call parameters
       nunit_save   = nunit
 C
       return
-      end
+      end ! PLOPEN
 
 
       subroutine REPLOT(idev)
@@ -197,23 +301,30 @@ c
 C   idev - as defined in PLOPEN header 
 C
       include 'pltlib.inc'
-      dimension xpoly(MaxPolyLine), ypoly(MaxPolyLine)
+      real xpoly(MaxPolyLine), ypoly(MaxPolyLine)
 C
+      if(N_PRIM .LE. 0) then
+       write(*,*) 'No active plot'
+       return
+      endif
+cc      print *, 'REPLOT idev,I_DEV ',idev,I_DEV
       idev_old = I_DEV
 C
 C
       I_DEV = idev
-      if(idev.LE.0 .OR. idev.GT.5)  I_DEV = idev_old
+      if(idev.LE.0 .OR. idev.GT.9)  I_DEV = idev_old
 C
-C...Control flags  (LGW_COLOR should be already set for current screen)
-      LGW_GEN   = (I_DEV.EQ.1 .OR. I_DEV.EQ.3 .OR. I_DEV.EQ.5)
-      LPS_GEN   = (I_DEV.GE.2)
-      LPS_COLOR = (I_DEV.GE.4)
+C---- set LGW_GEN, LPS_GEN, LP_COLOR  from  I_DEV
+      call SETCFLAGS
+
+C...Initialize selected plot devices
+      if(LGW_GEN)  call gw_initialize
+      if(LPS_GEN)  call ps_initialize
+      if(LPDF_GEN) call pdf_initialize
 C
-C...Re-Initialize selected plotting devices
-      if(LGW_GEN) call gw_init
-      if(LPS_GEN) call ps_init
-C
+ccc   call colormapdefault     !@@@
+
+C     
 C...Reset plot globals for this plot
       I_PEN =  1
       I_PAT = -1
@@ -244,11 +355,15 @@ C
       if(ICNT.LT.0) go to 10
 C
         if(ITYP.EQ.PageCommand) then 
+cc            print *, 'REPLOT PageCommand '
            if(IVAL.EQ.-999) then
-             if(LPS_GEN) call ps_endpage
+cc             print *, 'REPLOT PageCommand IVAL ',IVAL
+cc             write(*,*) 'REPLOT: endpage'   !@@@
+             if(LPS_OPEN)  call ps_endpage
+             if(LPDF_OPEN) call pdf_endpage
            endif
 C
-         else if(ITYP.EQ.PlotCommand) then 
+        else if(ITYP.EQ.PlotCommand) then
            call plot_1(XVAL,YVAL,IVAL)
 C
 C...Not currently using scale info in replots, all X,Y are absolute (HHY)
@@ -302,6 +417,7 @@ C
            write(*,*) '? REPLOT -- Illegal Command:', ITYP
 C
         endif
+        
         go to 1
 C
  10   if(IPOLY.NE.0) then
@@ -311,12 +427,10 @@ C
       call PLFLUSH
 C
       I_DEV = idev_old  
-      LGW_GEN   = (mod(I_DEV,2) .EQ. 1)
-      LPS_GEN   = (I_DEV .GE. 2)
-      LPS_COLOR = (I_DEV .GE. 4)
+      CALL SETCFLAGS
 C
       return
-      end
+      end ! REPLOT
 
 
       subroutine PLCLOSE
@@ -326,9 +440,16 @@ C    closes X window
 C    closes and deletes log file (if used) 
       include 'pltlib.inc'
 C
-      call ps_endpage
+c      write(*,*) 'PLCLOSE: ps_endpage'   !@@@
       call gw_close
-      call ps_close
+      if(LPS_OPEN) then
+        call ps_endpage
+        call ps_close
+      endif
+      if(LPDF_OPEN) then
+        call pdf_endpage
+        call pdf_close
+      endif
       if(LPRIM_OPEN) then
         close(unit=NPRIM_UNIT,status='DELETE')
       endif
@@ -343,8 +464,9 @@ C    ends current X window plot, flushes to display
       include 'pltlib.inc'
 C
       call putprim(PageCommand,-999,0.,0.)
-      if(LGW_GEN) call gw_endplot
-      if(LPS_GEN) call ps_endpage
+      if(LGW_OPEN)  call gw_endplot
+      if(LPS_OPEN)  call ps_endpage
+      if(LPDF_OPEN) call pdf_endpage
       return
       end
 
@@ -429,13 +551,8 @@ C    n      number of x,y points
 C    ifill  fill flag, 0 for no fill, 1 for filled polygon
 C
       include 'pltlib.inc'
-      dimension x(n), y(n)
-      dimension XABS(MaxPolyLine), YABS(MaxPolyLine)
-C
-      if(n.GT.MaxPolyline) then
-        write(*,*) '*** Error - too many polyline points'
-        stop
-      endif
+      real x(n), y(n)
+      real XABS(MaxPolyLine), YABS(MaxPolyLine)
 C
       if(n.LE.1) return
 C...Convert coordinates to absolute coordinates
@@ -456,7 +573,7 @@ C    n      number of X,Y points
 C    ifill  fill flag, 0 for no fill, 1 for filled polygon
 C
       include 'pltlib.inc'
-      dimension X(n), Y(n)
+      real X(n), Y(n)
 C
       if(n.LE.1) return
 C
@@ -482,13 +599,13 @@ C...Gets current pen width in pixels
       end
 
       subroutine NEWPEN(ipen)
-C...Sets line width from 1 to 5 (pixels) 
+C...Sets line width from 1 to I_PEN_MAX (pixels) 
       include 'pltlib.inc'
       if(ipen.EQ.I_PEN) return
-c
-      ip = ipen
-      if (ip.GT.5) ip = 5
-      if (ip.LT.0) ip = 1
+
+      ip = max(ipen, 1)
+      ip = min(ip, I_PEN_MAX)
+
       I_PEN = ip
 C...Install pen command into display primitives list
       call putprim(PenCommand,ip,0.,0.)
@@ -634,9 +751,11 @@ C...when the mouse button or keyboard key is pressed.
 C...chkey returns the character for the key pressed (if keyboard) 
       include 'pltlib.inc'
       character*1 chkey
+      integer ich,khar
 C
       call gw_curs(XZ,YZ,khar)
-      chkey = char(khar)
+      ich = iand(khar,127)
+      chkey = char(ich)
       if(LGW_GEN) call gw_flush
 C
 C...get absolute coordinates
@@ -709,7 +828,6 @@ C
 
 
 
-
       subroutine WINERASE
 C...Erases the graphics area
       include 'pltlib.inc'
@@ -721,8 +839,9 @@ C...Erases the graphics area
       subroutine PLFLUSH
 C...Flush out plot components in buffers
       include 'pltlib.inc'
-      if(LGW_GEN) call gw_flush
-      if(LPS_GEN) call ps_flush
+      if(LGW_GEN)  call gw_flush
+      if(LPS_GEN)  call ps_flush
+      if(LPDF_GEN) call pdf_flush
       return
       end
  
@@ -935,8 +1054,8 @@ c              the gridded form.
 c
 c  calls:   PLGRIDABS
 C
-      DIMENSION xd(*),yd(*)
-      DIMENSION XDABS(500), YDABS(500)
+      REAL xd(*),yd(*)
+      REAL XDABS(500), YDABS(500)
 
 C
       XABS = xusr2ABS(x)
@@ -1000,7 +1119,7 @@ c              the gridded form.
 c
 c  calls:   PLOTABS
 C
-      DIMENSION XD(*),YD(*)
+      REAL XD(*),YD(*)
 C
 C...Decode grid interval information
       MX = IABS(nx)

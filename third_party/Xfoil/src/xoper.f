@@ -153,7 +153,7 @@ C--------------------------------------------------------
      & /'   PSOR i   Sort stored polar'
      & /'   PPlo ii. Plot stored polar(s)'
      & /'   APlo ii. Plot stored airfoil(s) for each polar'
-     & /'   ASET i   Copy stored airfoil into current airfoil'
+     & /'   ASET i   Copy stored polar airfoil into current airfoil'
      & /'   PREM ir. Remove point(s) from stored polar'
      & /'   PNAM i   Change airfoil name of stored polar'
      & /'   PPAX     Change polar plot axis limits'
@@ -175,11 +175,11 @@ C--------------------------------------------------------
      & /'   BLWT r   Change velocity profile scale weight'
      &//'   FMOM     Calculate flap hinge moment and forces'
      & /'   FNEW rr  Set new flap hinge point'
-     & /'   VELS rr  Calculate velocity components at a point'
+     &//'   VELS rr  Calculate velocity components at a point'
      & /'   DUMP f   Output Ue,Dstar,Theta,Cf vs s,x,y to file'
      & /'   CPWR f   Output x vs Cp to file'
      & /'   CPMN     Report minimum surface Cp'
-     & /'   NAME s   Specify new airfoil name'
+     &//'   NAME s   Specify new airfoil name'
      & /'   NINC     Increment name version number')
 c     &//'   IMAG    Toggle image-airfoil'
 C
@@ -470,6 +470,12 @@ Cc
 C
        COMOLD = COMAND
        ARGOLD = COMARG
+
+
+c      write(*,'(1x,a,i4,8f10.6)') 'n  2G CL CM CD', 
+c     & N-1, CL, CL, CM, CDP, 
+c     &      CL-0.6539930, CL-0.6539930, -(CM-(-0.024218068))
+
 C
 C--------------------------------------------------------
       ELSEIF(COMAND.EQ.'CLI ') THEN
@@ -780,14 +786,12 @@ C------- slot into which accumulated polar will go
         ELSE
 C------- no command argument was given... just use next available slot
          IP = NPOL+1
-         PFNAME(IP) = ' '
-         PFNAMX(IP) = ' '
         ENDIF
 C
         IF(IP.GT.NPOL) THEN
-         IF(NPOL.EQ.NPX) THEN
+         IF(NPOL.GE.NPX) THEN
           WRITE(*,*)
-          WRITE(*,*) 'Number of polars is at array limit'
+          WRITE(*,*) 'Number of polars is at array limit NPX'
           WRITE(*,*) 'New polar will not be stored'
           IPACT = 0
          ELSE
@@ -845,7 +849,7 @@ C
      &             REYNP1(IP),MACHP1(IP),ACRITP(1,IP),XSTRIPP(1,IP),
      &             PTRATP(IP),ETAPP(IP),
      &             NAMEPOL(IP),IRETYP(IP),IMATYP(IP),
-     &             ISX,NBLP(IP),CPOLSD(1,1,1,IP),
+     &             1,NBLP(IP),CPOLSD(1,1,1,IP),CPOLEL(1,1,1,IP),
      &             CODEPOL(IP),VERSPOL(IP) )
         IF(ERROR) THEN
          WRITE(*,*) 'Polar file READ error'
@@ -859,7 +863,8 @@ C
      &             REYNP1(IP),MACHP1(IP),ACRITP(1,IP),XSTRIPP(1,IP),
      &             PTRATP(IP),ETAPP(IP),
      &             NAMEPOL(IP),IRETYP(IP),IMATYP(IP),
-     &             ISX,NEL,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &             1,NEL,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &                   CPOLEL(1,1,1,IP), KPOL,NKPOL,
      &             CODEPOL(IP),VERSPOL(IP), .FALSE. )
          PFNAME(IP) = FNAME
          WRITE(*,5500) IP
@@ -891,7 +896,6 @@ C
          GO TO 75
         ENDIF
 C
-        NEL = 1
         DO IP = IP1, IP2
           LU = 19
           CALL PLRSUM(IP,IP,IPACT)
@@ -915,12 +919,14 @@ C
            IPOL(ICH) = NIPOL
           ENDIF
 C
+          NEL = 1
           CALL POLWRIT(LU,FNAME,ERROR, .TRUE.,
      &      NAX, 1,NAPOL(IP),CPOL(1,1,IP), IPOL,NIPOL,
      &      REYNP1(IP),MACHP1(IP),ACRITP(1,IP),XSTRIPP(1,IP),
      &      PTRATP(IP),ETAPP(IP),
      &      NAMEPOL(IP),IRETYP(IP),IMATYP(IP),
-     &      ISX,NEL,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &      1,NEL,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &            CPOLEL(1,1,1,IP), KPOL,NKPOL,
      &      'XFOIL',VERSION, .TRUE. )
           IF(ERROR) THEN
            WRITE(*,1075) IP
@@ -1072,7 +1078,8 @@ C
      &                 REYNP1(IP),MACHP1(IP),ACRITP(1,IP),XSTRIPP(1,IP),
      &                 PTRATP(IP),ETAPP(IP),
      &                 NAMEPOL(IP), IRETYP(IP),IMATYP(IP),
-     &                 ISX,NEL,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &                 1,NEL,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &                       CPOLEL(1,1,1,IP), KPOL,NKPOL,
      &                 'XFOIL',VERSION, .FALSE.)
         ENDDO
         NIPOL = NIPOL0
@@ -1331,6 +1338,7 @@ C
          IPOL(ICH) = NIPOL
         ENDIF
 C
+        NEL = 1
         WRITE(*,3100) IP
         IA1 = 1
         IA2 = NAPOL(IP)
@@ -1339,7 +1347,8 @@ C
      &                 REYNP1(IP),MACHP1(IP),ACRITP(1,IP),XSTRIPP(1,IP),
      &                 PTRATP(IP),ETAPP(IP),
      &                 NAMEPOL(IP), IRETYP(IP),IMATYP(IP),
-     &                 ISX,1,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &                 1,NEL,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &                       CPOLEL(1,1,1,IP), KPOL,NKPOL,
      &                 'XFOIL',VERSION, .FALSE. )
  53     WRITE(*,3220)
  3220   FORMAT(/' Enter alpha(s) of points to be removed:  ', $)
@@ -1430,6 +1439,7 @@ C
         IPOL(ICH) = NIPOL
        ENDIF
 C
+       NEL = 1
        WRITE(*,3100) IP
        IA1 = 0
        IA2 = -1
@@ -1438,7 +1448,8 @@ C
      &                REYNP1(IP),MACHP1(IP),ACRITP(1,IP),XSTRIPP(1,IP),
      &                PTRATP(IP),ETAPP(IP),
      &                NAMEPOL(IP), IRETYP(IP),IMATYP(IP),
-     &                ISX,1,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &                1,NEL,CPOLSD(1,1,1,IP), JPOL,NJPOL,
+     &                      CPOLEL(1,1,1,IP), KPOL,NKPOL,
      &                'XFOIL',VERSION, .FALSE. )
        NIPOL = NIPOL0
        WRITE(*,3320)
@@ -1669,6 +1680,10 @@ C--------------------------------------------------------
 C--------------------------------------------------------
       ELSEIF(COMAND.EQ.'DMP ') THEN
        CALL BLDUMP2(COMARG)
+C
+C--------------------------------------------------------
+      ELSEIF(COMAND.EQ.'BLOU') THEN
+       CALL BLDUMP3(COMARG)
 C
 C--------------------------------------------------------
       ELSEIF(COMAND.EQ.'CPWR') THEN
@@ -2050,6 +2065,8 @@ C
 
 
 
+
+
       SUBROUTINE BLDUMP2(FNAME1)
       INCLUDE 'XFOIL.INC'
       CHARACTER*(*) FNAME1
@@ -2139,6 +2156,7 @@ C
         EDIS(IBL,IS) = EDIS(IBL-1,IS) + DISA*DXSSI
       ENDDO
 C
+      HIRAT = 1.0 - 0.5*HSTINV*QINF**2
 C
       DO 20 IS = 1, 2
       DO 210 IBL = 2, NBL(IS)
@@ -2177,8 +2195,12 @@ C
           TS = TSTR(IBL,IS)
           CF =  TAU(IBL,IS)/(0.5*QINF**2)
           CDIS = DIS(IBL,IS)/(QINF**3)
+
+          HERAT = 1.0 - 0.5*HSTINV*UE**2
+          RH = (HERAT/HIRAT)**(1.0/GAMM1)
+
           PTAUI = PTAU(IBL,IS)
-          PPREI = TH*UE**2 - PTAUI
+          PPREI = RH*TH*UE**2 - PTAUI
           EDISI = EDIS(IBL,IS)
           DPREI = 0.5*CPV(I)
           DPREI = (1.0 - UE**2)*0.5
@@ -2200,10 +2222,13 @@ C
      &         / (XSSI(IBLP,IS) - XSSI(IBLM,IS))
           DK = HK*THET(IBL,IS)
           CT = CTAU(IBL,IS)
-          RT = UE*TH*REINF
+          RT = RH*UE*TH*REINF
         ELSE
           UE = (GAM(I)/QINF)*(1.0-TKLAM)
      &                     / (1.0-TKLAM*(GAM(I)/QINF)**2)
+          HERAT = 1.0 - 0.5*HSTINV*UE**2
+          RH = (HERAT/HIRAT)**(1.0/GAMM1)
+
           DS = 0.
           TH = 0.
           TS = 0.
@@ -2228,10 +2253,10 @@ C
      &      XS, X(I), Y(I), UE,
      &      DS, TH, TS,
      &      CF, CDIS,  HK, HS,
-     &      DS*UE, TH*UE**2, PTAUI, PPREI, 0.5*TS*UE**3,
-     &      TAU(IBL,IS), DIS(IBL,IS), -UE*DS*DUDS,
-     &      TAU(IBL,IS)-UE*DS*DUDS,
-     &      TH*UE**2 - DPREI*DK,
+     &      DS*RH*UE, TH*RH*UE**2, PTAUI, PPREI, 0.5*TS*RH*UE**3,
+     &      TAU(IBL,IS), DIS(IBL,IS), -RH*UE*DS*DUDS,
+     &      TAU(IBL,IS)-RH*UE*DS*DUDS,
+     &      TH*RH*UE**2 - DPREI*DK,
      &      DMDS,
      &      CT,
      &      RT
@@ -2259,6 +2284,222 @@ C
       CLOSE(LU)
       RETURN
       END ! BLDUMP2
+
+
+
+      SUBROUTINE BLDUMP3(FNAME1)
+      INCLUDE 'XFOIL.INC'
+      CHARACTER*(*) FNAME1
+C
+      CHARACTER*80 FILDEF
+C
+      CHARACTER*1 DELIM
+      CHARACTER*256 LINE
+C
+      REAL ME
+      REAL PTAU(IVX,ISX), EDIS(IVX,ISX)
+C
+      HVRAT = 0.35
+
+      IF    (KDELIM.EQ.0) THEN
+       DELIM = ' '
+      ELSEIF(KDELIM.EQ.1) THEN
+       DELIM = ','
+      ELSEIF(KDELIM.EQ.2) THEN
+       DELIM = CHAR(9)
+      ELSE
+       WRITE(*,*) '? Illegal delimiter.  Using blank.'
+       DELIM = ' '
+      ENDIF
+C
+ 1000 FORMAT(20(A))
+C
+      IF(FNAME1(1:1).NE.' ') THEN
+       FNAME = FNAME1
+      ELSE
+C----- no argument... get it somehow
+       IF(NPREFIX.GT.0) THEN
+C------ offer default using existing prefix
+        FILDEF = PREFIX(1:NPREFIX) // '.bl'
+        WRITE(*,1100) FILDEF
+ 1100   FORMAT(/' Enter filename:  ', A)
+        READ(*,1000) FNAME
+        CALL STRIP(FNAME,NFN)
+        IF(NFN.EQ.0) FNAME = FILDEF
+       ELSE
+C------ nothing available... just ask for filename
+        CALL ASKS('Enter filename^',FNAME)
+       ENDIF
+      ENDIF
+C
+      LU = 19
+      OPEN(LU,FILE=FNAME,STATUS='UNKNOWN')
+      REWIND(LU)
+C
+      WRITE(LU,1000)
+     & '#      x          y          s          b    ',
+     & '      Cp       Ue/Vinf   rhoe/rhoinf    Me   ',
+     & '      Hk         Rtheta ',
+     & '      m            P            K      ',
+     & '     Cf/2          CD          Ctau    ',
+     & '    delta*       theta        theta*       delta**  '
+ 
+      WRITE(LU,1000)
+     & '#      1          2          3          4    ',
+     & '       5          6          7          8    ',
+     & '       9           10   ',
+     & '      11           12           13     ',
+     & '      14           15           16     ',
+     & '      17           18           19           20     '
+C
+
+      CALL COMSET
+      HSTINV = GAMM1*(MINF/QINF)**2 / (1.0 + 0.5*GAMM1*MINF**2)
+C
+      DO 10 IS = 1, 2
+        IBL = 1
+        PTAU(IBL,IS) = 0.
+        EDIS(IBL,IS) = 0.
+        DO IBL = 2, IBLTE(IS)
+          DXSSI = XSSI(IBL,IS) - XSSI(IBL-1,IS)
+          TAUA =  (TAU(IBL,IS) +  TAU(IBL-1,IS))*0.5
+          DISA =  (DIS(IBL,IS) +  DIS(IBL-1,IS))*0.5
+          PTAU(IBL,IS) = PTAU(IBL-1,IS) + TAUA*DXSSI
+          EDIS(IBL,IS) = EDIS(IBL-1,IS) + DISA*DXSSI
+        ENDDO
+ 10   CONTINUE
+      IS = 2
+      IBL = IBLTE(IS)+1
+      PTAU(IBL,IS) = PTAU(IBLTE(1),1) + PTAU(IBLTE(2),2)
+      EDIS(IBL,IS) = EDIS(IBLTE(1),1) + EDIS(IBLTE(2),2)
+      DO IBL = IBLTE(IS)+2, NBL(IS)
+        DXSSI = XSSI(IBL,IS) - XSSI(IBL-1,IS)
+        TAUA =  (TAU(IBL,IS) +  TAU(IBL-1,IS))*0.5
+        DISA =  (DIS(IBL,IS) +  DIS(IBL-1,IS))*0.5
+        PTAU(IBL,IS) = PTAU(IBL-1,IS) + TAUA*DXSSI
+        EDIS(IBL,IS) = EDIS(IBL-1,IS) + DISA*DXSSI
+      ENDDO
+C
+C
+      DO 20 IS = 1, 2
+      DO 210 IBL = 2, NBL(IS)
+        I = IPAN(IBL,IS)
+
+        IF(IBL.EQ.2) THEN
+         IBLM = IBL
+        ELSE
+         IBLM = IBL-1
+        ENDIF
+
+        IF(IBL.EQ.IBLTE(IS)) THEN
+         IBLP = IBL
+        ELSE
+         IBLP = IBL+1
+        ENDIF
+
+        IF(IS.EQ.2) THEN
+         IF(IBL.EQ.IBLTE(IS)+1) THEN
+          IBLM = IBL
+         ENDIF
+         IF(IBL.EQ.NBL(IS)) THEN
+          IBLP = IBL
+         ENDIF
+        ENDIF
+
+        XS = XSSI(IBL,IS)
+        IF(IS.EQ.2 .AND. IBL.GT.IBLTE(2)) THEN
+         XS = XS - XSSI(IBLTE(2),2) + XSSI(IBLTE(1),1)
+        ENDIF
+
+        HIRAT = 1.0 - 0.5*HSTINV*QINF**2
+
+        IF(LIPAN .AND. LVISC) THEN
+          UE = UEDG(IBL,IS)
+          DS = DSTR(IBL,IS)
+          TH = THET(IBL,IS)
+          TS = TSTR(IBL,IS)
+          DC = DSSR(IBL,IS)
+
+          HERAT = 1.0 - 0.5*HSTINV*UE**2
+          AMSQ = UE*UE*HSTINV / (GAMM1*HERAT)
+          ME = SQRT(AMSQ)
+          RHOE = (HERAT/HIRAT)**(1.0/GAMM1)
+          AMUE = SQRT((HERAT)**3) * (1.0+HVRAT)/(HERAT+HVRAT)/REINF
+
+          CF =  TAU(IBL,IS)/(0.5*QINF**2)
+          CDIS = DIS(IBL,IS)/(QINF**3)
+          CT =  CTAU(IBL,IS)
+
+          IF(TH.EQ.0.0) THEN
+           H = 1.0
+           HS = 1.0
+          ELSE
+           H  = DS/TH
+           HS = TS/TH
+          ENDIF
+          CALL HKIN( H, AMSQ, HK, DUMMY, DUMMY)
+
+          RT = RHOE*UE*TH/AMUE
+          
+        ELSE
+          UE = (GAM(I)/QINF)*(1.0-TKLAM)
+     &                     / (1.0-TKLAM*(GAM(I)/QINF)**2)
+          DS = 0.
+          TH = 0.
+          TS = 0.
+          DC = 0.
+
+          HERAT = 1.0 - 0.5*HSTINV*UE**2
+          AMSQ = UE*UE*HSTINV / (GAMM1*HERAT)
+          ME = SQRT(AMSQ)
+          RHOE = (HERAT/HIRAT)**(1.0/GAMM1)
+
+          CF = 0.
+          CDIS = 0.
+          CT = 0.
+
+          H = 1.0
+          HS = 1.0
+          HK = 1.0
+
+          RT = 0.
+        ENDIF
+C
+        IF(MINF .LT. 0.05) THEN
+         CP = 1.0 - UE**2
+        ELSE
+         PE = (1.0 + 0.5*GAMM1*MINF**2*(1.0 - UE**2))**(GAMMA/GAMM1)
+         CP = (PE - 1.0) / (0.5*GAMMA*MINF**2)
+        ENDIF
+
+        WRITE(LU,8500) 
+     &      X(I), Y(I), XS, 1.0,
+     &      CP,  UE,  RHOE, ME,
+     &      HK, RT,
+     &      DS*RHOE*UE, TH*RHOE*UE**2, 0.5*TS*RHOE*UE**3,
+     &      0.5*CF, CDIS, CT,
+     &      DS, TH, TS, DC
+ 8500    FORMAT(1X, 
+     &       4F11.6, 
+     &       4F11.6, 
+     &        F12.6, F12.3,
+     &       3F13.8,
+     &       3F13.8,
+     &       4F13.8 )
+C
+        IF(IS.EQ.2 .AND. IBL.EQ.IBLTE(2)) THEN
+         WRITE(LU,*)
+        ENDIF
+ 210  CONTINUE
+      IF(IS.EQ.1) THEN
+        WRITE(LU,*)
+      ENDIF
+
+  20  CONTINUE
+C
+      CLOSE(LU)
+      RETURN
+      END ! BLDUMP3
 
 
 
@@ -3002,7 +3243,8 @@ C------ display changes and test for convergence
         IF(RLX.EQ.1.0) 
      &   WRITE(*,2010) ITER, RMSBL, RMXBL, VMXBL,IMXBL,ISMXBL
          CDPDIF = CD - CDF
-         WRITE(*,2020) ALFA/DTOR, CL, CM, CD, CDF, CDPDIF
+         WRITE(*,2020) ALFA/DTOR, CL, CM, CD, CDF, CDPDIF, 
+     &                CLF, CDP, cdp+cdf
 c         CDSURF = CDP + CDF
 c         WRITE(*,2025) CDSURF, CDF, CDP
 
@@ -3021,6 +3263,8 @@ C
       CALL CPCALC(N+NW,QVIS,QINF,MINF,CPV)
       IF(LFLAP) CALL MHINGE
 
+
+      if(.false.) then
 
         is = 1
         hkmax = 0.
@@ -3091,6 +3335,7 @@ c       1234567890 1234567890 1234567890 1234567890 1234567890 1234567890
         enddo
         close(lu)
 
+      endif
 
 
       RETURN
@@ -3101,9 +3346,10 @@ C....................................................................
  2010   FORMAT
      &   (/1X,I3,'   rms: ',E10.4,'   max: ',E10.4,3X,A1,' at ',I4,I3)
  2020   FORMAT
-     &   ( 1X,3X,'   a =', F7.3,'      CL =',F8.4  /
-     &     1X,3X,'  Cm =', F8.4, '     CD =',F9.5,
-     &           '   =>   CDf =',F9.5,'    CDp =',F9.5)
+     &  ( 1X,3X,'   a =', F7.3,'      CL =',F8.4  /
+     &    1X,3X,'  Cm =', F8.4, '     CD =',F9.5,
+     &          '   =>   CDf =',F9.5,'    CDp =',F9.5,
+     &          '    CLf =',F9.5, '   CDp =', f9.5, ' CDp+CDf =', f9.5)
  2025   FORMAT
      &   ( 1X,3X, 6X     ,  8X , ' Int CD =',F9.5,
      &           '   =>   CDf =',F9.5,'    CDp =',F9.5)

@@ -1,4 +1,5 @@
-C*********************************************************************** 
+
+C***********************************************************************
 C    Module:  squares.f
 C 
 C    Copyright (C) 1996 Harold Youngren, Mark Drela 
@@ -23,7 +24,7 @@ C***********************************************************************
 
 C---Test of filled polyline plotting
 C   Displays a sine wave of filled color rectangles
-      dimension xp(100), yp(100), x(100), y(100)
+      real xp(100), yp(100), x(100), y(100)
 C
       CHARACTER*4 INP
       CH = 0.02
@@ -45,7 +46,7 @@ C---Decide about what devices to plot to
       WRITE(*,*) 'SQUARES Plot test'
       WRITE(*,*) ' You may just <cr> for each question to take defaults'
       WRITE(*,*) ' '
-   1  WRITE(*,*) ' Enter -1 for no PS, 0 for B&W PS, 1 for color PS'
+   1  WRITE(*,*) ' Enter -1 no PS, 0 B&W PS, 1 color PS, 2 color PDF'
       READ(*,1000,end=2000) INP
       ips = -1
       if(INP.ne.' ') then
@@ -53,7 +54,8 @@ C---Decide about what devices to plot to
       endif
       IDEV = 1
       IF(ips.eq.0) IDEV = 3
-      IF(ips.ge.1) IDEV = 5
+      IF(ips.eq.1) IDEV = 5
+      IF(ips.ge.2) IDEV = 9
       ipslu = 0
 C
 C---- for REPLOT:  X11 only
@@ -71,7 +73,7 @@ C---Now, how many colors...
       endif
 C---Set up colormap spectrum colors
       if(ncolors.LE.1) ncolors = 0
-      CALL COLORSPECTRUMHUES(ncolors,'MBCGYR')
+      CALL COLORSPECTRUMHUES(ncolors,'MBCGYOR')
 C
 C
       CALL PLOPEN(0.7,ipslu,IDEV)

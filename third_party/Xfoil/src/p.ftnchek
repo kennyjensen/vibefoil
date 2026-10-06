@@ -1,4 +1,4 @@
-ftnchek -common=1 -novice=2 -argument=1 -notruncation \
+ftnchek -common=1 -novice=4 -arguments=all -notruncation \
 -include=../plotlib \
 pplot.f polplt.f sort.f iopol.f userio.f \
 ../plotlib/plt_base.f \

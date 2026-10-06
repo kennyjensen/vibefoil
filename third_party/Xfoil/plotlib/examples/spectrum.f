@@ -27,7 +27,7 @@ C
 C   Displays chosen COLORSPECTRUMDEFAULT colors in a circle and bar
 C
 C
-      dimension xp(100), yp(100)
+      real xp(100), yp(100)
 C
       CHARACTER*12 HUES
       CHARACTER*4 INP
@@ -37,7 +37,7 @@ C
 C
 C---Decide about what devices to plot to
       WRITE(*,*) ' '
-   1  WRITE(*,*) ' Enter -1 for no PS, 0 for B&W PS, 1 for color PS'
+   1  WRITE(*,*) ' Enter -1 no PS, 0 B&W PS, 1 color PS, 2 color PDF'
       READ(*,1000,end=2000) INP
       ips = -1
       if(INP.ne.' ') then
@@ -45,7 +45,8 @@ C---Decide about what devices to plot to
       endif
       IDEV = 1
       IF(ips.eq.0) IDEV = 3
-      IF(ips.ge.1) IDEV = 5
+      IF(ips.eq.1) IDEV = 5
+      IF(ips.ge.2) IDEV = 9
       ipslu = 0
 C
 C---- for REPLOT:  X11 only
@@ -75,8 +76,9 @@ c
       CALL PLOT(1.3*rad,1.3*rad,-3)
 c
 c---- plot circle
-      do ii = 1,ncolors
+      do ii = 1, ncolors
         call NEWCOLOR(-ii)
+
         t0 = float(ii-1)/float(ncolors) ! + 0.167
         t1 = float(ii  )/float(ncolors) ! + 0.167
 C
@@ -117,6 +119,7 @@ c
         call POLYLINE(xp,yp,4,1)
       end do
 C
+      call newpen(3)
       CALL NEWCOLORNAME('black')
       CALL PLOTABS(1.,.75,-3)
       CALL PLCHAR (999.,999.,.1,'SPECTRUM  ',0.,+10)

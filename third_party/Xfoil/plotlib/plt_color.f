@@ -24,7 +24,7 @@ C
 C***********************************************************************
 C --- Xplot11 color plotting routines
 C
-C     Version 4.46 11/28/01
+C     Version 4.56 01/16/23
 C
 C     Note:  These routines implement the interface to setup, select and 
 C            query colors in the XPLOT11 plot package.
@@ -76,7 +76,7 @@ C...Skip if this is the current color
 c
 C...Install color command into display primitives list
       I_CLR = icindex
-      call putprim(ColorCommand,I_CLR,0.,0.)
+      call putprim(ColorCommand,I_CLR,0.0,0.0)
 c
       return
       end
@@ -116,7 +116,7 @@ C   running the X11 command: showrgb
 C
       character colorname*(*), colorin*22
       include 'pltlib.inc'
-c
+
 C...Convert input color to uppercase
       colorin = colorname
       call convrt2uc(colorin)
@@ -126,6 +126,7 @@ C...Search for color name in current colortable
 c       write(*,*) 'colorbyname table ic=',ic,' ',colorin,' ',
 c     &             COLOR_NAME(ic),' ci ',G_COLOR_CINDEX(ic)
         if(colorin.eq.COLOR_NAME(ic)) then
+c         write(*,*) 'NEWCOLORNAME table:', colorin(1:12), ic
           call NEWCOLOR(ic)
           return  
         endif
@@ -133,31 +134,40 @@ c     &             COLOR_NAME(ic),' ci ',G_COLOR_CINDEX(ic)
 c
 C...Add new color to colortable
 C...Get RGB components for named color
-      call gw_cname2rgb(colorname,ired,igreen,iblue)
-c      write(*,*) 'cname->rgb ',colorname, ired,igreen,iblue
+      call gw_cname2rgb(colorname,ired1,igrn1,iblu1)
+c      write(*,*) 'NEWCOLORNAME new rgb:', colorname, ired1,igrn1,iblu1
 c
-      if (ired.ge.0) then
+      if (ired1.ge.0) then
         N = N_COLOR + 1
         if(N.gt.Ncolors_max) then
-          write(*,*)
-     &        'NEWCOLORNAME: Colortable overflow. New color ignored.'
+          write(*,*) 'NEWCOLORNAME: New color not added --',
+     &               ' would exceed color table size.'
           return
         endif
+
+        COLOR_RGB1(N) = iblu1 + 256*(igrn1 + 256*ired1)
+
+        iblu2 = ifix( float(iblu1)*COL12FAC + 0.5 )
+        igrn2 = ifix( float(igrn1)*COL12FAC + 0.5 )
+        ired2 = ifix( float(ired1)*COL12FAC + 0.5 )
+        COLOR_RGB2(N) = iblu2 + 256*(igrn2 + 256*ired2)
+
         G_COLOR_CINDEX(N) = -1
-        COLOR_RGB(N)  = iblue + 256*(igreen + 256*ired)
         COLOR_NAME(N) = colorin
         N_COLOR = N
         call NEWCOLOR(N)
-       else
+c      write(*,*) 'NEWCOLORNAME new N_COLOR:', N_COLOR
+
+      else
         write(*,*)
      &        'NEWCOLORNAME: Color not found ',colorname
       endif
 c
       return
-      end
+      end ! NEWCOLORNAME
 
 
-      subroutine NEWCOLORRGB(ired,igreen,iblue)
+      subroutine NEWCOLORRGB(ired,igrn,iblu)
 C...Sets color for plotting by R,G,B components
 C   (to circumvent knowing the color table index)
 C   Valid color components for red,green,blue run from 0-255
@@ -166,29 +176,45 @@ C
 c
 C...Search for r,g,b color in current colortable
       do ic = 1, N_COLOR
-        irgb = iblue + 256*(igreen + 256*ired)
+        irgb = iblu + 256*(igrn + 256*ired)
 c        write(*,*) 'NEWCOLORRGB table ic=',ic,' ',irgb,' ',
-c     &             COLOR_RGB(ic),
+c     &             COLOR_RGB1(ic),
 c     &             COLOR_NAME(ic),' ci ',G_COLOR_CINDEX(ic)
-        if(irgb.eq.COLOR_RGB(ic)) then
+        if(irgb.eq.COLOR_RGB1(ic) .or. 
+     &     irgb.eq.COLOR_RGB2(ic)     ) then
           call NEWCOLOR(ic)
           return  
         endif
       end do
-c
+
       N = N_COLOR + 1
-      if(N.gt.Ncolors_max) then
+      if(N .gt. Ncolors_max) then
         write(*,*)
      &      'NEWCOLORRGB: Colortable overflow. New color ignored.'
+c------ use black instead
+        call NEWCOLOR(1)
         return
       endif
       G_COLOR_CINDEX(N) = -1
-      COLOR_RGB(N)  = iblue + 256*(igreen + 256*ired)
+
+      ired1 = ired
+      igrn1 = igrn
+      iblu1 = iblu
+      irgb1 = iblu1 + 256*(igrn1 + 256*ired1) 
+
+      iblu2 = ifix( float(iblu1)*COL12FAC + 0.5 )
+      igrn2 = ifix( float(igrn1)*COL12FAC + 0.5 )
+      ired2 = ifix( float(ired1)*COL12FAC + 0.5 )
+      irgb2 = iblu2 + 256*(igrn2 + 256*ired2)
+
+      COLOR_RGB1(N) = irgb1
+      COLOR_RGB2(N) = irgb2
       COLOR_NAME(N) = 'RGBCOLOR'
       N_COLOR = N
       call NEWCOLOR(N)
+
       return
-      end
+      end ! NEWCOLORRGB
 
 
 
@@ -226,7 +252,12 @@ c
         return
       endif
 c
-      irgb = COLOR_RGB(ic)
+      if(LGW_REVVIDEO .AND. (.NOT.LPS_GEN)) THEN
+       irgb = COLOR_RGB1(ic)
+      else
+       irgb = COLOR_RGB2(ic)
+      endif
+
       irg = irgb/256 
       ired = irg/256 
       igrn = irg  - 256*ired
@@ -234,7 +265,7 @@ c
       colorname = COLOR_NAME(ic)
 c
       return
-      end
+      end ! GETCOLORRGB
 
 
       subroutine convrt2uc(input)
@@ -251,7 +282,7 @@ c
         k = index(lcase, input(i:i))
         if(k.gt.0) input(i:i) = ucase(k:k)
       end do
-c
+
       return
       end 
 
@@ -275,8 +306,8 @@ C
 
 
       subroutine COLORMAPDEFAULT
-C
-C...Creates default colormap palette containing a small number of basic 
+C------------------------------------------------------------------------
+C   Creates default colormap palette containing a small number of basic 
 C   colors defined in DATA statement below.  The first two colors 
 C   are used as the default foreground and background.
 C
@@ -290,7 +321,7 @@ C        GREEN   =  6
 C        CYAN    =  7
 C        BLUE    =  8
 C        MAGENTA =  9
-C        VIOLET  =  10
+C        VIOLET  =  10 = NCMAP
 C
 C   These colors are then accessible by a normal NEWCOLOR(icol) call:
 C       icol = 1 .. NCMAP
@@ -304,24 +335,13 @@ C
 c
       PARAMETER (NCMAP=10)
 C
-      INTEGER       DEFCMAPRGB1(3,NCMAP), DEFCMAPRGB0(3,NCMAP)
-      CHARACTER*10  DEFCMAPNAMES(NCMAP)
+      INTEGER      DEFCMAPRGB1(3,NCMAP),
+     &             DEFCMAPRGB2(3,NCMAP)
+      CHARACTER*10 DEFCMAPNAMES(NCMAP)
 c
       SAVE ifirst
       DATA ifirst / 0 /
 c
-c      DATA  ((DEFCMAPRGB(L,I),L=1,3),I=1,NCMAP) 
-c     &              /    0,   0,   0,   ! black  
-c     &                 255, 255, 255,   ! white  
-c     &                 255,   0,   0,   ! red    
-c     &                 255, 165,   0,   ! orange 
-c     &                 255, 255,   0,   ! yellow 
-c     &                   0, 255,   0,   ! green  
-c     &                   0, 255, 255,   ! cyan   
-c     &                   0,   0, 255,   ! blue   
-c     &                 148,   0, 211 /  ! violet 
-c     &                 255,   0, 255,   ! magenta
-C
 C---- hues for reverse-video (black background), use full saturation
       DATA  ((DEFCMAPRGB1(L,I),L=1,3),I=1,NCMAP) 
      &              /    0,   0,   0,   ! black  
@@ -329,24 +349,39 @@ C---- hues for reverse-video (black background), use full saturation
      &                 255,   0,   0,   ! red    
      &                 255, 165,   0,   ! orange 
      &                 255, 255,   0,   ! yellow 
-     &                   0, 255,   0,   ! green  
+     &                   0, 245,   0,   ! green  
      &                   0, 255, 255,   ! cyan   
-     &                  30, 140, 255,   ! blue   
-     &                 205,  55, 255,   ! violet 
+     &                   0,  90, 255,   ! blue   
+     &                 160,   0, 255,   ! violet 
      &                 255,   0, 255 /  ! magenta
 C
 C---- hues for regular-video (white background), use partial saturation
-      DATA  ((DEFCMAPRGB0(L,I),L=1,3),I=1,NCMAP) 
+c-     Colormap 2a
+c      DATA  ((DEFCMAPRGB2(L,I),L=1,3),I=1,NCMAP) 
+c     &              /    0,   0,   0,   ! black  
+c     &                 255, 255, 255,   ! white  
+c     &                 255,   0,   0,   ! red    
+c     &                 255, 150,   0,   ! orange 
+c     &                 255, 220,   0,   ! yellow 
+c     &                   0, 190,   0,   ! green  
+c     &                   0, 215, 225,   ! cyan   
+c     &                   0,  75, 255,   ! blue   
+c     &                 165,   0, 255,   ! violet 
+c     &                 255,   0, 255 /  ! magenta
+C
+C---- hues for regular-video (white background), even less saturation
+c-     Colormap 2b
+      DATA  ((DEFCMAPRGB2(L,I),L=1,3),I=1,NCMAP) 
      &              /    0,   0,   0,   ! black  
      &                 255, 255, 255,   ! white  
-     &                 255,   0,   0,   ! red    
-     &                 255, 165,   0,   ! orange 
-     &                 220, 220,   0,   ! yellow 
-     &                   0, 225,   0,   ! green  
-     &                   0, 210, 210,   ! cyan   
-     &                  30, 140, 255,   ! blue   
-     &                 205,  55, 255,   ! violet 
-     &                 255,   0, 255 /  ! magenta
+     &                 235,   0,   0,   ! red    
+     &                 235, 130,   0,   ! orange 
+     &                 235, 200,   0,   ! yellow 
+     &                   0, 170,   0,   ! green  
+     &                   0, 195, 205,   ! cyan   
+     &                   0,  55, 235,   ! blue   
+     &                 145,   0, 235,   ! violet 
+     &                 235,   0, 235 /  ! magenta
 C
        DATA  DEFCMAPNAMES
      &               / 'BLACK     ',
@@ -360,14 +395,16 @@ C
      &                 'VIOLET    ',
      &                 'MAGENTA   ' /
 C
+c      write(*,*) 'Entering COLORMAPDEFAULT. N_COLOR N_SPECTRUM =',    !@@@
+c     &    N_COLOR, N_SPECTRUM
 c 
 C---Initialize the colormap indices for first call
-      if(ifirst.EQ.0) then
+       if(ifirst.EQ.0) then
         N_COLOR = 0
         N_SPECTRUM = 0
         IFIRST_SPECTRUM = 0
         ifirst = 1
-      endif
+       endif
 C
 C--- Skip installing new default map if there already are NCMAP colors
       if(N_COLOR.EQ.NCMAP) return
@@ -376,47 +413,50 @@ C--- Flush current colormap if any, to free up space for new map
       if(N_COLOR.GT.0) call gw_newcmap
 c
 C--- Fill in the colormap with with the default colors and set colorindex 
-C    to -1 to indicate that the color is still unallocated by hardware
-      IF(LGW_REVVIDEO) THEN
-        do n = 1, NCMAP
-          ired = DEFCMAPRGB1(1,n)
-          igrn = DEFCMAPRGB1(2,n)
-          iblu = DEFCMAPRGB1(3,n)
-          COLOR_RGB(n)  = iblu + 256*(igrn + 256*ired)
-          COLOR_NAME(n) = DEFCMAPNAMES(n)
-          G_COLOR_CINDEX(n) = -1
-        end do
-      ELSE
-        do n = 1, NCMAP
-          ired = DEFCMAPRGB0(1,n)
-          igrn = DEFCMAPRGB0(2,n)
-          iblu = DEFCMAPRGB0(3,n)
-          COLOR_RGB(n)  = iblu + 256*(igrn + 256*ired)
-          COLOR_NAME(n) = DEFCMAPNAMES(n)
-          G_COLOR_CINDEX(n) = -1
-        end do
-      ENDIF
+C     to -1 to indicate that the color is still unallocated by hardware
+C
+      do n = 1, NCMAP
+        ired = DEFCMAPRGB1(1,n)
+        igrn = DEFCMAPRGB1(2,n)
+        iblu = DEFCMAPRGB1(3,n)
+        COLOR_RGB1(n) = iblu + 256*(igrn + 256*ired)
+
+        ired = DEFCMAPRGB2(1,n)
+        igrn = DEFCMAPRGB2(2,n)
+        iblu = DEFCMAPRGB2(3,n)
+        COLOR_RGB2(n) = iblu + 256*(igrn + 256*ired)
+
+        COLOR_NAME(n) = DEFCMAPNAMES(n)
+        G_COLOR_CINDEX(n) = -1
+      end do
 C
       N_COLOR = NCMAP
-c     write(*,*) 'COLORMAPDEFAULT: NCOLOR ',N_COLOR
+c      write(*,*) 'Exiting  COLORMAPDEFAULT. N_COLOR N_SPECTRUM =',    !@@@
+c     &    N_COLOR, N_SPECTRUM
 C
       return
-      end
+      end ! COLORMAPDEFAULT
 
 
-      subroutine COLORSPECTRUMHUES(ncols,HUESTR)
+      subroutine COLORSPECTRUMHUES(NCOLS,HUESTR)
       character*(*) HUESTR
-C
-C...Sets up a color "Spectrum" table that gives a continuous 
-C   blend between a small number of base colors specified in the
-C   character string HUESTR, which can be "RYGCBM" or any subset thereof.
+C--------------------------------------------------------------------------
+C   Sets up a color "Spectrum" table that gives a continuous blend
+C   between a small number of base colors specified in the character 
+C   string HUESTR, which can be "KWROYGCBM" or a subset thereof
+C   (K = black).  But the non-monochrome colors ROYGCBM should be 
+C   in that order, or in reverse order "M..R", else the resulting 
+C   spectrum will be non-monotonic and look terrible.
 C
 C   The RGB components associated with each specified color are set in 
 C   the DATA statement below. These colors are appended to any existing 
 C   colormap data, typically set up by COLORMAPDEFAULT.
 C
 C   These Spectrum colors are then accessible by NEWCOLOR(-icol)
-C       -icol = 1 .. ncols
+C       -icol = 1 .. NCOLS
+C
+C   If NCOLS is too big for the definable number of colors,
+C   it will be reset to the max allowable value.
 C
 C NOTE: The maximum number of colors available to the Spectrum is LESS 
 C       than the screen depth would indicate.  Some of the X colormap 
@@ -425,50 +465,66 @@ C       around 30-40 colormap entries. So, for an 8 bit depth, this
 C       leaves around 220 or so available for use, only 210 or so after 
 C       the Palette colors (typ. 10) are assigned.  Less are available 
 C       if other applications are using the X colormap.
-C
+C--------------------------------------------------------------------------
       include 'pltlib.inc'
-c
 C
-C...RGB components of the Spectrum-defining base colors
-C   COLWIDTH controls the relative extent of that defining color
-C
-      parameter (NRGB = 7)
-      dimension irgbhue(3,NRGB), huewidth(NRGB)
-C
-      DIMENSION IRGBTABLE(3,NRGB)
-      DIMENSION COLORWIDTH(NRGB)
-      CHARACTER*(NRGB) COLORCHARS
-c
-      DATA COLORCHARS / 'MBCGYOR' /
-      DATA ( (IRGBTABLE(L,I),L=1,3),COLORWIDTH(I), I=1, NRGB )
-     &  / 240,     0,   240,  1.5,    ! Magenta
-     &     32,    32,   255,  1.0,    ! Blue
-     &      0,   240,   240,  1.0,    ! Cyan
-     &     32,   255,    32,  1.0,    ! Green
-     &    240,   240,     0,  1.0,    ! Yellow
-     &    255,   160,     0,  1.0,    ! Orange
-     &    255,    32,    32,  1.5  /  ! Red
-C         Red   Green    Blue
-C
-      call convrt2uc(HUESTR)
-      nhuemax = len(HUESTR)
-c
-      nhue = 0
-      do k=1, nhuemax
-        i = index( COLORCHARS , HUESTR(k:k) )
-        if(i.ne.0) then
-         nhue = nhue + 1
-         irgbhue(1,nhue) = IRGBTABLE(1,i)
-         irgbhue(2,nhue) = IRGBTABLE(2,i)
-         irgbhue(3,nhue) = IRGBTABLE(3,i)
-         huewidth(nhue)  = COLORWIDTH(i)
-        endif
-      enddo
-c
-      CALL COLORSPECTRUMTRP(ncols,nhue,irgbhue,huewidth)
-C
+C---- arrays for setting up rgb tables below
+      parameter (NRGBT = 9)
+      INTEGER IRGBTABLE1(3,NRGBT),
+     &        IRGBTABLE2(3,NRGBT)
+      REAL COLORWIDTH1(NRGBT),
+     &     COLORWIDTH2(NRGBT)
+      CHARACTER*(NRGBT) COLORCHARS
+
+C---- Set up RGB components of the Spectrum-defining base colors
+C-      COLWIDTH controls the relative extent of that defining color
+      DATA COLORCHARS / 'KWROYGCBM' /
+
+C---- hues for reverse-video (black background), use full saturation
+      DATA ((IRGBTABLE1(L,I),L=1,3), COLORWIDTH1(I), I=1, NRGBT) 
+     &               /   0,   0,   0,  0.7,   ! black
+     &                 255, 255, 255,  0.7,   ! white  
+     &                 255,   0,   0,  1.0,   ! red    
+     &                 255, 165,   0,  1.0,   ! orange 
+     &                 255, 255,   0,  1.3,   ! yellow 
+     &                   0, 255,   0,  0.7,   ! green  
+     &                   0, 255, 255,  1.3,   ! cyan   
+     &                   0,  75, 255,  1.0,   ! blue   
+     &                 255,   0, 255,  1.1 /  ! magenta
+
+C---- hues for regular-video (white background), use partial saturation
+C-     Color map 2a
+c      DATA ((IRGBTABLE2(L,I),L=1,3), COLORWIDTH2(I), I=1, NRGBT) 
+c     &               /   0,   0,   0,  0.7,   ! black
+c     &                 245, 245, 245,  0.7,   ! white  
+c     &                 255,   0,   0,  1.0,   ! red    
+c     &                 255, 150,   0,  1.0,   ! orange 
+c     &                 255, 220,   0,  1.3,   ! yellow 
+c     &                   0, 190,   0,  0.7,   ! green  
+c     &                   0, 215, 225,  1.3,   ! cyan   
+c     &                   0,  75, 255,  1.0,   ! blue   
+c     &                 255,   0, 255,  1.1 /  ! magenta
+
+C---- hues for regular-video (white background), even less saturation
+C-     Color map 2b
+      DATA ((IRGBTABLE2(L,I),L=1,3), COLORWIDTH2(I), I=1, NRGBT) 
+     &               /   0,   0,   0,  0.7,   ! black
+     &                 235, 235, 235,  0.7,   ! white  
+     &                 235,   0,   0,  1.0,   ! red    
+     &                 235, 130,   0,  1.0,   ! orange 
+     &                 235, 200,   0,  1.3,   ! yellow 
+     &                   0, 170,   0,  0.7,   ! green  
+     &                   0, 195, 205,  1.3,   ! cyan   
+     &                   0,  55, 235,  1.0,   ! blue   
+     &                 235,   0, 235,  1.1 /  ! magenta
+
+      call SPECTRUMSETUP(NCOLS,HUESTR,
+     &                   NRGBT,COLORCHARS,
+     &                   IRGBTABLE1,COLORWIDTH1,
+     &                   IRGBTABLE2,COLORWIDTH2 )
+
       return
-      end
+      end ! COLORSPECTRUMHUES
 
 
 
@@ -549,7 +605,7 @@ c
       return
       end
 
-
+      
       subroutine COLORSPECTRUMRGB(NRGB,IRGB)
 C...Sets up a color "Spectrum" table for NRGB colors that are 
 C   defined by r,g,b values (0-255) in the IRGB array. 
@@ -585,7 +641,7 @@ C--- Now fill in the Spectrum colors from the passed-in color table
 C
         IC = IFIRST_SPECTRUM + i - 1
 c
-        COLOR_RGB(IC)  = iblu + 256*(igrn + 256*ired)
+        COLOR_RGB1(IC)  = iblu + 256*(igrn + 256*ired)
         COLOR_NAME(IC) = 'SPECTRUM'
         G_COLOR_CINDEX(IC) = -1
       end do
@@ -596,6 +652,150 @@ c     write(*,*) 'COLORSPECTRUMRGB: NCOLOR,NSPECTRUM ',N_COLOR,N_SPECTRUM
 c
       return
       end
+
+      subroutine SPECTRUMSETUP(NCOLS,HUESTR,
+     &                         NRGBT,COLORCHARS,
+     &                         IRGBTABLE1,COLORWIDTH1,
+     &                         IRGBTABLE2,COLORWIDTH2 )
+      CHARACTER*(*) HUESTR
+      INTEGER IRGBTABLE1(3,NRGBT),
+     &        IRGBTABLE2(3,NRGBT)
+      REAL COLORWIDTH1(NRGBT),
+     &     COLORWIDTH2(NRGBT)
+      CHARACTER*(NRGBT) COLORCHARS
+
+      CHARACTER*32 HUESIN
+
+      include 'pltlib.inc'
+
+C---- local arrays for making irgb table from specified HUESTR colors
+      parameter (nhuemax = 14)
+      INTEGER irgbhue(3,nhuemax,2)
+      REAL huewidth(nhuemax,2)
+      REAL colaxis(nhuemax)
+
+      CHARACTER*2 cnum
+
+      HUESIN = HUESTR
+      NHUESIN = len(HUESTR)
+
+      call convrt2uc(HUESIN(1:NHUESIN))
+
+      if(N_COLOR.LE.0 .OR. N_COLOR.GT.10) then
+C----- make sure basic colors are set up
+       CALL COLORMAPDEFAULT
+      endif
+C
+C---- set up user hue tables from specified HUESTR colors
+      nhue = 0
+      do k = 1, NHUESIN
+        i = index( COLORCHARS , HUESIN(k:k) )
+        if(i.ne.0) then
+         nhue = nhue + 1
+         ihue = min( nhue , nhuemax)
+
+         irgbhue(1,ihue,1) = IRGBTABLE1(1,i)
+         irgbhue(2,ihue,1) = IRGBTABLE1(2,i)
+         irgbhue(3,ihue,1) = IRGBTABLE1(3,i)
+         huewidth(ihue,1)  = COLORWIDTH1(i)
+
+         irgbhue(1,ihue,2) = IRGBTABLE2(1,i)
+         irgbhue(2,ihue,2) = IRGBTABLE2(2,i)
+         irgbhue(3,ihue,2) = IRGBTABLE2(3,i)
+         huewidth(ihue,2)  = COLORWIDTH2(i)
+        endif
+      enddo
+
+      if(nhue .gt. nhuemax) then
+       write(*,*) 'SPECTRUMSETUP: Too many colors in string.', 
+     &            ' Limited to array dimension', nhuemax
+       nhue = nhuemax
+      endif
+
+C---- check to make sure we have enough room in the color table
+      if(N_COLOR+NCOLS+1 .gt. Ncolors_max) then
+       write(*,*) 'SPECTRUMSETUP: Number of spectrum colors',
+     &            ' limited to array dimension', Ncolors_max
+       NCOLS = Ncolors_max - N_COLOR - 1
+      endif
+
+C---- starting index of Spectrum in colormap arrays
+      IFIRST_SPECTRUM = N_COLOR + 1
+C
+      izero = ichar('0')
+
+      do 100 ispect = 1, 2
+        colaxis(1) = 0.
+        do ihue = 2, nhue
+          colaxis(ihue) = colaxis(ihue-1)
+     &       + 0.5*(huewidth(ihue-1,ispect) + huewidth(ihue,ispect))
+          if(colaxis(ihue) .LE. colaxis(ihue-1)) then
+           write(*,*) '? Non-monotonic color axis -- bad huewidth data.'
+           return
+          endif
+        enddo
+
+C------ fill in the Spectrum rgb tables COLOR_RGB*,
+C-        interpolating colors between the entries in user hue table
+        ihue = 1
+        do i = 1, NCOLS
+          xcol = colaxis(nhue) * float(i-1)/float(NCOLS-1)
+c
+ 5        continue
+          xnorm = (xcol           -colaxis(ihue))
+     &          / (colaxis(ihue+1)-colaxis(ihue))
+          if(xnorm .GT. 1.0  .AND.  ihue .LT. nhue) then
+           ihue = ihue + 1
+           go to 5
+          endif
+c
+          w0 = huewidth(ihue  ,ispect)
+          w1 = huewidth(ihue+1,ispect)
+          frac = w1*xnorm / (w0 + (w1-w0)*xnorm)
+C
+C-------- hues at ends of user hue table interval
+          red0 = float(irgbhue(1,ihue  ,ispect))
+          grn0 = float(irgbhue(2,ihue  ,ispect))
+          blu0 = float(irgbhue(3,ihue  ,ispect))
+          red1 = float(irgbhue(1,ihue+1,ispect))
+          grn1 = float(irgbhue(2,ihue+1,ispect))
+          blu1 = float(irgbhue(3,ihue+1,ispect))
+
+          ired = ifix( (red0 + frac*(red1-red0)) + 0.5 )
+          igrn = ifix( (grn0 + frac*(grn1-grn0)) + 0.5 )
+          iblu = ifix( (blu0 + frac*(blu1-blu0)) + 0.5 )
+
+          irgb = iblu + 256*(igrn + 256*ired)
+
+C-------- interpolate user rgb table to make spectrum rgb values
+          IC = IFIRST_SPECTRUM + i - 1
+          if    (ispect.eq.1) then
+           COLOR_RGB1(IC) = irgb
+          elseif(ispect.eq.2) then
+           COLOR_RGB2(IC) = irgb
+          endif
+        enddo ! next i
+ 100  continue ! next ispect
+
+      do i = 1, ncols
+        IC = IFIRST_SPECTRUM + i - 1
+
+        khun = i / 100
+        kten = (i - 100*khun)/10
+        kone =  i - 100*khun - 10*kten
+        cnum = char(izero+kten) // char(izero+kone)
+        COLOR_NAME(IC) = 'SPECTRUM' // cnum
+        G_COLOR_CINDEX(IC) = -1
+      enddo ! next i
+
+      N_SPECTRUM = ncols
+      N_COLOR = IFIRST_SPECTRUM + ncols - 1
+
+c      write(*,*) 'Exiting  SPECTRUMSETUP. N_COLOR N_SPECTRUM =',    !@@@
+c     &    N_COLOR, N_SPECTRUM
+
+      return
+      end ! SPECTRUMSETUP
 
 
 
@@ -615,9 +815,3 @@ C
 C
       return
       end 
-
-
-
-
-
-

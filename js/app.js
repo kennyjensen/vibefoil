@@ -1,5 +1,16 @@
 import { buildBlContext, computeQvisFromUedg, specal, viscal } from './xoper.js';
 import { computeAlphaAxisRanges } from './alpha_axes.js';
+import { airfoilNameFromPath, nacaSettingsForName, restoredAirfoilURL } from './airfoil_route.js';
+
+const appBaseURL = new URL('../', import.meta.url);
+const restoredURL = restoredAirfoilURL(new URL(location.href), appBaseURL.pathname);
+if (restoredURL) {
+  const base = document.createElement('base');
+  base.href = appBaseURL.href;
+  document.head.prepend(base);
+  history.replaceState(history.state, '', restoredURL);
+}
+const initialAirfoilName = airfoilNameFromPath(location.pathname, appBaseURL.pathname);
 
 // High-level orchestrator for the XFOIL port: UI, geometry generation,
 // inviscid panel solve, viscous BL coupling, and plotting.
@@ -65,6 +76,7 @@ const UIUC_FALLBACK_LIST = [
 ];
 let uiucListLoaded = false;
 let uiucListLoading = false;
+let uiucFetchController = null;
 let lastSolverPayload = null;
 let lastGeometrySettings = null;
 let pendingGeometrySettings = null;
@@ -1730,22 +1742,40 @@ async function ensureUiucListLoaded() {
 
 async function fetchUiucAirfoil() {
   if (!fetchUiucButton || !uiucNameInput) return;
-  const filename = normalizeUiucFilename(uiucNameInput.value);
+  let filename = normalizeUiucFilename(uiucNameInput.value);
   if (!filename) {
     setUiucStatus('Enter a .dat filename to fetch.', true);
     return;
   }
 
-  const url = `${UIUC_BASE_URL}${encodeURIComponent(filename)}`;
+  uiucFetchController?.abort();
+  const controller = new AbortController();
+  uiucFetchController = controller;
+  const { signal } = controller;
+  const fetchFile = (name) => fetch(`${UIUC_BASE_URL}${encodeURIComponent(name)}`, { signal });
   fetchUiucButton.disabled = true;
   setUiucStatus(`Fetching ${filename}...`);
 
   try {
-    const response = await fetch(url);
+    let response = await fetchFile(filename);
+    if (response.status === 404) {
+      // A few database filenames contain capitals. Resolve those from the
+      // repository listing without requiring an API request for common names.
+      const listing = await fetch(UIUC_TREE_URL, { signal });
+      if (listing.ok) {
+        const names = parseUiucTree(await listing.json());
+        const match = names.find((name) => name.toLowerCase() === filename.toLowerCase());
+        if (match && match !== filename) {
+          filename = match;
+          response = await fetchFile(filename);
+        }
+      }
+    }
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
     const text = await response.text();
+    if (signal.aborted) return;
     const data = parseDatAirfoil(text);
     if (!data) {
       throw new Error('No coordinates parsed.');
@@ -1769,9 +1799,14 @@ async function fetchUiucAirfoil() {
     setUiucStatus(`Loaded ${data.name}.`);
     update();
   } catch (error) {
-    setUiucStatus(`Fetch failed: ${error.message}`, true);
+    if (!signal.aborted) {
+      setUiucStatus(`Could not load ${filename}: ${error.message}`, true);
+    }
   } finally {
-    fetchUiucButton.disabled = false;
+    if (uiucFetchController === controller) {
+      uiucFetchController = null;
+      fetchUiucButton.disabled = false;
+    }
   }
 }
 
@@ -3078,6 +3113,8 @@ seriesRadios.forEach((radio) => {
 
 sourceRadios.forEach((radio) => {
   radio.addEventListener('change', () => {
+    uiucFetchController?.abort();
+    setUiucStatus('');
     const source = sourceRadios.find((item) => item.checked)?.value || 'naca';
     const isCustom = source === 'custom';
     const isDatabase = source === 'database';
@@ -3813,6 +3850,30 @@ if (canvas) {
   }
 }
 
+if (initialAirfoilName) {
+  const settings = nacaSettingsForName(initialAirfoilName);
+  const source = settings ? 'naca' : 'database';
+  sourceRadios.find((radio) => radio.value === source).checked = true;
+  if (settings) {
+    seriesRadios.find((radio) => radio.value === settings.mode).checked = true;
+    const inputs = {
+      m: mSlider, p: pSlider, t: tSlider,
+      series5: series5Select, t5: t5Slider,
+      profile6: series6Profile, cl6: cl6Input, t6: t6Slider,
+    };
+    Object.entries(inputs).forEach(([key, input]) => {
+      if (settings[key] === undefined) return;
+      // Range inputs otherwise silently clamp thick NACA sections to 30%.
+      if (input.type === 'range' && settings[key] > Number(input.max)) {
+        input.max = String(settings[key]);
+      }
+      input.value = String(settings[key]);
+    });
+  } else {
+    uiucNameInput.value = initialAirfoilName;
+  }
+}
+
 const initSource = sourceRadios.find((item) => item.checked)?.value || 'naca';
 nacaOptions.hidden = initSource !== 'naca';
 customOptions.hidden = initSource !== 'custom';
@@ -3836,4 +3897,8 @@ if (runCases.length === 0) {
 renderRunCases();
 resizeCanvas();
 updateDownloadButtons();
-update();
+if (initialAirfoilName && initSource === 'database') {
+  fetchUiucAirfoil();
+} else {
+  update();
+}

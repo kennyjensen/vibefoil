@@ -1,6 +1,6 @@
 {
   "type": "module",
   "scripts": {
-    "test": "node tests/alpha_axes.test.js"
+    "test": "node tests/alpha_axes.test.js && node tests/airfoil_route.test.js"
   }
 }

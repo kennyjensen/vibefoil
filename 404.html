@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vibefoil</title>
+  <style>
+    body { margin: 3rem; background: #0c0f14; color: #e8edf2; font-family: Consolas, monospace; }
+    a { color: #7fb3ff; }
+  </style>
+</head>
+<body>
+  <p id="status">Page not found.</p>
+  <p><a id="home" href="/">Open Vibefoil</a></p>
+  <noscript>JavaScript is required to open an airfoil in Vibefoil.</noscript>
+  <script type="module">
+    // Also support the repository's default GitHub Pages address.
+    const basePath = location.hostname.endsWith('.github.io') && location.pathname.startsWith('/vibefoil/')
+      ? '/vibefoil/' : '/';
+    document.getElementById('home').href = basePath;
+    const { airfoilRedirectURL } = await import(`${basePath}js/airfoil_route.js`);
+    const target = airfoilRedirectURL(new URL(location.href), basePath);
+    if (target) {
+      document.getElementById('status').textContent = 'Opening airfoil…';
+      location.replace(target.href);
+    }
+  </script>
+</body>
+</html>

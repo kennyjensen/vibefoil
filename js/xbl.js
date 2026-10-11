@@ -68,8 +68,10 @@ function mrcl(ctx, cls) {
   let reinf;
   let rCls = 0.0;
 
-  const matyp = ctx.MATYP ?? 1;
-  const retyp = ctx.RETYP ?? 1;
+  const matyp = ctx.MATYP >= 1 && ctx.MATYP <= 3 ? ctx.MATYP : 1;
+  const retyp = ctx.RETYP >= 1 && ctx.RETYP <= 3 ? ctx.RETYP : 1;
+  ctx.MATYP = matyp;
+  ctx.RETYP = retyp;
 
   if (matyp === 1) {
     minf = ctx.MINF1;
@@ -93,17 +95,37 @@ function mrcl(ctx, cls) {
     rCls = -reinf / cla;
   }
 
+  if (minf >= 0.99) {
+    minf = 0.99;
+    mCls = 0.0;
+  }
+  if (ctx.REINF1 > 0.0 && reinf / ctx.REINF1 > 100.0) {
+    reinf = ctx.REINF1 * 100.0;
+    rCls = 0.0;
+  }
   ctx.MINF = minf;
   ctx.REINF = reinf;
+  ctx.MINF_CL = mCls;
+  ctx.REINF_CL = rCls;
   return { mCls, rCls };
 }
 
 // Precompute coefficients and intermediate BL parameters for marching (COMSET).
 function comset(ctx) {
-  const beta = Math.sqrt(Math.max(1.0 - ctx.MINF ** 2, 0.0));
-  const betaMsq = beta === 0.0 ? 0.0 : -0.5 / beta;
+  const beta = Math.sqrt(1.0 - ctx.MINF ** 2);
+  const betaMsq = -0.5 / beta;
   ctx.TKLAM = ctx.MINF ** 2 / (1.0 + beta) ** 2;
   ctx.TK_MSQ = 1.0 / (1.0 + beta) ** 2 - 2.0 * ctx.TKLAM / (1.0 + beta) * betaMsq;
+  ctx.TKL_MSQ = ctx.TK_MSQ;
+  if (ctx.MINF === 0.0) {
+    ctx.CPSTAR = -999.0;
+    ctx.QSTAR = 999.0;
+  } else {
+    ctx.CPSTAR = 2.0 / (ctx.GAMMA * ctx.MINF ** 2)
+      * (((1.0 + 0.5 * ctx.GAMM1 * ctx.MINF ** 2) / (1.0 + 0.5 * ctx.GAMM1)) ** (ctx.GAMMA / ctx.GAMM1) - 1.0);
+    ctx.QSTAR = ctx.QINF / ctx.MINF
+      * Math.sqrt((1.0 + 0.5 * ctx.GAMM1 * ctx.MINF ** 2) / (1.0 + 0.5 * ctx.GAMM1));
+  }
 }
 
 // Initialize BL system matrices and coupling terms for marching (IBLSYS).
@@ -124,7 +146,14 @@ function iblsys(ctx) {
 
 // March Ue and related quantities along the surface and wake (MRCHUE).
 // Laminar/turbulent switching and wake handling follow XFOIL's marching scheme.
+function ensureDefectArrays(ctx) {
+  for (const name of ['DSSR', 'MDEF', 'PDEF', 'KDEF']) {
+    if (!ctx[name]) ctx[name] = ctx.TSTR.map((row) => new Float64Array(row.length));
+  }
+}
+
 function mrchue(ctx) {
+  ensureDefectArrays(ctx);
   const hlmax = 3.8;
   const htmax = 2.5;
   if (!ctx.HTARG || ctx.HTARG.length < 3
@@ -174,8 +203,6 @@ function mrchue(ctx) {
 
       const simi = ibl === 2;
       const wake = ibl > ctx.IBLTE[is];
-      ctx.TRAN = ibl === ctx.ITRAN[is];
-      ctx.TURB = ibl > ctx.ITRAN[is];
       ctx.SIMI = simi;
       ctx.WAKE = wake;
 
@@ -388,6 +415,10 @@ function mrchue(ctx) {
       ctx.CTQ[ibl][is] = ctx.CQ2;
       ctx.DELT[ibl][is] = ctx.DE2;
       ctx.TSTR[ibl][is] = ctx.HS2 * ctx.T2;
+      ctx.DSSR[ibl][is] = ctx.HC2 * ctx.T2;
+      ctx.MDEF[ibl][is] = ctx.R2 * ctx.U2 * ctx.D2;
+      ctx.PDEF[ibl][is] = ctx.R2 * ctx.U2 * ctx.U2 * ctx.T2;
+      ctx.KDEF[ibl][is] = ctx.R2 * ctx.U2 * ctx.U2 * ctx.U2 * ctx.T2 * ctx.HS2 * 0.5;
 
 
       ctx.blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
@@ -418,6 +449,7 @@ function mrchue(ctx) {
 
 // March Ue and BL variables with transition logic (MRCHDU).
 function mrchdu(ctx) {
+  ensureDefectArrays(ctx);
   // Fortran comments (MRCHDU) highlight:
   // - March with transition logic and sensitivity weighting.
   // - Update CTAU/THET/DSTR/UEDG based on branch (lam/turb/wake).
@@ -493,8 +525,6 @@ function mrchdu(ctx) {
       const wake = ibl > IBLTE[is];
       ctx.SIMI = simi;
       ctx.WAKE = wake;
-      ctx.TRAN = ibl === ITRAN[is];
-      ctx.TURB = ibl > ITRAN[is];
 
       xsi = XSSI[ibl][is];
       uei = UEDG[ibl][is];
@@ -703,6 +733,10 @@ function mrchdu(ctx) {
       CTQ[ibl][is] = ctx.CQ2;
       DELT[ibl][is] = ctx.DE2;
       TSTR[ibl][is] = ctx.HS2 * ctx.T2;
+      ctx.DSSR[ibl][is] = ctx.HC2 * ctx.T2;
+      ctx.MDEF[ibl][is] = ctx.R2 * ctx.U2 * ctx.D2;
+      ctx.PDEF[ibl][is] = ctx.R2 * ctx.U2 * ctx.U2 * ctx.T2;
+      ctx.KDEF[ibl][is] = ctx.R2 * ctx.U2 * ctx.U2 * ctx.U2 * ctx.T2 * ctx.HS2 * 0.5;
 
       blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
       blkin(ctx);
@@ -779,12 +813,10 @@ function setbl(ctx) {
   const vs2r1 = 1 * vsStride;
   const vs2r2 = 2 * vsStride;
   const vs2r3 = 3 * vsStride;
-  const minf = ctx.MINF;
   const qinf = ctx.QINF;
   const gamma = ctx.GAMMA;
   const gamm1 = ctx.GAMM1;
   const hvrat = ctx.HVRAT;
-  const reinf = ctx.REINF;
   // No tracing; setbl assembles VA/VB/VDEL/VM directly.
   // Clear COM arrays before assembling system.
   COM1.fill(0.0, 1);
@@ -823,6 +855,8 @@ function setbl(ctx) {
 
   const clmr = ctx.LALFA ? ctx.CL : ctx.CLSPEC;
   const { mCls: maClmr, rCls: reClmr } = mrcl(ctx, clmr);
+  const minf = ctx.MINF;
+  const reinf = ctx.REINF;
   const msqClmr = 2.0 * ctx.MINF * maClmr;
 
   comset(ctx);
@@ -1099,8 +1133,10 @@ function setbl(ctx) {
           ? VSR[1] * reClmr + VSM[1] * msqClmr
           : (vs1[vs1r1 + 4] * u1A + vs1[vs1r1 + 3] * d1A)
             + (vs2[vs2r1 + 4] * u2A + vs2[vs2r1 + 3] * d2A);
-        VDEL[1][2][iv] += (vs1[vs1r1 + 5] + vs2[vs2r1 + 5] + VSX[1])
-          * (xiUle1 * ule1A + xiUle2 * ule2A);
+        if (!ctx.LALFA) {
+          VDEL[1][2][iv] += (vs1[vs1r1 + 5] + vs2[vs2r1 + 5] + VSX[1])
+            * (xiUle1 * ule1A + xiUle2 * ule2A);
+        }
         VDEL[1][1][iv] = VSREZ[1]
           + (vs1[vs1r1 + 4] * due1 + vs1[vs1r1 + 3] * dds1)
           + (vs2[vs2r1 + 4] * due2 + vs2[vs2r1 + 3] * dds2)
@@ -1121,8 +1157,10 @@ function setbl(ctx) {
           ? VSR[2] * reClmr + VSM[2] * msqClmr
           : (vs1[vs1r2 + 4] * u1A + vs1[vs1r2 + 3] * d1A)
             + (vs2[vs2r2 + 4] * u2A + vs2[vs2r2 + 3] * d2A);
-        VDEL[2][2][iv] += (vs1[vs1r2 + 5] + vs2[vs2r2 + 5] + VSX[2])
-          * (xiUle1 * ule1A + xiUle2 * ule2A);
+        if (!ctx.LALFA) {
+          VDEL[2][2][iv] += (vs1[vs1r2 + 5] + vs2[vs2r2 + 5] + VSX[2])
+            * (xiUle1 * ule1A + xiUle2 * ule2A);
+        }
         VDEL[2][1][iv] = VSREZ[2]
           + (vs1[vs1r2 + 4] * due1 + vs1[vs1r2 + 3] * dds1)
           + (vs2[vs2r2 + 4] * due2 + vs2[vs2r2 + 3] * dds2)
@@ -1143,8 +1181,10 @@ function setbl(ctx) {
           ? VSR[3] * reClmr + VSM[3] * msqClmr
           : (vs1[vs1r3 + 4] * u1A + vs1[vs1r3 + 3] * d1A)
             + (vs2[vs2r3 + 4] * u2A + vs2[vs2r3 + 3] * d2A);
-        VDEL[3][2][iv] += (vs1[vs1r3 + 5] + vs2[vs2r3 + 5] + VSX[3])
-          * (xiUle1 * ule1A + xiUle2 * ule2A);
+        if (!ctx.LALFA) {
+          VDEL[3][2][iv] += (vs1[vs1r3 + 5] + vs2[vs2r3 + 5] + VSX[3])
+            * (xiUle1 * ule1A + xiUle2 * ule2A);
+        }
         VDEL[3][1][iv] = VSREZ[3]
           + (vs1[vs1r3 + 4] * due1 + vs1[vs1r3 + 3] * dds1)
           + (vs2[vs2r3 + 4] * due2 + vs2[vs2r3 + 3] * dds2)
@@ -1235,6 +1275,14 @@ function setbl(ctx) {
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
       }
+
+      // SETBL re-evaluates the local state after coupling the edge velocity.
+      // CDCALC must integrate these stresses, not the earlier marching values.
+      ctx.TAU[ibl][is] = 0.5 * ctx.R2 * ctx.U2 * ctx.U2 * ctx.CF2;
+      ctx.DIS[ibl][is] = ctx.R2 * ctx.U2 * ctx.U2 * ctx.U2 * ctx.DI2 * ctx.HS2 * 0.5;
+      ctx.CTQ[ibl][is] = ctx.CQ2;
+      ctx.DELT[ibl][is] = ctx.DE2;
+      ctx.USLP[ibl][is] = 1.60 / (1.0 + ctx.US2);
 
       if (ctx.TRAN) {
         ctx.TURB = true;
@@ -1345,6 +1393,7 @@ function xifset(ctx, is) {
 // Finalize BL step: update state variables and derived quantities (UPDATE).
 // Computes Newton deltas for (Ctau, Theta, m) and applies them to the BL state.
 function update(ctx) {
+  ensureDefectArrays(ctx);
   // Fortran comments (UPDATE) highlight:
   // - Solve for alpha/CL correction (DAC) with relaxation.
   // - Update BL variables and enforce limits.
@@ -1605,6 +1654,10 @@ function update(ctx) {
     ctx.CTQ[ctx.IBLTE[1] + kbl][1] = ctx.CTQ[ctx.IBLTE[2] + kbl][2];
     ctx.DELT[ctx.IBLTE[1] + kbl][1] = ctx.DELT[ctx.IBLTE[2] + kbl][2];
     ctx.TSTR[ctx.IBLTE[1] + kbl][1] = ctx.TSTR[ctx.IBLTE[2] + kbl][2];
+    ctx.DSSR[ctx.IBLTE[1] + kbl][1] = ctx.DSSR[ctx.IBLTE[2] + kbl][2];
+    ctx.MDEF[ctx.IBLTE[1] + kbl][1] = ctx.MDEF[ctx.IBLTE[2] + kbl][2];
+    ctx.PDEF[ctx.IBLTE[1] + kbl][1] = ctx.PDEF[ctx.IBLTE[2] + kbl][2];
+    ctx.KDEF[ctx.IBLTE[1] + kbl][1] = ctx.KDEF[ctx.IBLTE[2] + kbl][2];
   }
 }
 

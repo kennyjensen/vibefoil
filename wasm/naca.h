@@ -11,9 +11,9 @@
 #include <vector>
 
 std::pair<int, std::string> naca4(int ides, std::vector<double> &xx, std::vector<double> &yt, std::vector<double> &yc,
-                                 int nside, std::vector<double> &xb, std::vector<double> &yb);
+                                 int nside, std::vector<double> &xb, std::vector<double> &yb, bool ltes = false);
 
 std::pair<int, std::string> naca5(int ides, std::vector<double> &xx, std::vector<double> &yt, std::vector<double> &yc,
-                                 int nside, std::vector<double> &xb, std::vector<double> &yb);
+                                 int nside, std::vector<double> &xb, std::vector<double> &yb, bool ltes = false);
 
 #endif  // WASM_NACA_H

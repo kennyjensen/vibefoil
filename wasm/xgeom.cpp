@@ -23,10 +23,13 @@ double lefind(const std::vector<double> &x, const std::vector<double> &xp, const
     for (i = 3; i <= n - 2; ++i) {
         const double dxte = x[i] - xte;
         const double dyte = y[i] - yte;
-        const double dx = x[i + 1] - x[i];
-        const double dy = y[i + 1] - y[i];
-        const double dotp = dxte * dx + dyte * dy;
-        if (dotp < 0.0) {
+        const double dxm = x[i] - x[i - 1];
+        const double dym = y[i] - y[i - 1];
+        const double dxp = x[i + 1] - x[i];
+        const double dyp = y[i + 1] - y[i];
+        const double dotm = dxte * dxm + dyte * dym;
+        const double dotp = dxte * dxp + dyte * dyp;
+        if (dotm > 0.0 && dotp <= 0.0) {
             break;
         }
     }

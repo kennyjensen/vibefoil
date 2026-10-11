@@ -10,9 +10,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from python.tests.test_compare_mrchue import build_context, build_bl, build_payload
-import python.xbl as xbl_mod
 from python.xbl import mrchue, mrchdu
-from python.xsolve import gauss as gauss_base
 
 
 def max_abs_list_diff(a, b):
@@ -25,16 +23,6 @@ class TestMrchduStrictParity(unittest.TestCase):
     def test_mrchdu_strict(self):
         if not shutil.which("node"):
             self.skipTest("node is required for JS/Python parity checks")
-
-        def gauss1(nsiz, nn, z, r, nrhs):
-            rmat = [[0.0] * (nrhs + 1) for _ in range(nn + 1)]
-            for i in range(1, nn + 1):
-                rmat[i][1] = r[i]
-            gauss_base(nsiz, nn, z, rmat, nrhs)
-            for i in range(1, nn + 1):
-                r[i] = rmat[i][1]
-
-        xbl_mod.gauss = gauss1
 
         case = {"ides": 2412, "minf": 0.1, "reinf": 3.0e6, "alfa": 0.0, "waklen": 1.0}
         ctx = build_context(

@@ -19,7 +19,7 @@ std::tuple<double, double, double, double, double> clcalc(int n, const std::vect
                                                           double alfa, double minf, double qinf, double xref, double yref);
 void cdcalc(XFoilState &ctx);
 void tecalc(XFoilState &ctx);
-void naca(XFoilState &ctx, int ides1);
+void naca(XFoilState &ctx, int ides1, bool ltes = false);
 void pangen(XFoilState &ctx, bool shopar);
 
 #endif  // WASM_XFOIL_H

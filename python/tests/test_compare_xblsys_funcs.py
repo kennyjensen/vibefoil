@@ -9,6 +9,8 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from python.tests.fortran_reference import reference_source
+
 
 def max_abs_list_diff(a, b):
     if len(a) != len(b):
@@ -26,15 +28,16 @@ class TestXblsysParity(unittest.TestCase):
         driver_src = ROOT / "python" / "tests" / "xblsys_driver.f"
         srcs = [
             driver_src,
-            ROOT / "python" / "tests" / "xbl_subs.f",
+            reference_source(cls._tmpdir.name, 'xbl.f', ('DSLIM',)),
             ROOT / "third_party" / "Xfoil" / "src" / "xblsys.f",
         ]
         driver_path = pathlib.Path(cls._tmpdir.name) / "xblsys_driver"
         subprocess.run(
             [
-                "gfortran",
+                "gfortran", "-fdefault-real-8", "-fdefault-double-8", "-ffp-contract=off",
                 "-O2",
                 "-ffixed-form",
+                "-I", str(ROOT / 'third_party/Xfoil/src'),
                 *map(str, srcs),
                 "-o",
                 str(driver_path),
@@ -174,8 +177,8 @@ class TestXblsysParity(unittest.TestCase):
             vals = [float(v) for v in parts[1:]]
             out[tag].append(vals)
 
-        tol = 1.0e-3
-        tol_cft = 1.0e-2
+        tol = 2.0e-12
+        tol_cft = 2.0e-12
 
         for i, js in enumerate(js_results["hkin"]):
             self.assertLessEqual(max_abs_list_diff(out["hkin"][i], [js["hk"], js["hkH"], js["hkMsq"]]), tol)

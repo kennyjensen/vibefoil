@@ -5,7 +5,7 @@
 
 // Port of src/spline.f from XFOIL (Mark Drela). Numerical formulas preserved.
 
-const NMAX = 1000;
+const NMAX = 2500;
 const KMAX = 32;
 
 // Bounds guard mirroring the original Fortran limits, preserving algorithmic
@@ -432,13 +432,15 @@ function segspld(x, xs, s, n, xs1, xs2) {
   for (let iseg = 1; iseg <= n - 3; iseg += 1) {
     if (s[iseg] === s[iseg + 1]) {
       const nseg = iseg - iseg0 + 1;
-      splindOffset(x, xs, s, nseg, xs1, xs2, iseg0);
+      splindOffset(x, xs, s, nseg, iseg0 === 0 ? xs1 : -999.0,
+        iseg0 + nseg === n ? xs2 : -999.0, iseg0);
       iseg0 = iseg + 1;
     }
   }
 
   const nseg = n - iseg0;
-  splindOffset(x, xs, s, nseg, xs1, xs2, iseg0);
+  splindOffset(x, xs, s, nseg, iseg0 === 0 ? xs1 : -999.0,
+        iseg0 + nseg === n ? xs2 : -999.0, iseg0);
 }
 
 export {

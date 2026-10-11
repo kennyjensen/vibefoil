@@ -162,6 +162,10 @@ const metrics = {
 const dq = Array.from({ length: n + 5 }, (_, idx) => ctx.DQ[idx] ?? 0.0);
 
 const results = {
+  values: [
+    ...Array.from({ length: n }, (_, i) => [ctx.X[i], ctx.Y[i], ctx.GAM[i]]).flat(),
+    ...['PSIO', 'QDOF0', 'QDOF1', 'QDOF2', 'QDOF3', 'CL', 'CM', 'CDP', 'CL_ALF', 'CL_MSQ'].map(key => ctx[key]),
+  ],
   metrics,
   dq,
   psio: ctx.PSIO,

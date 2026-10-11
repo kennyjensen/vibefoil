@@ -115,7 +115,13 @@ function cft(hk, rt, msq, cffac = 1.0) {
   const gm1 = gam - 1.0;
   const fc = Math.sqrt(1.0 + 0.5 * gm1 * msq);
   let grt = Math.log(rt / fc);
-  grt = Math.max(grt, 3.0);
+  let grtRt = 1.0 / rt;
+  let grtMsq = -0.25 * gm1 / fc ** 2;
+  if (grt < 3.0) {
+    grt = 3.0;
+    grtRt = 0.0;
+    grtMsq = 0.0;
+  }
 
   const gex = -1.74 - 0.31 * hk;
 
@@ -128,8 +134,8 @@ function cft(hk, rt, msq, cffac = 1.0) {
   const cf = (cfo + 1.1e-4 * (thk - 1.0)) / fc;
   const cfHk = (-1.33 * cfo - 0.31 * Math.log(grt / 2.3026) * cfo
     - 1.1e-4 * (1.0 - thk ** 2) / 0.875) / fc;
-  const cfRt = gex * cfo / (fc * grt) / rt;
-  const cfMsq = gex * cfo / (fc * grt) * (-0.25 * gm1 / fc ** 2)
+  const cfRt = gex * cfo / (fc * grt) * grtRt;
+  const cfMsq = gex * cfo / (fc * grt) * grtMsq
     - 0.25 * gm1 * cf / fc ** 2;
 
   return {

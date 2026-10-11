@@ -7,6 +7,10 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
+import sys
+sys.path.insert(0, str(ROOT))
+from python.tests.fortran_reference import reference_source
+
 
 class TestBluParity(unittest.TestCase):
     @classmethod
@@ -19,11 +23,11 @@ class TestBluParity(unittest.TestCase):
         srcs = [
             driver_src,
             ROOT / "python" / "tests" / "blu_subs.f",
-            ROOT / "python" / "tests" / "blu_cft.f",
+            reference_source(cls._tmpdir.name, 'xblsys.f', ('CFT',)),
         ]
         driver_path = pathlib.Path(cls._tmpdir.name) / "blu_driver"
         subprocess.run(
-            ["gfortran", "-O2", "-ffixed-form", "-I", str(ROOT / "third_party" / "Xfoil" / "src"), *map(str, srcs), "-o", str(driver_path)],
+            ["gfortran", "-fdefault-real-8", "-fdefault-double-8", "-ffp-contract=off",  "-O2", "-ffixed-form", "-I", str(ROOT / "third_party" / "Xfoil" / "src"), *map(str, srcs), "-o", str(driver_path)],
             check=True,
             capture_output=True,
             text=True,

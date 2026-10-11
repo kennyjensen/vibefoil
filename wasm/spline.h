@@ -25,6 +25,7 @@ double sinvrt(double si, double xi, const DVec &x, const DVec &xs, const DVec &s
 void scalc(const DVec &x, const DVec &y, DVec &s, int n);
 
 void segspl(const DVec &x, DVec &xs, const DVec &s, int n);
+void segspld(const DVec &x, DVec &xs, const DVec &s, int n, double xs1, double xs2);
 
 double d2val(double ss, const DVec &x, const DVec &xs, const DVec &s, int n);
 

@@ -418,6 +418,7 @@ void populate_ctx_setters(XFoilState &ctx, std::unordered_map<std::string, std::
     ADD_SCALAR(setters, ctx, CD);
     ADD_SCALAR(setters, ctx, CDP);
     ADD_SCALAR(setters, ctx, CDF);
+    ADD_SCALAR(setters, ctx, CLF);
     ADD_SCALAR(setters, ctx, CL_ALF);
     ADD_SCALAR(setters, ctx, CL_MSQ);
     ADD_SCALAR(setters, ctx, CLSPEC);
@@ -506,6 +507,10 @@ void populate_ctx_setters(XFoilState &ctx, std::unordered_map<std::string, std::
     ADD_ARRAY(setters, ctx, CTAU);
     ADD_ARRAY(setters, ctx, DELT);
     ADD_ARRAY(setters, ctx, TSTR);
+    ADD_ARRAY(setters, ctx, DSSR);
+    ADD_ARRAY(setters, ctx, MDEF);
+    ADD_ARRAY(setters, ctx, PDEF);
+    ADD_ARRAY(setters, ctx, KDEF);
     ADD_ARRAY(setters, ctx, USLP);
     ADD_ARRAY(setters, ctx, GUXQ);
     ADD_ARRAY(setters, ctx, GUXD);
@@ -914,6 +919,7 @@ void dump_ctx(std::ostream &out, const XFoilState &ctx) {
     dump_field(out, "CD", ctx.CD, first);
     dump_field(out, "CDP", ctx.CDP, first);
     dump_field(out, "CDF", ctx.CDF, first);
+    dump_field(out, "CLF", ctx.CLF, first);
     dump_field(out, "CL_ALF", ctx.CL_ALF, first);
     dump_field(out, "CL_MSQ", ctx.CL_MSQ, first);
     dump_field(out, "CLSPEC", ctx.CLSPEC, first);
@@ -1002,6 +1008,10 @@ void dump_ctx(std::ostream &out, const XFoilState &ctx) {
     dump_field_vec(out, "CTAU", ctx.CTAU, first);
     dump_field_vec(out, "DELT", ctx.DELT, first);
     dump_field_vec(out, "TSTR", ctx.TSTR, first);
+    dump_field_vec(out, "DSSR", ctx.DSSR, first);
+    dump_field_vec(out, "MDEF", ctx.MDEF, first);
+    dump_field_vec(out, "PDEF", ctx.PDEF, first);
+    dump_field_vec(out, "KDEF", ctx.KDEF, first);
     dump_field_vec(out, "USLP", ctx.USLP, first);
     dump_field_vec(out, "GUXQ", ctx.GUXQ, first);
     dump_field_vec(out, "GUXD", ctx.GUXD, first);

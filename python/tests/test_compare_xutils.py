@@ -22,7 +22,7 @@ class TestXutilsParity(unittest.TestCase):
         ]
         driver_path = pathlib.Path(cls._tmpdir.name) / "xutils_driver"
         subprocess.run(
-            ["gfortran", "-O2", "-ffixed-form", *map(str, srcs), "-o", str(driver_path)],
+            ["gfortran", "-fdefault-real-8", "-fdefault-double-8", "-ffp-contract=off",  "-O2", "-ffixed-form", *map(str, srcs), "-o", str(driver_path)],
             check=True,
             capture_output=True,
             text=True,

@@ -6,14 +6,14 @@
 // Port of xsolve.f LU decomposition and back-substitution.
 // Numerical linear algebra used by the panel/BL solvers (classic pivoting).
 
-const NVX = 500;
+const NVX = 515;
 
 // In-place Gaussian elimination with partial pivoting for multiple RHS (GAUSS).
 // Solves general NxN system in NN unknowns with NRHS right-hand sides.
 // Z is the coefficient matrix (destroyed during solution); R is overwritten
 // by the solution vector(s).
 function gauss(n, z, r, nrhs = 1) {
-  const rhsIsVector = !Array.isArray(r[0]);
+  const rhsIsVector = typeof r[0] === 'number';
 
   const getR = (i, l) => (rhsIsVector ? r[i] : r[i][l]);
   const setR = (i, l, value) => {

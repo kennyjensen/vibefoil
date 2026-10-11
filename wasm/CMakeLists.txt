@@ -21,6 +21,7 @@ add_library(xfoil_core
     xgeom.cpp
     xoper.cpp
     xpanel.cpp
+    xqdes.cpp
     xsolve.cpp
     xutils.cpp
 )
@@ -28,6 +29,11 @@ add_library(xfoil_core
 target_include_directories(xfoil_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_compile_features(xfoil_core PUBLIC cxx_std_17)
+
+# Preserve the reference operation order across native and WebAssembly builds.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(xfoil_core PRIVATE -ffp-contract=off)
+endif()
 
 add_executable(compare_xbl
     compare_xbl.cpp

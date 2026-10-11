@@ -176,7 +176,7 @@ const addRunCaseButton = document.getElementById('addRunCase');
 const downloadRunCasesButton = document.getElementById('downloadRunCases');
 
 // Geometry buffers (airfoil surface and custom inputs); sizes follow XFOIL nside.
-const nside = 123;
+const nside = 200; // XFOIL IQX / 3 (integer division), IQX = 601.
 const xx = new Float64Array(nside);
 const yt = new Float64Array(nside);
 const yc = new Float64Array(nside);

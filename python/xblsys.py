@@ -1704,7 +1704,12 @@ def cft(hk, rt, msq, cffac):
     gm1 = gam - 1.0
     fc = math.sqrt(1.0 + 0.5 * gm1 * msq)
     grt = math.log(rt / fc)
-    grt = max(grt, 3.0)
+    grt_rt = 1.0 / rt
+    grt_msq = -0.25 * gm1 / fc**2
+    if grt < 3.0:
+        grt = 3.0
+        grt_rt = 0.0
+        grt_msq = 0.0
 
     gex = -1.74 - 0.31 * hk
 
@@ -1716,8 +1721,8 @@ def cft(hk, rt, msq, cffac):
     cfo = cffac * 0.3 * math.exp(arg) * (grt / 2.3026) ** gex
     cf = (cfo + 1.1e-4 * (thk - 1.0)) / fc
     cf_hk = (-1.33 * cfo - 0.31 * math.log(grt / 2.3026) * cfo - 1.1e-4 * (1.0 - thk**2) / 0.875) / fc
-    cf_rt = gex * cfo / (fc * grt) / rt
-    cf_msq = gex * cfo / (fc * grt) * (-0.25 * gm1 / fc**2) - 0.25 * gm1 * cf / fc**2
+    cf_rt = gex * cfo / (fc * grt) * grt_rt
+    cf_msq = gex * cfo / (fc * grt) * grt_msq - 0.25 * gm1 * cf / fc**2
     return cf, cf_hk, cf_rt, cf_msq
 
 

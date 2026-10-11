@@ -10,7 +10,6 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-import python.xbl as xbl_mod
 from python.xbl import XBlState, blpini, setbl, iblsys
 from python.xpanel import (
     xywake,
@@ -25,17 +24,7 @@ from python.xpanel import (
     gamqv,
     stmove,
 )
-from python.xsolve import gauss as gauss_base
 from python.tests.test_compare_viscal_subfuncs import build_context
-
-
-def gauss1(nsiz, nn, z, r, nrhs):
-    rmat = [[0.0] * (nrhs + 1) for _ in range(nn + 1)]
-    for i in range(1, nn + 1):
-        rmat[i][1] = r[i]
-    gauss_base(nsiz, nn, z, rmat, nrhs)
-    for i in range(1, nn + 1):
-        r[i] = rmat[i][1]
 
 
 def setup_state(ides, minf, reinf, alfa, waklen):
@@ -134,15 +123,10 @@ class TestWasmSetblParity(unittest.TestCase):
         self.assert_close(f"{label} maxabs", got["maxabs"], expected["maxabs"], tol=1.0e-4, rel_tol=2.0e-8)
 
     def run_case(self, ides, minf, reinf, alfa, waklen):
-        orig_gauss = xbl_mod.gauss
-        xbl_mod.gauss = gauss1
-        try:
-            ctx, bl = setup_state(ides, minf, reinf, alfa, waklen)
-            ctx_in = copy.deepcopy(ctx)
-            bl_in = copy.deepcopy(bl)
-            setbl(ctx, bl)
-        finally:
-            xbl_mod.gauss = orig_gauss
+        ctx, bl = setup_state(ides, minf, reinf, alfa, waklen)
+        ctx_in = copy.deepcopy(ctx)
+        bl_in = copy.deepcopy(bl)
+        setbl(ctx, bl)
 
         wasm_out = self.run_wasm_setbl(ctx_in, bl_in)
         ctx_out = wasm_out["ctx"]

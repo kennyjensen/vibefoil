@@ -12,7 +12,7 @@ from .xpanel import ueset
 from .xsolve import gauss
 from .spline import splind, sinvrt, seval
 
-IQX = 370
+IQX = 601
 IPX = 5
 ISX = 2
 IWX = IQX // 8 + 2
@@ -43,6 +43,7 @@ class XFoilState:
         self.CD = 0.0
         self.CDP = 0.0
         self.CDF = 0.0
+        self.CLF = 0.0
         self.CL_ALF = 0.0
         self.CL_MSQ = 0.0
         self.CLSPEC = 0.0
@@ -80,7 +81,7 @@ class XFoilState:
         self.DTOR = math.pi / 180.0
         self.AVISC = 0.0
         self.MVISC = 0.0
-        self.XCMREF = 0.0
+        self.XCMREF = 0.25
         self.YCMREF = 0.0
         self.PSIO = 0.0
         self.CIRC = 0.0
@@ -88,7 +89,7 @@ class XFoilState:
         self.N = 0
         self.IST = 0
         self.NW = 0
-        self.NPAN = 0
+        self.NPAN = 240
         self.NB = 0
         self.LCLOCK = False
 
@@ -139,6 +140,10 @@ class XFoilState:
         self.CTAU = make_2d(IVX, ISX)
         self.DELT = make_2d(IVX, ISX)
         self.TSTR = make_2d(IVX, ISX)
+        self.DSSR = make_2d(IVX, ISX)
+        self.MDEF = make_2d(IVX, ISX)
+        self.PDEF = make_2d(IVX, ISX)
+        self.KDEF = make_2d(IVX, ISX)
         self.USLP = make_2d(IVX, ISX)
         self.GUXQ = make_2d(IVX, ISX)
         self.GUXD = make_2d(IVX, ISX)
@@ -148,6 +153,7 @@ class XFoilState:
         self.VTI = make_2d(IVX, ISX)
 
         self.ACRIT = make_1d(ISX)
+        self.ACRIT[1] = self.ACRIT[2] = 9.0
         self.XSTRIP = make_1d(ISX)
         self.XOCTR = make_1d(ISX)
         self.YOCTR = make_1d(ISX)
@@ -167,7 +173,7 @@ class XFoilState:
         self.ANTE = 0.0
         self.DSTE = 0.0
         self.ASTE = 0.0
-        self.WAKLEN = 0.0
+        self.WAKLEN = 1.0
         self.CHORD = 0.0
         self.YIMAGE = 0.0
         self.SHARP = False
@@ -259,7 +265,7 @@ class XFoilState:
         self.RMSBL = 0.0
         self.RMXBL = 0.0
         self.RLX = 0.0
-        self.VACCEL = 0.0
+        self.VACCEL = 0.01
         self.IMXBL = 0
         self.ISMXBL = 0
         self.VMXBL = " "
@@ -300,13 +306,13 @@ class XFoilState:
         self.HFX = 0.0
         self.HFY = 0.0
 
-        self.CVPAR = 0.0
-        self.CTERAT = 0.0
-        self.CTRRAT = 0.0
-        self.XSREF1 = 0.0
-        self.XSREF2 = 0.0
-        self.XPREF1 = 0.0
-        self.XPREF2 = 0.0
+        self.CVPAR = 1.0
+        self.CTERAT = 0.3
+        self.CTRRAT = 0.2
+        self.XSREF1 = 1.0
+        self.XSREF2 = 1.0
+        self.XPREF1 = 1.0
+        self.XPREF2 = 1.0
 
         self.XBF = 0.0
         self.YBF = 0.0
@@ -1046,6 +1052,10 @@ def mrchue(ctx, bl):
             ctx.CTQ[ibl][is_] = bl.CQ2
             ctx.DELT[ibl][is_] = bl.DE2
             ctx.TSTR[ibl][is_] = bl.HS2 * bl.T2
+            ctx.DSSR[ibl][is_] = bl.HC2 * bl.T2
+            ctx.MDEF[ibl][is_] = bl.R2 * bl.U2 * bl.D2
+            ctx.PDEF[ibl][is_] = bl.R2 * bl.U2 * bl.U2 * bl.T2
+            ctx.KDEF[ibl][is_] = bl.R2 * bl.U2 * bl.U2 * bl.U2 * bl.T2 * bl.HS2 * 0.5
 
             blprv(bl, xsi, ami, cti, thi, dsi, dswaki, uei)
             blkin(bl)
@@ -1294,6 +1304,10 @@ def mrchdu(ctx, bl):
             ctx.CTQ[ibl][is_] = bl.CQ2
             ctx.DELT[ibl][is_] = bl.DE2
             ctx.TSTR[ibl][is_] = bl.HS2 * bl.T2
+            ctx.DSSR[ibl][is_] = bl.HC2 * bl.T2
+            ctx.MDEF[ibl][is_] = bl.R2 * bl.U2 * bl.D2
+            ctx.PDEF[ibl][is_] = bl.R2 * bl.U2 * bl.U2 * bl.T2
+            ctx.KDEF[ibl][is_] = bl.R2 * bl.U2 * bl.U2 * bl.U2 * bl.T2 * bl.HS2 * 0.5
 
             blprv(bl, xsi, ami, cti, thi, dsi, dswaki, uei)
             blkin(bl)
@@ -1587,6 +1601,10 @@ def update(ctx, bl):
         ctx.CTQ[ctx.IBLTE[1] + kbl][1] = ctx.CTQ[ctx.IBLTE[2] + kbl][2]
         ctx.DELT[ctx.IBLTE[1] + kbl][1] = ctx.DELT[ctx.IBLTE[2] + kbl][2]
         ctx.TSTR[ctx.IBLTE[1] + kbl][1] = ctx.TSTR[ctx.IBLTE[2] + kbl][2]
+        ctx.DSSR[ctx.IBLTE[1] + kbl][1] = ctx.DSSR[ctx.IBLTE[2] + kbl][2]
+        ctx.MDEF[ctx.IBLTE[1] + kbl][1] = ctx.MDEF[ctx.IBLTE[2] + kbl][2]
+        ctx.PDEF[ctx.IBLTE[1] + kbl][1] = ctx.PDEF[ctx.IBLTE[2] + kbl][2]
+        ctx.KDEF[ctx.IBLTE[1] + kbl][1] = ctx.KDEF[ctx.IBLTE[2] + kbl][2]
 
 
 def dslim(dstr, thet, uedg, msq, hklim):

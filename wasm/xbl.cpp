@@ -28,6 +28,7 @@ XFoilState::XFoilState() {
     CD = 0.0;
     CDP = 0.0;
     CDF = 0.0;
+    CLF = 0.0;
     CL_ALF = 0.0;
     CL_MSQ = 0.0;
     CLSPEC = 0.0;
@@ -65,7 +66,7 @@ XFoilState::XFoilState() {
     DTOR = std::acos(-1.0) / 180.0;
     AVISC = 0.0;
     MVISC = 0.0;
-    XCMREF = 0.0;
+    XCMREF = 0.25;
     YCMREF = 0.0;
     PSIO = 0.0;
     CIRC = 0.0;
@@ -73,7 +74,7 @@ XFoilState::XFoilState() {
     N = 0;
     IST = 0;
     NW = 0;
-    NPAN = 0;
+    NPAN = 240;
     NB = 0;
     LCLOCK = false;
 
@@ -124,6 +125,10 @@ XFoilState::XFoilState() {
     CTAU = make_2d(IVX, ISX);
     DELT = make_2d(IVX, ISX);
     TSTR = make_2d(IVX, ISX);
+    DSSR = make_2d(IVX, ISX);
+    MDEF = make_2d(IVX, ISX);
+    PDEF = make_2d(IVX, ISX);
+    KDEF = make_2d(IVX, ISX);
     USLP = make_2d(IVX, ISX);
     GUXQ = make_2d(IVX, ISX);
     GUXD = make_2d(IVX, ISX);
@@ -133,6 +138,7 @@ XFoilState::XFoilState() {
     VTI = make_2d(IVX, ISX);
 
     ACRIT = make_1d(ISX);
+    ACRIT[1] = ACRIT[2] = 9.0;
     XSTRIP = make_1d(ISX);
     XOCTR = make_1d(ISX);
     YOCTR = make_1d(ISX);
@@ -152,7 +158,7 @@ XFoilState::XFoilState() {
     ANTE = 0.0;
     DSTE = 0.0;
     ASTE = 0.0;
-    WAKLEN = 0.0;
+    WAKLEN = 1.0;
     CHORD = 0.0;
     YIMAGE = 0.0;
     SHARP = false;
@@ -234,7 +240,7 @@ XFoilState::XFoilState() {
     RMSBL = 0.0;
     RMXBL = 0.0;
     RLX = 0.0;
-    VACCEL = 0.0;
+    VACCEL = 0.01;
     IMXBL = 0;
     ISMXBL = 0;
     VMXBL = " ";
@@ -268,13 +274,13 @@ XFoilState::XFoilState() {
     HFX = 0.0;
     HFY = 0.0;
 
-    CVPAR = 0.0;
-    CTERAT = 0.0;
-    CTRRAT = 0.0;
-    XSREF1 = 0.0;
-    XSREF2 = 0.0;
-    XPREF1 = 0.0;
-    XPREF2 = 0.0;
+    CVPAR = 1.0;
+    CTERAT = 0.3;
+    CTRRAT = 0.2;
+    XSREF1 = 1.0;
+    XSREF2 = 1.0;
+    XPREF1 = 1.0;
+    XPREF2 = 1.0;
 
     XBF = 0.0;
     YBF = 0.0;
@@ -1221,6 +1227,10 @@ void mrchue(XFoilState &ctx, XBlState &bl) {
             ctx.CTQ[ibl][is_] = bl.CQ2;
             ctx.DELT[ibl][is_] = bl.DE2;
             ctx.TSTR[ibl][is_] = bl.HS2 * bl.T2;
+            ctx.DSSR[ibl][is_] = bl.HC2 * bl.T2;
+            ctx.MDEF[ibl][is_] = bl.R2 * bl.U2 * bl.D2;
+            ctx.PDEF[ibl][is_] = bl.R2 * bl.U2 * bl.U2 * bl.T2;
+            ctx.KDEF[ibl][is_] = bl.R2 * bl.U2 * bl.U2 * bl.U2 * bl.T2 * bl.HS2 * 0.5;
 
             blprv(bl, xsi, ami, cti, thi, dsi, dswaki, uei);
             blkin(bl);
@@ -1523,6 +1533,10 @@ void mrchdu(XFoilState &ctx, XBlState &bl) {
             ctx.CTQ[ibl][is_] = bl.CQ2;
             ctx.DELT[ibl][is_] = bl.DE2;
             ctx.TSTR[ibl][is_] = bl.HS2 * bl.T2;
+            ctx.DSSR[ibl][is_] = bl.HC2 * bl.T2;
+            ctx.MDEF[ibl][is_] = bl.R2 * bl.U2 * bl.D2;
+            ctx.PDEF[ibl][is_] = bl.R2 * bl.U2 * bl.U2 * bl.T2;
+            ctx.KDEF[ibl][is_] = bl.R2 * bl.U2 * bl.U2 * bl.U2 * bl.T2 * bl.HS2 * 0.5;
 
             blprv(bl, xsi, ami, cti, thi, dsi, dswaki, uei);
             blkin(bl);
@@ -1859,6 +1873,10 @@ void update(XFoilState &ctx, XBlState &bl) {
         ctx.CTQ[ctx.IBLTE[1] + kbl][1] = ctx.CTQ[ctx.IBLTE[2] + kbl][2];
         ctx.DELT[ctx.IBLTE[1] + kbl][1] = ctx.DELT[ctx.IBLTE[2] + kbl][2];
         ctx.TSTR[ctx.IBLTE[1] + kbl][1] = ctx.TSTR[ctx.IBLTE[2] + kbl][2];
+        ctx.DSSR[ctx.IBLTE[1] + kbl][1] = ctx.DSSR[ctx.IBLTE[2] + kbl][2];
+        ctx.MDEF[ctx.IBLTE[1] + kbl][1] = ctx.MDEF[ctx.IBLTE[2] + kbl][2];
+        ctx.PDEF[ctx.IBLTE[1] + kbl][1] = ctx.PDEF[ctx.IBLTE[2] + kbl][2];
+        ctx.KDEF[ctx.IBLTE[1] + kbl][1] = ctx.KDEF[ctx.IBLTE[2] + kbl][2];
     }
 }
 

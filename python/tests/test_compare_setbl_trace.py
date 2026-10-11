@@ -9,7 +9,6 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-import python.xbl as xbl_mod
 from python.xbl import XBlState, blpini, setbl, iblsys
 from python.xpanel import (
     xywake,
@@ -24,21 +23,10 @@ from python.xpanel import (
     gamqv,
     stmove,
 )
-from python.xsolve import gauss as gauss_base
 from python.tests.test_compare_viscal_subfuncs import build_context, build_payload_ctx
 
 
 def setup_state():
-    def gauss1(nsiz, nn, z, r, nrhs):
-        rmat = [[0.0] * (nrhs + 1) for _ in range(nn + 1)]
-        for i in range(1, nn + 1):
-            rmat[i][1] = r[i]
-        gauss_base(nsiz, nn, z, rmat, nrhs)
-        for i in range(1, nn + 1):
-            r[i] = rmat[i][1]
-
-    xbl_mod.gauss = gauss1
-
     ctx = build_context(2412, 0.1, 3.0e6, 0.0, 1.0)
     bl = XBlState()
     blpini(bl)

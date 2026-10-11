@@ -103,7 +103,7 @@ void gauss(int /*nsiz*/, int nn, std::vector<std::vector<double>> &z, std::vecto
 }
 
 void ludcmp(int /*nsiz*/, int n, std::vector<std::vector<double>> &a, std::vector<int> &indx) {
-    const int nvx = 500;
+    const int nvx = 515;
     if (n > nvx) {
         throw std::runtime_error("LUDCMP: Array overflow. Increase NVX.");
     }
@@ -152,9 +152,6 @@ void ludcmp(int /*nsiz*/, int n, std::vector<std::vector<double>> &a, std::vecto
         }
 
         indx[j] = imax;
-        if (a[j][j] == 0.0) {
-            a[j][j] = 1.0e-20;
-        }
 
         if (j != n) {
             const double dum = 1.0 / a[j][j];

@@ -240,6 +240,11 @@ function resetBlState(blCtx) {
       blCtx.CTQ[ibl][is] = 0.0;
       blCtx.DELT[ibl][is] = 0.0;
       blCtx.TSTR[ibl][is] = 0.0;
+      blCtx.DSSR[ibl][is] = 0.0;
+      blCtx.USLP[ibl][is] = 0.0;
+      blCtx.MDEF[ibl][is] = 0.0;
+      blCtx.PDEF[ibl][is] = 0.0;
+      blCtx.KDEF[ibl][is] = 0.0;
       const uinv = blCtx.UINV[ibl][is];
       const ue = Number.isFinite(uinv) && uinv > 0.0 ? uinv : 1.0e-6;
       blCtx.UEDG[ibl][is] = ue;
@@ -326,6 +331,11 @@ function buildBlContext(nb, ctxPanel, ncr) {
     CTQ: createMatrix1(nbl, 2),
     DELT: createMatrix1(nbl, 2),
     TSTR: createMatrix1(nbl, 2),
+    DSSR: createMatrix1(nbl, 2),
+    USLP: createMatrix1(nbl, 2),
+    MDEF: createMatrix1(nbl, 2),
+    PDEF: createMatrix1(nbl, 2),
+    KDEF: createMatrix1(nbl, 2),
     WGAP: new Float64Array(nw + 1),
     ACRIT: new Float64Array(3),
     XSTRIP: new Float64Array(3),
@@ -559,6 +569,7 @@ function solveViscous(
     blCtx.CDP = coeffs.cdp;
     blCtx.CD = drag.cd;
     blCtx.CDF = drag.cdf;
+    blCtx.CLF = drag.clf;
 
     const tr1 = transitionXc(blCtx, ctxPanel, 1);
     const tr2 = transitionXc(blCtx, ctxPanel, 2);
@@ -667,6 +678,7 @@ function viscal(
     blCtx.CDP = coeffs.cdp;
     blCtx.CD = drag.cd;
     blCtx.CDF = drag.cdf;
+    blCtx.CLF = drag.clf;
   }
 
   if (!ctxPanel.LWDIJ || !ctxPanel.LADIJ) {

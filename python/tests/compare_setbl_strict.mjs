@@ -166,7 +166,8 @@ for (let is = 1; is <= 2; is += 1) {
 }
 
 qdcalc(ctxPanel);
-blCtx.DIJ = ctxPanel.DIJ;
+// Isolate SETBL assembly from elementary-function rounding in panel assembly.
+blCtx.DIJ = ctxPayload.DIJ ?? ctxPanel.DIJ;
 
 qvfue(blCtx, ctxPanel.QVIS);
 gamqv(ctxPanel, ctxPanel.QVIS, qinvA);

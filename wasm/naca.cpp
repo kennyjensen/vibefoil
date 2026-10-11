@@ -9,7 +9,7 @@
 #include <iostream>
 
 std::pair<int, std::string> naca4(int ides, std::vector<double> &xx, std::vector<double> &yt, std::vector<double> &yc,
-                                 int nside, std::vector<double> &xb, std::vector<double> &yb) {
+                                 int nside, std::vector<double> &xb, std::vector<double> &yb, bool ltes) {
     const std::string digits = "0123456789";
     const double an = 1.5;
 
@@ -31,8 +31,9 @@ std::pair<int, std::string> naca4(int ides, std::vector<double> &xx, std::vector
             xx[i] = 1.0 - anp * frac * std::pow(1.0 - frac, an) - std::pow(1.0 - frac, anp);
         }
 
-        yt[i] = (0.29690 * std::sqrt(xx[i]) - 0.12600 * xx[i] - 0.35160 * xx[i] * xx[i] + 0.28430 * xx[i] * xx[i] * xx[i]
-                - 0.10150 * xx[i] * xx[i] * xx[i] * xx[i])
+        const double xt = ltes ? xx[i] * 1.00893041136514270931482193883054 : xx[i];
+        yt[i] = (0.29690 * std::sqrt(xt) - 0.12600 * xt - 0.35160 * (xt * xt) + 0.28430 * (xt * xt * xt)
+                - 0.10150 * ((xt * xt) * (xt * xt)))
                 * t / 0.20;
 
         if (xx[i] < p) {
@@ -62,7 +63,7 @@ std::pair<int, std::string> naca4(int ides, std::vector<double> &xx, std::vector
 }
 
 std::pair<int, std::string> naca5(int ides, std::vector<double> &xx, std::vector<double> &yt, std::vector<double> &yc,
-                                 int nside, std::vector<double> &xb, std::vector<double> &yb) {
+                                 int nside, std::vector<double> &xb, std::vector<double> &yb, bool ltes) {
     const std::string digits = "0123456789";
     const double an = 1.5;
 
@@ -108,8 +109,9 @@ std::pair<int, std::string> naca5(int ides, std::vector<double> &xx, std::vector
             xx[i] = 1.0 - anp * frac * std::pow(1.0 - frac, an) - std::pow(1.0 - frac, anp);
         }
 
-        yt[i] = (0.29690 * std::sqrt(xx[i]) - 0.12600 * xx[i] - 0.35160 * xx[i] * xx[i] + 0.28430 * xx[i] * xx[i] * xx[i]
-                - 0.10150 * xx[i] * xx[i] * xx[i] * xx[i])
+        const double xt = ltes ? xx[i] * 1.00893041136514270931482193883054 : xx[i];
+        yt[i] = (0.29690 * std::sqrt(xt) - 0.12600 * xt - 0.35160 * (xt * xt) + 0.28430 * (xt * xt * xt)
+                - 0.10150 * ((xt * xt) * (xt * xt)))
                 * t / 0.20;
 
         if (xx[i] < m) {

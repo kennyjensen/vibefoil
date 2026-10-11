@@ -337,6 +337,14 @@ void viscal(XFoilState &ctx, XBlState &bl, int niter1) {
     qwcalc(ctx);
     qiset(ctx);
 
+    // This entry point includes the specified-alpha initialization used by
+    // the Python and JavaScript APIs (SPECAL precedes VISCAL in XFOIL).
+    if (ctx.LALFA) {
+        std::tie(ctx.CL, ctx.CM, ctx.CDP, ctx.CL_ALF, ctx.CL_MSQ) = clcalc(
+            ctx.N, ctx.X, ctx.Y, ctx.GAM, ctx.GAM_A, ctx.ALFA, ctx.MINF,
+            ctx.QINF, ctx.XCMREF, ctx.YCMREF);
+    }
+
     if (!ctx.LIPAN) {
         if (ctx.LBLINI) {
             gamqv(ctx);
@@ -442,57 +450,4 @@ void viscal(XFoilState &ctx, XBlState &bl, int niter1) {
         mhinge(ctx);
     }
 
-    int is_ = 1;
-    double hkmax = 0.0;
-    double hkm = 0.0;
-    double psep = 0.0;
-    double patt = 0.0;
-    for (int ibl = 2; ibl <= ctx.IBLTE[is_]; ++ibl) {
-        const double hki = ctx.DSTR[ibl][is_] / ctx.THET[ibl][is_];
-        hkmax = std::max(hki, hkmax);
-        if (hkm < 4.0 && hki >= 4.0) {
-            const double hfrac = (4.0 - hkm) / (hki - hkm);
-            const double pdefm = ctx.UEDG[ibl - 1][is_] * ctx.UEDG[ibl - 1][is_] * ctx.THET[ibl - 1][is_];
-            const double pdefi = ctx.UEDG[ibl][is_] * ctx.UEDG[ibl][is_] * ctx.THET[ibl][is_];
-            psep = pdefm * (1.0 - hfrac) + pdefi * hfrac;
-        }
-        if (hkm > 4.0 && hki < 4.0) {
-            const double hfrac = (4.0 - hkm) / (hki - hkm);
-            const double pdefm = ctx.UEDG[ibl - 1][is_] * ctx.UEDG[ibl - 1][is_] * ctx.THET[ibl - 1][is_];
-            const double pdefi = ctx.UEDG[ibl][is_] * ctx.UEDG[ibl][is_] * ctx.THET[ibl][is_];
-            patt = pdefm * (1.0 - hfrac) + pdefi * hfrac;
-        }
-        hkm = hki;
-    }
-    const double delp = patt - psep;
-
-    std::cout << std::setw(10) << std::fixed << std::setprecision(3) << ctx.ACRIT[is_] << std::setw(10) << std::setprecision(4)
-              << hkmax << std::setw(11) << std::setprecision(6) << ctx.CD << std::setw(11) << std::setprecision(6) << 2.0 * psep
-              << std::setw(11) << std::setprecision(6) << 2.0 * patt << std::setw(11) << std::setprecision(6) << 2.0 * delp
-              << std::setw(10) << std::setprecision(4) << ctx.XOCTR[is_] << std::defaultfloat << "     #" << std::endl;
-
-    const double fnum = ctx.XSTRIP[is_] * 100.0;
-    const int iten = static_cast<int>(fnum / 9.99999);
-    const int ione = static_cast<int>((fnum - static_cast<double>(10 * iten)) / 0.99999);
-    const int idec = static_cast<int>((fnum - static_cast<double>(10 * iten) - static_cast<double>(ione)) / 0.09999);
-    const std::string fname = std::to_string(iten) + std::to_string(ione) + std::to_string(idec) + ".bl";
-
-    std::ofstream lu(fname, std::ios::out);
-    lu << "#       s         ue          H          P         K         x    -m du/dx\n";
-    for (int ibl = 2; ibl <= ctx.IBLTE[is_]; ++ibl) {
-        const int iblm = std::max(ibl - 1, 2);
-        const int iblp = std::min(ibl + 1, ctx.IBLTE[is_]);
-        const int i = ctx.IPAN[ibl][is_];
-        const double hk = ctx.DSTR[ibl][is_] / ctx.THET[ibl][is_];
-        const double ddef = ctx.DSTR[ibl][is_] * ctx.UEDG[ibl][is_];
-        const double pdef = ctx.THET[ibl][is_] * ctx.UEDG[ibl][is_] * ctx.UEDG[ibl][is_];
-        const double edef = ctx.TSTR[ibl][is_] * ctx.UEDG[ibl][is_] * ctx.UEDG[ibl][is_] * ctx.UEDG[ibl][is_] * 0.5;
-        const double duds = (ctx.UEDG[iblp][is_] - ctx.UEDG[iblm][is_]) / (ctx.XSSI[iblp][is_] - ctx.XSSI[iblm][is_]);
-        const double dpds = -ddef * duds;
-        lu << " " << std::setw(11) << std::fixed << std::setprecision(4) << ctx.XSSI[ibl][is_] << std::setw(11)
-           << std::setprecision(4) << ctx.UEDG[ibl][is_] << std::setw(11) << std::setprecision(4) << hk << std::setw(11)
-           << std::setprecision(6) << pdef << std::setw(11) << std::setprecision(6) << edef << std::setw(11)
-           << std::setprecision(3) << ctx.X[i] << std::setw(14) << std::scientific << std::setprecision(6) << dpds
-           << std::defaultfloat << "\n";
-    }
 }

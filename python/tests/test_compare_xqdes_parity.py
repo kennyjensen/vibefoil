@@ -10,6 +10,8 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from python.tests.fortran_reference import reference_source
+
 from python.xbl import XFoilState
 from python.xfoil import comset, naca, pangen, tecalc
 from python.spline import scalc, segspl
@@ -59,8 +61,8 @@ class TestXqdesParity(unittest.TestCase):
         srcs = [
             driver_src,
             stub_src,
-            ROOT / "python" / "tests" / "xfoil_subs.f",
-            ROOT / "python" / "tests" / "xgeom_subs.f",
+            reference_source(cls._tmpdir.name, 'xfoil.f', ('CPCALC', 'CLCALC', 'TECALC')),
+            reference_source(cls._tmpdir.name, 'xgeom.f', ('LEFIND', 'SSS')),
             ROOT / "third_party" / "Xfoil" / "src" / "xqdes.f",
             ROOT / "third_party" / "Xfoil" / "src" / "xpanel.f",
             ROOT / "third_party" / "Xfoil" / "src" / "xsolve.f",
@@ -71,7 +73,7 @@ class TestXqdesParity(unittest.TestCase):
         driver_path = pathlib.Path(cls._tmpdir.name) / "xqdes_driver"
         subprocess.run(
             [
-                "gfortran",
+                "gfortran", "-fdefault-real-8", "-fdefault-double-8", "-ffp-contract=off",
                 "-O2",
                 "-ffixed-form",
                 "-I",
@@ -85,6 +87,21 @@ class TestXqdesParity(unittest.TestCase):
             text=True,
         )
         cls.driver_path = driver_path
+        cls.cpp_ports = {}
+        for compiler, name, suffix in [('c++', 'C++', ''), ('em++', 'WASM', '.cjs')]:
+            if not shutil.which(compiler):
+                continue
+            target = pathlib.Path(cls._tmpdir.name) / ('xqdes_port' + suffix)
+            sources = [pathlib.Path(__file__).with_name('xqdes_driver.cpp')]
+            sources += [ROOT / 'wasm' / filename for filename in (
+                'xqdes.cpp', 'xpanel.cpp', 'xfoil.cpp', 'xgeom.cpp',
+                'spline.cpp', 'xutils.cpp', 'xsolve.cpp', 'xbl.cpp')]
+            flags = ['-sENVIRONMENT=node', '-sALLOW_MEMORY_GROWTH=1'] if suffix else []
+            subprocess.run([compiler, '-std=c++17', '-O2', '-ffp-contract=off',
+                '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections',
+                *flags, *map(str, sources), '-o', str(target)], check=True,
+                capture_output=True, text=True)
+            cls.cpp_ports[name] = ['node', str(target)] if suffix else [str(target)]
 
     @classmethod
     def tearDownClass(cls):
@@ -376,9 +393,29 @@ class TestXqdesParity(unittest.TestCase):
         clalf_f = float(coeff_parts[8])
         clmsq_f = float(coeff_parts[9])
 
+        expected = [v for row in zip(x_f, y_f, gam_f) for v in row] + list(map(float, coeff_parts))
+        MIXED(ctx, 1, 2)
+        actual = [v for row in zip(ctx.X[1:ctx.N + 1], ctx.Y[1:ctx.N + 1],
+                                  ctx.GAM[1:ctx.N + 1]) for v in row]
+        actual += [getattr(ctx, key) for key in ('PSIO', 'QDOF0', 'QDOF1', 'QDOF2', 'QDOF3',
+                                                'CL', 'CM', 'CDP', 'CL_ALF', 'CL_MSQ')]
+        ports = {'Python': actual}
+        for name, command in self.cpp_ports.items():
+            output = subprocess.run(command, input='\n'.join(input_lines) + '\n',
+                                    text=True, capture_output=True, check=True).stdout
+            ports[name] = list(map(float, output.split('REFERENCE_RESULT\n', 1)[1].split()))
+        js_result = json.loads(proc.stdout)['results']
+        ports['JavaScript'] = js_result['values']
+        for name, values in ports.items():
+            with self.subTest(port=name):
+                self.assertEqual(len(values), len(expected))
+                for i, (a, b) in enumerate(zip(values, expected)):
+                    self.assertTrue(math.isfinite(a) and math.isfinite(b), (name, i, a, b))
+                    self.assertLessEqual(abs(a - b), 1e-7 * max(1.0, abs(b)), (name, i, a, b))
+
         results = json.loads(proc.stdout)["results"]
-        # Fortran is single-precision; allow small FP drift vs JS double.
-        tol = 2.0e-2
+        # Coupled inverse solve in binary64, including panel cancellation.
+        tol = 1.0e-7
 
         f_metrics = {
             "x": metrics_array(x_f, samples),

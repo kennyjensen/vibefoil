@@ -15,6 +15,8 @@ C     Fixed-form driver for XFOIL xbl routines.
       REAL BETA, BETA_MSQ, HERAT, HERAT_MS
 C
       READ(*,*,END=900) MODE
+      ACRIT(1)=9.0
+      ACRIT(2)=9.0
 C
       IF (MODE .EQ. 1) THEN
 C----- DSLIM

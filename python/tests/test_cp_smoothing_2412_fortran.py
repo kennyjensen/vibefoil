@@ -7,6 +7,10 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
+import sys
+sys.path.insert(0, str(ROOT))
+from python.tests.fortran_reference import reference_source
+
 
 def spike_delta(metrics, side):
     before = metrics["before"][side]["spike"]
@@ -25,17 +29,17 @@ class TestCpSmoothing2412Fortran(unittest.TestCase):
         driver_src = ROOT / "python" / "tests" / "cp_smoothing_fortran_driver.f"
         srcs = [
             driver_src,
-            ROOT / "python" / "tests" / "xfoil_subs.f",
+            reference_source(cls._tmpdir.name, 'xfoil.f', ('CPCALC', 'CLCALC', 'TECALC')),
             ROOT / "third_party" / "Xfoil" / "src" / "xpanel.f",
             ROOT / "third_party" / "Xfoil" / "src" / "xsolve.f",
             ROOT / "third_party" / "Xfoil" / "src" / "xutils.f",
             ROOT / "third_party" / "Xfoil" / "src" / "spline.f",
-            ROOT / "python" / "tests" / "xbl_ref.f",
+            reference_source(cls._tmpdir.name, 'xbl.f', ('IBLSYS',)),
         ]
         driver_path = pathlib.Path(cls._tmpdir.name) / "cp_smoothing_fortran_driver"
         subprocess.run(
             [
-                "gfortran",
+                "gfortran", "-fdefault-real-8", "-fdefault-double-8", "-ffp-contract=off",
                 "-O2",
                 "-ffixed-form",
                 "-I",

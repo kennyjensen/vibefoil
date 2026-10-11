@@ -9,19 +9,17 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-import python.xbl as xbl_mod
 from python.xbl import XFoilState, XBlState, blpini
 from python.xfoil import comset, naca
 from python.xpanel import ggcalc
 from python.xoper import viscal
-from python.xsolve import gauss as gauss_base
 
 
-def build_viscal_context(ides, minf, reinf, alfa, waklen):
+def build_viscal_context(ides, minf, reinf, alfa, waklen, *, npan=160, cterat=0.15, sharp=False):
     ctx = XFoilState()
-    ctx.NPAN = 160
+    ctx.NPAN = npan
     ctx.CVPAR = 1.0
-    ctx.CTERAT = 0.15
+    ctx.CTERAT = cterat
     ctx.CTRRAT = 0.2
     ctx.XSREF1 = 1.0
     ctx.XSREF2 = 1.0
@@ -47,7 +45,7 @@ def build_viscal_context(ides, minf, reinf, alfa, waklen):
     ctx.XSTRIP[1] = 1.0
     ctx.XSTRIP[2] = 1.0
 
-    naca(ctx, ides)
+    naca(ctx, ides, sharp)
     comset(ctx)
     ggcalc(ctx)
     for i in range(1, ctx.N + 1):
@@ -92,16 +90,6 @@ class TestViscalParity(unittest.TestCase):
     def test_viscal_one_iter(self):
         if not shutil.which("node"):
             self.skipTest("node is required for JS/Python parity checks")
-
-        def gauss1(nsiz, nn, z, r, nrhs):
-            rmat = [[0.0] * (nrhs + 1) for _ in range(nn + 1)]
-            for i in range(1, nn + 1):
-                rmat[i][1] = r[i]
-            gauss_base(nsiz, nn, z, rmat, nrhs)
-            for i in range(1, nn + 1):
-                r[i] = rmat[i][1]
-
-        xbl_mod.gauss = gauss1
 
         cases = [
             {"ides": 12, "minf": 0.0, "reinf": 1.0e6, "alfa": 0.0, "waklen": 1.0},

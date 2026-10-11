@@ -11,6 +11,8 @@ import sys
 
 sys.path.insert(0, str(ROOT))
 
+from python.tests.fortran_reference import reference_source
+
 from python.xbl import XFoilState
 from python.xfoil import naca, pangen
 from python.spline import scalc, segspl, sinvrt, seval
@@ -26,14 +28,14 @@ class TestXgdesParity(unittest.TestCase):
         driver_src = ROOT / "python" / "tests" / "xgdes_driver.f"
         srcs = [
             driver_src,
-            ROOT / "python" / "tests" / "xgdes_subs.f",
-            ROOT / "python" / "tests" / "xgeom_subs.f",
+            reference_source(cls._tmpdir.name, 'xgdes.f', ('INSIDE', 'GETXYF')),
+            reference_source(cls._tmpdir.name, 'xgeom.f', ('LEFIND', 'SSS')),
             ROOT / "third_party" / "Xfoil" / "src" / "spline.f",
             ROOT / "third_party" / "Xfoil" / "src" / "userio.f",
         ]
         driver_path = pathlib.Path(cls._tmpdir.name) / "xgdes_driver"
         subprocess.run(
-            ["gfortran", "-O2", "-ffixed-form", *map(str, srcs), "-o", str(driver_path)],
+            ["gfortran", "-fdefault-real-8", "-fdefault-double-8", "-ffp-contract=off",  "-O2", "-ffixed-form", *map(str, srcs), "-o", str(driver_path)],
             check=True,
             capture_output=True,
             text=True,

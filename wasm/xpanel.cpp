@@ -350,57 +350,61 @@ PsinResult psilin(XFoilState &ctx, int i, double xi, double yi, double nxi, doub
         }
     }
 
-    const double psig = 0.5 * yy * (g1 - g2) + x2 * (t2 - apan) - x1 * (t1 - apan);
-    const double pgam = 0.5 * x1 * g1 - 0.5 * x2 * g2 + x2 - x1 + yy * (t1 - t2);
+    // A coincident TE has no base panel (PSILIN label 12).
+    if ((ctx.X[ctx.N] - ctx.X[1]) * (ctx.X[ctx.N] - ctx.X[1])
+        + (ctx.Y[ctx.N] - ctx.Y[1]) * (ctx.Y[ctx.N] - ctx.Y[1]) >= seps * seps) {
+        const double psig = 0.5 * yy * (g1 - g2) + x2 * (t2 - apan) - x1 * (t1 - apan);
+        const double pgam = 0.5 * x1 * g1 - 0.5 * x2 * g2 + x2 - x1 + yy * (t1 - t2);
 
-    const double psigx1 = -(t1 - apan);
-    const double psigx2 = t2 - apan;
-    const double psigyy = 0.5 * (g1 - g2);
-    const double pgamx1 = 0.5 * g1;
-    const double pgamx2 = -0.5 * g2;
-    const double pgamyy = t1 - t2;
+        const double psigx1 = -(t1 - apan);
+        const double psigx2 = t2 - apan;
+        const double psigyy = 0.5 * (g1 - g2);
+        const double pgamx1 = 0.5 * g1;
+        const double pgamx2 = -0.5 * g2;
+        const double pgamyy = t1 - t2;
 
-    const double psigni = psigx1 * x1i + psigx2 * x2i + psigyy * yyi;
-    const double pgamni = pgamx1 * x1i + pgamx2 * x2i + pgamyy * yyi;
+        const double psigni = psigx1 * x1i + psigx2 * x2i + psigyy * yyi;
+        const double pgamni = pgamx1 * x1i + pgamx2 * x2i + pgamyy * yyi;
 
-    const double sigte1 = 0.5 * scs * (ctx.GAMU[jp_last][1] - ctx.GAMU[jo_last][1]);
-    const double sigte2 = 0.5 * scs * (ctx.GAMU[jp_last][2] - ctx.GAMU[jo_last][2]);
-    const double gamte1 = -0.5 * sds * (ctx.GAMU[jp_last][1] - ctx.GAMU[jo_last][1]);
-    const double gamte2 = -0.5 * sds * (ctx.GAMU[jp_last][2] - ctx.GAMU[jo_last][2]);
+        const double sigte1 = 0.5 * scs * (ctx.GAMU[jp_last][1] - ctx.GAMU[jo_last][1]);
+        const double sigte2 = 0.5 * scs * (ctx.GAMU[jp_last][2] - ctx.GAMU[jo_last][2]);
+        const double gamte1 = -0.5 * sds * (ctx.GAMU[jp_last][1] - ctx.GAMU[jo_last][1]);
+        const double gamte2 = -0.5 * sds * (ctx.GAMU[jp_last][2] - ctx.GAMU[jo_last][2]);
 
-    ctx.SIGTE = 0.5 * scs * (ctx.GAM[jp_last] - ctx.GAM[jo_last]);
-    ctx.GAMTE = -0.5 * sds * (ctx.GAM[jp_last] - ctx.GAM[jo_last]);
+        ctx.SIGTE = 0.5 * scs * (ctx.GAM[jp_last] - ctx.GAM[jo_last]);
+        ctx.GAMTE = -0.5 * sds * (ctx.GAM[jp_last] - ctx.GAM[jo_last]);
 
-    psi = psi + ctx.HOPI * (psig * ctx.SIGTE + pgam * ctx.GAMTE);
+        psi = psi + ctx.HOPI * (psig * ctx.SIGTE + pgam * ctx.GAMTE);
 
-    ctx.DZDG[jo_last] = ctx.DZDG[jo_last] - ctx.HOPI * psig * scs * 0.5;
-    ctx.DZDG[jp_last] = ctx.DZDG[jp_last] + ctx.HOPI * psig * scs * 0.5;
+        ctx.DZDG[jo_last] = ctx.DZDG[jo_last] - ctx.HOPI * psig * scs * 0.5;
+        ctx.DZDG[jp_last] = ctx.DZDG[jp_last] + ctx.HOPI * psig * scs * 0.5;
 
-    ctx.DZDG[jo_last] = ctx.DZDG[jo_last] + ctx.HOPI * pgam * sds * 0.5;
-    ctx.DZDG[jp_last] = ctx.DZDG[jp_last] - ctx.HOPI * pgam * sds * 0.5;
+        ctx.DZDG[jo_last] = ctx.DZDG[jo_last] + ctx.HOPI * pgam * sds * 0.5;
+        ctx.DZDG[jp_last] = ctx.DZDG[jp_last] - ctx.HOPI * pgam * sds * 0.5;
 
-    psi_ni = psi_ni + ctx.HOPI * (psigni * ctx.SIGTE + pgamni * ctx.GAMTE);
+        psi_ni = psi_ni + ctx.HOPI * (psigni * ctx.SIGTE + pgamni * ctx.GAMTE);
 
-    qt1 = qt1 + ctx.HOPI * (psigni * sigte1 + pgamni * gamte1);
-    qt2 = qt2 + ctx.HOPI * (psigni * sigte2 + pgamni * gamte2);
+        qt1 = qt1 + ctx.HOPI * (psigni * sigte1 + pgamni * gamte1);
+        qt2 = qt2 + ctx.HOPI * (psigni * sigte2 + pgamni * gamte2);
 
-    ctx.DQDG[jo_last] = ctx.DQDG[jo_last] - ctx.HOPI * (psigni * 0.5 * scs - pgamni * 0.5 * sds);
-    ctx.DQDG[jp_last] = ctx.DQDG[jp_last] + ctx.HOPI * (psigni * 0.5 * scs - pgamni * 0.5 * sds);
+        ctx.DQDG[jo_last] = ctx.DQDG[jo_last] - ctx.HOPI * (psigni * 0.5 * scs - pgamni * 0.5 * sds);
+        ctx.DQDG[jp_last] = ctx.DQDG[jp_last] + ctx.HOPI * (psigni * 0.5 * scs - pgamni * 0.5 * sds);
 
-    if (geolin) {
-        ctx.DZDN[jo_last] = ctx.DZDN[jo_last] + ctx.HOPI * (psigx1 * x1o + psigx2 * x2o + psigyy * yyo) * ctx.SIGTE
-                            + ctx.HOPI * (pgamx1 * x1o + pgamx2 * x2o + pgamyy * yyo) * ctx.GAMTE;
-        ctx.DZDN[jp_last] = ctx.DZDN[jp_last] + ctx.HOPI * (psigx1 * x1p + psigx2 * x2p + psigyy * yyp) * ctx.SIGTE
-                            + ctx.HOPI * (pgamx1 * x1p + pgamx2 * x2p + pgamyy * yyp) * ctx.GAMTE;
+        if (geolin) {
+            ctx.DZDN[jo_last] = ctx.DZDN[jo_last] + ctx.HOPI * (psigx1 * x1o + psigx2 * x2o + psigyy * yyo) * ctx.SIGTE
+                                + ctx.HOPI * (pgamx1 * x1o + pgamx2 * x2o + pgamyy * yyo) * ctx.GAMTE;
+            ctx.DZDN[jp_last] = ctx.DZDN[jp_last] + ctx.HOPI * (psigx1 * x1p + psigx2 * x2p + psigyy * yyp) * ctx.SIGTE
+                                + ctx.HOPI * (pgamx1 * x1p + pgamx2 * x2p + pgamyy * yyp) * ctx.GAMTE;
 
-        ctx.Z_QDOF0 = ctx.Z_QDOF0 + ctx.HOPI * psig * 0.5 * (ctx.QF0[jp_last] - ctx.QF0[jo_last]) * scs
-                      - ctx.HOPI * pgam * 0.5 * (ctx.QF0[jp_last] - ctx.QF0[jo_last]) * sds;
-        ctx.Z_QDOF1 = ctx.Z_QDOF1 + ctx.HOPI * psig * 0.5 * (ctx.QF1[jp_last] - ctx.QF1[jo_last]) * scs
-                      - ctx.HOPI * pgam * 0.5 * (ctx.QF1[jp_last] - ctx.QF1[jo_last]) * sds;
-        ctx.Z_QDOF2 = ctx.Z_QDOF2 + ctx.HOPI * psig * 0.5 * (ctx.QF2[jp_last] - ctx.QF2[jo_last]) * scs
-                      - ctx.HOPI * pgam * 0.5 * (ctx.QF2[jp_last] - ctx.QF2[jo_last]) * sds;
-        ctx.Z_QDOF3 = ctx.Z_QDOF3 + ctx.HOPI * psig * 0.5 * (ctx.QF3[jp_last] - ctx.QF3[jo_last]) * scs
-                      - ctx.HOPI * pgam * 0.5 * (ctx.QF3[jp_last] - ctx.QF3[jo_last]) * sds;
+            ctx.Z_QDOF0 = ctx.Z_QDOF0 + ctx.HOPI * psig * 0.5 * (ctx.QF0[jp_last] - ctx.QF0[jo_last]) * scs
+                          - ctx.HOPI * pgam * 0.5 * (ctx.QF0[jp_last] - ctx.QF0[jo_last]) * sds;
+            ctx.Z_QDOF1 = ctx.Z_QDOF1 + ctx.HOPI * psig * 0.5 * (ctx.QF1[jp_last] - ctx.QF1[jo_last]) * scs
+                          - ctx.HOPI * pgam * 0.5 * (ctx.QF1[jp_last] - ctx.QF1[jo_last]) * sds;
+            ctx.Z_QDOF2 = ctx.Z_QDOF2 + ctx.HOPI * psig * 0.5 * (ctx.QF2[jp_last] - ctx.QF2[jo_last]) * scs
+                          - ctx.HOPI * pgam * 0.5 * (ctx.QF2[jp_last] - ctx.QF2[jo_last]) * sds;
+            ctx.Z_QDOF3 = ctx.Z_QDOF3 + ctx.HOPI * psig * 0.5 * (ctx.QF3[jp_last] - ctx.QF3[jo_last]) * scs
+                          - ctx.HOPI * pgam * 0.5 * (ctx.QF3[jp_last] - ctx.QF3[jo_last]) * sds;
+        }
     }
 
     psi = psi + ctx.QINF * (cosa * yi - sina * xi);
@@ -468,14 +472,14 @@ PsinResult psilin(XFoilState &ctx, int i, double xi, double yi, double nxi, doub
 
             double g1 = 0.0;
             double t1 = 0.0;
-            if (io != jo && rs1 > 0.0) {
+            if (rs1 > 0.0) {
                 g1 = std::log(rs1);
                 t1 = std::atan2(sgn * x1, sgn * yy) + (0.5 - 0.5 * sgn) * ctx.PI;
             }
 
             double g2 = 0.0;
             double t2 = 0.0;
-            if (io != jp && rs2 > 0.0) {
+            if (rs2 > 0.0) {
                 g2 = std::log(rs2);
                 t2 = std::atan2(sgn * x2, sgn * yy) + (0.5 - 0.5 * sgn) * ctx.PI;
             }
@@ -506,6 +510,58 @@ PsinResult psilin(XFoilState &ctx, int i, double xi, double yi, double nxi, doub
             }
 
             if (jo == ctx.N) {
+                const double psig = 0.5 * yy * (g1 - g2) + x2 * (t2 - apan) - x1 * (t1 - apan);
+                const double pgam = 0.5 * x1 * g1 - 0.5 * x2 * g2 + x2 - x1 + yy * (t1 - t2);
+
+                const double psigx1 = -(t1 - apan);
+                const double psigx2 = t2 - apan;
+                const double psigyy = 0.5 * (g1 - g2);
+                const double pgamx1 = 0.5 * g1;
+                const double pgamx2 = -0.5 * g2;
+                const double pgamyy = t1 - t2;
+
+                const double psigni = psigx1 * x1i + psigx2 * x2i + psigyy * yyi;
+                const double pgamni = pgamx1 * x1i + pgamx2 * x2i + pgamyy * yyi;
+
+                const double sigte1 = 0.5 * scs * (ctx.GAMU[jp][1] - ctx.GAMU[jo][1]);
+                const double sigte2 = 0.5 * scs * (ctx.GAMU[jp][2] - ctx.GAMU[jo][2]);
+                const double gamte1 = -0.5 * sds * (ctx.GAMU[jp][1] - ctx.GAMU[jo][1]);
+                const double gamte2 = -0.5 * sds * (ctx.GAMU[jp][2] - ctx.GAMU[jo][2]);
+
+                ctx.SIGTE = 0.5 * scs * (ctx.GAM[jp] - ctx.GAM[jo]);
+                ctx.GAMTE = -0.5 * sds * (ctx.GAM[jp] - ctx.GAM[jo]);
+
+                psi = psi + ctx.HOPI * (psig * ctx.SIGTE - pgam * ctx.GAMTE);
+
+                ctx.DZDG[jo] = ctx.DZDG[jo] - ctx.HOPI * psig * scs * 0.5;
+                ctx.DZDG[jp] = ctx.DZDG[jp] + ctx.HOPI * psig * scs * 0.5;
+
+                ctx.DZDG[jo] = ctx.DZDG[jo] - ctx.HOPI * pgam * sds * 0.5;
+                ctx.DZDG[jp] = ctx.DZDG[jp] + ctx.HOPI * pgam * sds * 0.5;
+
+                psi_ni = psi_ni + ctx.HOPI * (psigni * ctx.SIGTE - pgamni * ctx.GAMTE);
+
+                qt1 = qt1 + ctx.HOPI * (psigni * sigte1 - pgamni * gamte1);
+                qt2 = qt2 + ctx.HOPI * (psigni * sigte2 - pgamni * gamte2);
+
+                ctx.DQDG[jo] = ctx.DQDG[jo] - ctx.HOPI * (psigni * 0.5 * scs + pgamni * 0.5 * sds);
+                ctx.DQDG[jp] = ctx.DQDG[jp] + ctx.HOPI * (psigni * 0.5 * scs + pgamni * 0.5 * sds);
+
+                if (geolin) {
+                    ctx.DZDN[jo] = ctx.DZDN[jo] + ctx.HOPI * (psigx1 * x1o + psigx2 * x2o + psigyy * yyo) * ctx.SIGTE
+                                        - ctx.HOPI * (pgamx1 * x1o + pgamx2 * x2o + pgamyy * yyo) * ctx.GAMTE;
+                    ctx.DZDN[jp] = ctx.DZDN[jp] + ctx.HOPI * (psigx1 * x1p + psigx2 * x2p + psigyy * yyp) * ctx.SIGTE
+                                        - ctx.HOPI * (pgamx1 * x1p + pgamx2 * x2p + pgamyy * yyp) * ctx.GAMTE;
+
+                    ctx.Z_QDOF0 = ctx.Z_QDOF0 + ctx.HOPI * psig * 0.5 * (ctx.QF0[jp] - ctx.QF0[jo]) * scs
+                                  + ctx.HOPI * pgam * 0.5 * (ctx.QF0[jp] - ctx.QF0[jo]) * sds;
+                    ctx.Z_QDOF1 = ctx.Z_QDOF1 + ctx.HOPI * psig * 0.5 * (ctx.QF1[jp] - ctx.QF1[jo]) * scs
+                                  + ctx.HOPI * pgam * 0.5 * (ctx.QF1[jp] - ctx.QF1[jo]) * sds;
+                    ctx.Z_QDOF2 = ctx.Z_QDOF2 + ctx.HOPI * psig * 0.5 * (ctx.QF2[jp] - ctx.QF2[jo]) * scs
+                                  + ctx.HOPI * pgam * 0.5 * (ctx.QF2[jp] - ctx.QF2[jo]) * sds;
+                    ctx.Z_QDOF3 = ctx.Z_QDOF3 + ctx.HOPI * psig * 0.5 * (ctx.QF3[jp] - ctx.QF3[jo]) * scs
+                                  + ctx.HOPI * pgam * 0.5 * (ctx.QF3[jp] - ctx.QF3[jo]) * sds;
+                }
                 continue;
             }
 
@@ -543,6 +599,7 @@ PsinResult psilin(XFoilState &ctx, int i, double xi, double yi, double nxi, doub
                 double psni = psx1 * x1i + psx0 * (x1i + x2i) * 0.5 + psyy * yyi;
                 double pdni = pdx1 * x1i + pdx0 * (x1i + x2i) * 0.5 + pdyy * yyi;
                 psi_ni = psi_ni + ctx.QOPI * (psni * ssum + pdni * sdif);
+                qtanm = qtanm + ctx.QOPI * (psni * ssum + pdni * sdif);
 
                 ctx.DQDM[jm] = ctx.DQDM[jm] + ctx.QOPI * (-psni * dsim + pdni * dsim);
                 ctx.DQDM[jo] = ctx.DQDM[jo] + ctx.QOPI * (-psni * dsio - pdni * dsio);
@@ -576,6 +633,7 @@ PsinResult psilin(XFoilState &ctx, int i, double xi, double yi, double nxi, doub
                 psni = psx0 * (x1i + x2i) * 0.5 + psx2 * x2i + psyy * yyi;
                 pdni = pdx0 * (x1i + x2i) * 0.5 + pdx2 * x2i + pdyy * yyi;
                 psi_ni = psi_ni + ctx.QOPI * (psni * ssum + pdni * sdif);
+                qtanm = qtanm + ctx.QOPI * (psni * ssum + pdni * sdif);
 
                 ctx.DQDM[jo] = ctx.DQDM[jo] + ctx.QOPI * (-psni * (dsip + dsio) - pdni * (dsip - dsio));
                 ctx.DQDM[jp] = ctx.DQDM[jp] + ctx.QOPI * (psni * dsio - pdni * dsio);
@@ -602,30 +660,30 @@ PsinResult psilin(XFoilState &ctx, int i, double xi, double yi, double nxi, doub
             const double gsum = ctx.GAM[jp] + ctx.GAM[jo];
             const double gdif = ctx.GAM[jp] - ctx.GAM[jo];
 
-            psi = psi + ctx.QOPI * (psis2 * gsum + psid2 * gdif);
+            psi = psi - ctx.QOPI * (psis2 * gsum + psid2 * gdif);
 
-            ctx.DZDG[jo] = ctx.DZDG[jo] + ctx.QOPI * (psis2 - psid2);
-            ctx.DZDG[jp] = ctx.DZDG[jp] + ctx.QOPI * (psis2 + psid2);
+            ctx.DZDG[jo] = ctx.DZDG[jo] - ctx.QOPI * (psis2 - psid2);
+            ctx.DZDG[jp] = ctx.DZDG[jp] - ctx.QOPI * (psis2 + psid2);
 
             const double psni2 = psx1b * x1i + psx2b * x2i + psyyb * yyi;
             const double pdni2 = pdx1b * x1i + pdx2b * x2i + pdyyb * yyi;
-            psi_ni = psi_ni + ctx.QOPI * (gsum * psni2 + gdif * pdni2);
+            psi_ni = psi_ni - ctx.QOPI * (gsum * psni2 + gdif * pdni2);
 
-            qt1 = qt1 + ctx.QOPI * (gsum1 * psni2 + gdif1 * pdni2);
-            qt2 = qt2 + ctx.QOPI * (gsum2 * psni2 + gdif2 * pdni2);
+            qt1 = qt1 - ctx.QOPI * (gsum1 * psni2 + gdif1 * pdni2);
+            qt2 = qt2 - ctx.QOPI * (gsum2 * psni2 + gdif2 * pdni2);
 
-            ctx.DQDG[jo] = ctx.DQDG[jo] + ctx.QOPI * (psni2 - pdni2);
-            ctx.DQDG[jp] = ctx.DQDG[jp] + ctx.QOPI * (psni2 + pdni2);
+            ctx.DQDG[jo] = ctx.DQDG[jo] - ctx.QOPI * (psni2 - pdni2);
+            ctx.DQDG[jp] = ctx.DQDG[jp] - ctx.QOPI * (psni2 + pdni2);
 
             if (geolin) {
-                ctx.DZDN[jo] = ctx.DZDN[jo] + ctx.QOPI * gsum * (psx1b * x1o + psx2b * x2o + psyyb * yyo)
-                               + ctx.QOPI * gdif * (pdx1b * x1o + pdx2b * x2o + pdyyb * yyo);
-                ctx.DZDN[jp] = ctx.DZDN[jp] + ctx.QOPI * gsum * (psx1b * x1p + psx2b * x2p + psyyb * yyp)
-                               + ctx.QOPI * gdif * (pdx1b * x1p + pdx2b * x2p + pdyyb * yyp);
-                ctx.Z_QDOF0 = ctx.Z_QDOF0 + ctx.QOPI * ((psis2 - psid2) * ctx.QF0[jo] + (psis2 + psid2) * ctx.QF0[jp]);
-                ctx.Z_QDOF1 = ctx.Z_QDOF1 + ctx.QOPI * ((psis2 - psid2) * ctx.QF1[jo] + (psis2 + psid2) * ctx.QF1[jp]);
-                ctx.Z_QDOF2 = ctx.Z_QDOF2 + ctx.QOPI * ((psis2 - psid2) * ctx.QF2[jo] + (psis2 + psid2) * ctx.QF2[jp]);
-                ctx.Z_QDOF3 = ctx.Z_QDOF3 + ctx.QOPI * ((psis2 - psid2) * ctx.QF3[jo] + (psis2 + psid2) * ctx.QF3[jp]);
+                ctx.DZDN[jo] = ctx.DZDN[jo] - ctx.QOPI * gsum * (psx1b * x1o + psx2b * x2o + psyyb * yyo)
+                               - ctx.QOPI * gdif * (pdx1b * x1o + pdx2b * x2o + pdyyb * yyo);
+                ctx.DZDN[jp] = ctx.DZDN[jp] - ctx.QOPI * gsum * (psx1b * x1p + psx2b * x2p + psyyb * yyp)
+                               - ctx.QOPI * gdif * (pdx1b * x1p + pdx2b * x2p + pdyyb * yyp);
+                ctx.Z_QDOF0 = ctx.Z_QDOF0 - ctx.QOPI * ((psis2 - psid2) * ctx.QF0[jo] + (psis2 + psid2) * ctx.QF0[jp]);
+                ctx.Z_QDOF1 = ctx.Z_QDOF1 - ctx.QOPI * ((psis2 - psid2) * ctx.QF1[jo] + (psis2 + psid2) * ctx.QF1[jp]);
+                ctx.Z_QDOF2 = ctx.Z_QDOF2 - ctx.QOPI * ((psis2 - psid2) * ctx.QF2[jo] + (psis2 + psid2) * ctx.QF2[jp]);
+                ctx.Z_QDOF3 = ctx.Z_QDOF3 - ctx.QOPI * ((psis2 - psid2) * ctx.QF3[jo] + (psis2 + psid2) * ctx.QF3[jp]);
             }
         }
     }

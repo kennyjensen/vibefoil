@@ -11,6 +11,8 @@ import sys
 
 sys.path.insert(0, str(ROOT))
 
+from python.tests.fortran_reference import reference_source
+
 from python.xbl import XFoilState
 from python.xfoil import naca, pangen
 from python.spline import scalc, segspl
@@ -26,12 +28,12 @@ class TestXgeomParity(unittest.TestCase):
         driver_src = ROOT / "python" / "tests" / "xgeom_driver.f"
         srcs = [
             driver_src,
-            ROOT / "python" / "tests" / "xgeom_subs.f",
+            reference_source(cls._tmpdir.name, 'xgeom.f', ('LEFIND', 'SSS')),
             ROOT / "third_party" / "Xfoil" / "src" / "spline.f",
         ]
         driver_path = pathlib.Path(cls._tmpdir.name) / "xgeom_driver"
         subprocess.run(
-            ["gfortran", "-O2", "-ffixed-form", *map(str, srcs), "-o", str(driver_path)],
+            ["gfortran", "-fdefault-real-8", "-fdefault-double-8", "-ffp-contract=off",  "-O2", "-ffixed-form", *map(str, srcs), "-o", str(driver_path)],
             check=True,
             capture_output=True,
             text=True,
@@ -96,7 +98,7 @@ class TestXgeomParity(unittest.TestCase):
         )
         sle_f = float(proc_f.stdout.strip().splitlines()[-1].strip())
 
-        tol = 1.0e-6
+        tol = 2.0e-12
         self.assertLessEqual(abs(sle_f - js_results["sle"]), tol)
 
 

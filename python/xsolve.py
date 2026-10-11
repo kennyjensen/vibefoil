@@ -4,6 +4,17 @@
 # See https://web.mit.edu/drela/Public/web/xfoil/ for the original code and license text.
 
 def gauss(nsiz, nn, z, r, nrhs):
+    # Fortran permits a vector actual argument for its one-column RHS array.
+    # MRCHUE/MRCHDU use that form; preserve the same in-place Python API.
+    if isinstance(r[1], (int, float, complex)):
+        if nrhs != 1:
+            raise ValueError("A vector RHS requires nrhs=1")
+        rhs = [[0.0, value] for value in r]
+        gauss(nsiz, nn, z, rhs, nrhs)
+        for i in range(1, nn + 1):
+            r[i] = rhs[i][1]
+        return
+
     for np in range(1, nn):
         np1 = np + 1
         nx = np
@@ -42,7 +53,7 @@ def gauss(nsiz, nn, z, r, nrhs):
 
 
 def ludcmp(nsiz, n, a, indx):
-    nvx = 500
+    nvx = 515
     if n > nvx:
         raise RuntimeError("LUDCMP: Array overflow. Increase NVX.")
 
@@ -81,9 +92,6 @@ def ludcmp(nsiz, n, a, indx):
             vv[imax] = vv[j]
 
         indx[j] = imax
-        if a[j][j] == 0.0:
-            a[j][j] = 1.0e-20
-
         if j != n:
             dum = 1.0 / a[j][j]
             for i in range(j + 1, n + 1):

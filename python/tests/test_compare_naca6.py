@@ -27,17 +27,18 @@ class TestNaca6Parity(unittest.TestCase):
         cls._tmpdir = tempfile.TemporaryDirectory()
         driver_src = ROOT / "python" / "tests" / "naca6_driver.f90"
         srcs = [
-            driver_src,
             ROOT / "third_party" / "naca456" / "splprocs.f90",
             ROOT / "third_party" / "naca456" / "epspsi.f90",
             ROOT / "third_party" / "naca456" / "nacax.f90",
+            driver_src,
         ]
         driver_path = pathlib.Path(cls._tmpdir.name) / "naca6_driver"
         subprocess.run(
-            ["gfortran", "-O2", *map(str, srcs), "-o", str(driver_path)],
+            ["gfortran", "-fdefault-real-8", "-fdefault-double-8", "-ffp-contract=off",  "-O2", *map(str, srcs), "-o", str(driver_path)],
             check=True,
             capture_output=True,
             text=True,
+            cwd=cls._tmpdir.name,
         )
         cls.driver_path = driver_path
 

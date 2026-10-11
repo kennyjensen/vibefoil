@@ -14,14 +14,17 @@ function lefind(x, xp, y, yp, s, n) {
   const xte = 0.5 * (x[0] + x[n - 1]);
   const yte = 0.5 * (y[0] + y[n - 1]);
 
-  let guessIdx = n - 3;
+  let guessIdx = n >= 5 ? n - 2 : 2;
   for (let i = 2; i <= n - 3; i += 1) {
     const dxte = x[i] - xte;
     const dyte = y[i] - yte;
-    const dx = x[i + 1] - x[i];
-    const dy = y[i + 1] - y[i];
-    const dotp = dxte * dx + dyte * dy;
-    if (dotp < 0.0) {
+    const dxm = x[i] - x[i - 1];
+    const dym = y[i] - y[i - 1];
+    const dxp = x[i + 1] - x[i];
+    const dyp = y[i + 1] - y[i];
+    const dotm = dxte * dxm + dyte * dym;
+    const dotp = dxte * dxp + dyte * dyp;
+    if (dotm > 0.0 && dotp <= 0.0) {
       guessIdx = i;
       break;
     }

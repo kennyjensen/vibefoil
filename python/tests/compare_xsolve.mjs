@@ -10,7 +10,7 @@ const results = {};
 if (payload.gauss) {
   const { n, nrhs, z, r } = payload.gauss;
   const zWork = z.map((row) => Float64Array.from(row));
-  const rWork = r.map((row) => row.slice());
+  const rWork = r.map((row) => Float64Array.from(row));
   gauss(n, zWork, rWork, nrhs);
   results.gauss = {
     n,

@@ -77,9 +77,11 @@ C----- PSILIN
           READ(*,*) QF0(J), QF1(J), QF2(J), QF3(J)
    70   CONTINUE
         READ(*,*) XI, YI, NXI, NYI
+        CALL APCALC
         CALL PSILIN(I,XI,YI,NXI,NYI,PSI,PSI_NI,
      &              GEOLIN.NE.0, SIGLIN.NE.0)
-        WRITE(*,'(9ES24.15)') PSI, PSI_NI, QTAN1, QTAN2, QTANM,
+C       QTANM is local to PSILIN, not an output or COMMON variable.
+        WRITE(*,'(8ES24.15)') PSI, PSI_NI, QTAN1, QTAN2,
      &                        Z_QINF, Z_ALFA, Z_QDOF0, Z_QDOF1
         WRITE(*,'(2ES24.15)') Z_QDOF2, Z_QDOF3
         WRITE(*,'(I0)') N

@@ -4,7 +4,8 @@
 // See https://web.mit.edu/drela/Public/web/xfoil/ for the original code and license text.
 
 // Port of src/xpanel.f from XFOIL (Mark Drela). Numerical formulas preserved.
-import { segspl } from './spline.js';
+import { segspl, seval } from './spline.js';
+import { lefind } from './xgeom.js';
 import { atanc, setexp } from './xutils.js?v=1';
 import { ludcmp, baksub } from './xsolve.js';
 import { iblsys } from './xbl.js';
@@ -55,13 +56,10 @@ function xywake(ctx) {
   const ds1 = 0.5 * ((s[1] - s[0]) + (s[n - 1] - s[n - 2]));
   let chord = ctx.CHORD;
   if (!Number.isFinite(chord) || chord <= 0.0) {
-    let xmin = Infinity;
-    let xmax = -Infinity;
-    for (let i = 0; i < n; i += 1) {
-      xmin = Math.min(xmin, x[i]);
-      xmax = Math.max(xmax, x[i]);
-    }
-    chord = xmax - xmin;
+    const sle = lefind(x, xp, y, yp, s, n);
+    const dx = 0.5 * (x[0] + x[n - 1]) - seval(sle, x, xp, s, n);
+    const dy = 0.5 * (y[0] + y[n - 1]) - seval(sle, y, yp, s, n);
+    chord = Math.sqrt(dx * dx + dy * dy);
   }
   const snew = ctx.SNEW ?? new Float64Array(n + nw);
   if (!ctx.SNEW || ctx.SNEW.length < n + nw) {
@@ -1510,6 +1508,11 @@ function stmove(ctxPanel, blCtx, qinv, qinvA) {
 
   if (istNew === istOld) {
     xicalc(blCtx, ctxPanel);
+    for (let is = 1; is <= 2; is += 1) {
+      for (let ibl = 2; ibl <= blCtx.NBL[is]; ibl += 1) {
+        blCtx.MASS[ibl][is] = blCtx.DSTR[ibl][is] * blCtx.UEDG[ibl][is];
+      }
+    }
     return;
   }
 

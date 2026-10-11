@@ -1,0 +1,76 @@
+      SUBROUTINE TEST_CFFAC(FACTOR)
+      INCLUDE 'BLPAR.INC'
+      CFFAC = FACTOR
+      END
+
+      SUBROUTINE TEST_MRCL
+      INCLUDE 'XFOIL.INC'
+      REAL CLS,M_CLS,R_CLS
+      READ(*,*) MATYP,RETYP,MINF1,REINF1,CLS
+      GAMMA=1.4
+      GAMM1=GAMMA-1.0
+      QINF=1.0
+      CALL MRCL(CLS,M_CLS,R_CLS)
+      CALL COMSET
+      WRITE(*,*) 'REFERENCE_RESULT'
+      WRITE(*,'(10ES26.17E3)') FLOAT(MATYP),FLOAT(RETYP),
+     & MINF,REINF,M_CLS,R_CLS,TKLAM,TKL_MSQ,CPSTAR,QSTAR
+      END
+
+      SUBROUTINE TEST_TECALC
+      INCLUDE 'XFOIL.INC'
+      READ(*,*) N
+      DO J=1,N
+        READ(*,*) X(J),Y(J)
+      ENDDO
+      CALL SCALC(X,Y,S,N)
+      CALL SEGSPL(X,XP,S,N)
+      CALL SEGSPL(Y,YP,S,N)
+      CALL LEFIND(SLE,X,XP,Y,YP,S,N)
+      XLE=SEVAL(SLE,X,XP,S,N)
+      YLE=SEVAL(SLE,Y,YP,S,N)
+      CHORD=SQRT((0.5*(X(1)+X(N))-XLE)**2
+     &          +(0.5*(Y(1)+Y(N))-YLE)**2)
+      CALL TECALC
+      ISHARP=0
+      IF(SHARP) ISHARP=1
+      WRITE(*,'(4ES26.17E3)') ANTE,ASTE,DSTE,FLOAT(ISHARP)
+      END
+
+      SUBROUTINE TEST_PSILIN
+      INCLUDE 'XFOIL.INC'
+      REAL XI,YI,NXI,NYI,PSI,PSI_NI
+      INTEGER IP, SHARPF, IMAGEF
+      READ(*,*) N,IP,SHARPF,IMAGEF,ALFA,YIMAGE,XI,YI,NXI,NYI
+      PI=4.0*ATAN(1.0)
+      HOPI=0.5/PI
+      QOPI=0.25/PI
+      QINF=1.0
+      CHORD=1.0
+      LIMAGE=IMAGEF.NE.0
+      DO J=1,N
+        READ(*,*) X(J),Y(J)
+        GAM(J)=0.1*(J-3)
+        GAMU(J,1)=0.2*J
+        GAMU(J,2)=-0.1*J
+        SIG(J)=0.005*J
+        QF0(J)=0.03*J
+        QF1(J)=-0.02*J
+        QF2(J)=0.01*J
+        QF3(J)=-0.04*J
+      ENDDO
+      CALL SCALC(X,Y,S,N)
+      CALL SEGSPL(X,XP,S,N)
+      CALL SEGSPL(Y,YP,S,N)
+      CALL NCALC(X,Y,S,N,NX,NY)
+      CALL TECALC
+      SHARP=SHARPF.NE.0
+      CALL APCALC
+      CALL PSILIN(IP,XI,YI,NXI,NYI,PSI,PSI_NI,.TRUE.,.TRUE.)
+      WRITE(*,'(10ES26.17E3)') PSI,PSI_NI,QTAN1,QTAN2,Z_QINF,
+     & Z_ALFA,Z_QDOF0,Z_QDOF1,Z_QDOF2,Z_QDOF3
+      DO J=1,N
+        WRITE(*,'(5ES26.17E3)') DZDG(J),DZDN(J),DQDG(J),
+     &                        DZDM(J),DQDM(J)
+      ENDDO
+      END

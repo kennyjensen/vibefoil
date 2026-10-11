@@ -6,7 +6,7 @@
 import math
 
 
-def naca4(ides, xx, yt, yc, nside, xb, yb):
+def naca4(ides, xx, yt, yc, nside, xb, yb, ltes=False):
     digits = "0123456789"
     an = 1.5
 
@@ -27,12 +27,13 @@ def naca4(ides, xx, yt, yc, nside, xb, yb):
         else:
             xx[i] = 1.0 - anp * frac * (1.0 - frac) ** an - (1.0 - frac) ** anp
 
+        xt = xx[i] * 1.00893041136514270931482193883054 if ltes else xx[i]
         yt[i] = (
-            0.29690 * math.sqrt(xx[i])
-            - 0.12600 * xx[i]
-            - 0.35160 * xx[i] ** 2
-            + 0.28430 * xx[i] ** 3
-            - 0.10150 * xx[i] ** 4
+            0.29690 * math.sqrt(xt)
+            - 0.12600 * xt
+            - 0.35160 * xt ** 2
+            + 0.28430 * xt ** 3
+            - 0.10150 * xt ** 4
         ) * t / 0.20
 
         if xx[i] < p:
@@ -56,7 +57,7 @@ def naca4(ides, xx, yt, yc, nside, xb, yb):
     return ib, name
 
 
-def naca5(ides, xx, yt, yc, nside, xb, yb):
+def naca5(ides, xx, yt, yc, nside, xb, yb, ltes=False):
     digits = "0123456789"
     an = 1.5
 
@@ -98,12 +99,13 @@ def naca5(ides, xx, yt, yc, nside, xb, yb):
         else:
             xx[i] = 1.0 - anp * frac * (1.0 - frac) ** an - (1.0 - frac) ** anp
 
+        xt = xx[i] * 1.00893041136514270931482193883054 if ltes else xx[i]
         yt[i] = (
-            0.29690 * math.sqrt(xx[i])
-            - 0.12600 * xx[i]
-            - 0.35160 * xx[i] ** 2
-            + 0.28430 * xx[i] ** 3
-            - 0.10150 * xx[i] ** 4
+            0.29690 * math.sqrt(xt)
+            - 0.12600 * xt
+            - 0.35160 * xt ** 2
+            + 0.28430 * xt ** 3
+            - 0.10150 * xt ** 4
         ) * t / 0.20
 
         if xx[i] < m:

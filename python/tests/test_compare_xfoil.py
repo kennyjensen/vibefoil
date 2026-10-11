@@ -12,6 +12,8 @@ import sys
 
 sys.path.insert(0, str(ROOT))
 
+from python.tests.fortran_reference import reference_source
+
 from python.xbl import XFoilState
 from python.xfoil import naca, pangen
 
@@ -26,12 +28,12 @@ class TestXfoilParity(unittest.TestCase):
         driver_src = ROOT / "python" / "tests" / "xfoil_driver.f"
         srcs = [
             driver_src,
-            ROOT / "python" / "tests" / "xfoil_subs.f",
+            reference_source(cls._tmpdir.name, 'xfoil.f', ('CPCALC', 'CLCALC', 'TECALC')),
             ROOT / "third_party" / "Xfoil" / "src" / "spline.f",
         ]
         driver_path = pathlib.Path(cls._tmpdir.name) / "xfoil_driver"
         subprocess.run(
-            ["gfortran", "-O2", "-ffixed-form", "-I", str(ROOT / "third_party" / "Xfoil" / "src"), *map(str, srcs), "-o", str(driver_path)],
+            ["gfortran", "-fdefault-real-8", "-fdefault-double-8", "-ffp-contract=off",  "-O2", "-ffixed-form", "-I", str(ROOT / "third_party" / "Xfoil" / "src"), *map(str, srcs), "-o", str(driver_path)],
             check=True,
             capture_output=True,
             text=True,
@@ -131,7 +133,7 @@ class TestXfoilParity(unittest.TestCase):
             elif line.startswith("CL"):
                 out_cl = [float(v) for v in line.split()[1:]]
 
-        tol = 1.0e-6
+        tol = 2.0e-12
         self.assertIsNotNone(out_te)
         self.assertIsNotNone(out_cp)
         self.assertIsNotNone(out_cl)

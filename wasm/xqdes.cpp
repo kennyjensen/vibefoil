@@ -266,7 +266,7 @@ void MIXED(XFoilState &ctx, int kqsp, int niterq) {
 
         for (int i = 1; i <= ctx.N; ++i) {
             const auto res = psilin(ctx, i, ctx.X[i], ctx.Y[i], ctx.NX[i], ctx.NY[i], true, false);
-            ctx.DZDN[i] = ctx.DZDN[i] + res.psiNi;
+            ctx.DZDN[i] = ctx.DZDN[i] + res.psi_ni;
 
             for (int j = 1; j <= ctx.IQ1 - 1; ++j) {
                 ctx.Q[i][j] = ctx.Q[i][j] + ctx.DZDG[j];
@@ -307,7 +307,7 @@ void MIXED(XFoilState &ctx, int kqsp, int niterq) {
             const double xbis = ctx.XTE - bwt * dsmin * cbis;
             const double ybis = ctx.YTE - bwt * dsmin * sbis;
             const auto bis = psilin(ctx, 0, xbis, ybis, -sbis, cbis, false, true);
-            const double res = bis.psiNi;
+            const double res = bis.psi_ni;
 
             for (int j = 1; j <= ctx.N + 5; ++j) {
                 ctx.Q[ctx.N][j] = 0.0;

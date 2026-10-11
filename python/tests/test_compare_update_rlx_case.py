@@ -9,7 +9,6 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-import python.xbl as xbl_mod
 from python.xbl import XBlState, blpini, setbl, iblsys
 from python.xpanel import (
     xywake,
@@ -24,7 +23,7 @@ from python.xpanel import (
     gamqv,
     stmove,
 )
-from python.xsolve import gauss as gauss_base, blsolv
+from python.xsolve import blsolv
 from python.tests.test_compare_viscal import build_viscal_context
 from python.tests.test_compare_viscal_subfuncs import build_payload_ctx
 
@@ -228,16 +227,6 @@ class TestUpdateRlxCase(unittest.TestCase):
     def test_update_rlx_case(self):
         if not shutil.which("node"):
             self.skipTest("node is required for JS/Python parity checks")
-
-        def gauss1(nsiz, nn, z, r, nrhs):
-            rmat = [[0.0] * (nrhs + 1) for _ in range(nn + 1)]
-            for i in range(1, nn + 1):
-                rmat[i][1] = r[i]
-            gauss_base(nsiz, nn, z, rmat, nrhs)
-            for i in range(1, nn + 1):
-                r[i] = rmat[i][1]
-
-        xbl_mod.gauss = gauss1
 
         case = {"ides": 2412, "minf": 0.0, "reinf": 1.0e6, "alfa": -10.0 * math.pi / 180.0, "waklen": 1.0}
         ctx = build_viscal_context(case["ides"], case["minf"], case["reinf"], case["alfa"], case["waklen"])

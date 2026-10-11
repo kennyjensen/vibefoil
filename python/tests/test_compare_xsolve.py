@@ -38,7 +38,7 @@ class TestXsolveParity(unittest.TestCase):
         driver_path = pathlib.Path(cls._tmpdir.name) / "xsolve_driver"
         subprocess.run(
             [
-                "gfortran",
+                "gfortran", "-fdefault-real-8", "-fdefault-double-8", "-ffp-contract=off",
                 "-O2",
                 "-ffixed-form",
                 "-I",

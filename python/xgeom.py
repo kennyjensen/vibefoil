@@ -16,14 +16,18 @@ def lefind(x, xp, y, yp, s, n):
     yte = 0.5 * (y[1] + y[n])
 
     i = 3
-    for i in range(3, n - 1):
+    while i <= n - 2:
         dxte = x[i] - xte
         dyte = y[i] - yte
-        dx = x[i + 1] - x[i]
-        dy = y[i + 1] - y[i]
-        dotp = dxte * dx + dyte * dy
-        if dotp < 0.0:
+        dxm = x[i] - x[i - 1]
+        dym = y[i] - y[i - 1]
+        dxp = x[i + 1] - x[i]
+        dyp = y[i + 1] - y[i]
+        dotm = dxte * dxm + dyte * dym
+        dotp = dxte * dxp + dyte * dyp
+        if dotm > 0.0 and dotp <= 0.0:
             break
+        i += 1
 
     sle = s[i]
 

@@ -205,12 +205,15 @@ void cdcalc(XFoilState &ctx) {
     }
 
     ctx.CDF = 0.0;
+    ctx.CLF = 0.0;
     for (int is_ = 1; is_ <= 2; ++is_) {
         for (int ibl = 3; ibl <= ctx.IBLTE[is_]; ++ibl) {
             const int i = ctx.IPAN[ibl][is_];
             const int im = ctx.IPAN[ibl - 1][is_];
             const double dx = (ctx.X[i] - ctx.X[im]) * ca + (ctx.Y[i] - ctx.Y[im]) * sa;
             ctx.CDF = ctx.CDF + 0.5 * (ctx.TAU[ibl][is_] + ctx.TAU[ibl - 1][is_]) * dx * 2.0 / (ctx.QINF * ctx.QINF);
+            const double dy = -(ctx.X[i] - ctx.X[im]) * sa + (ctx.Y[i] - ctx.Y[im]) * ca;
+            ctx.CLF = ctx.CLF + 0.5 * (ctx.TAU[ibl][is_] + ctx.TAU[ibl - 1][is_]) * dy * 2.0 / (ctx.QINF * ctx.QINF);
         }
     }
 }
@@ -242,7 +245,7 @@ void tecalc(XFoilState &ctx) {
     ctx.GAMTE_A = -0.5 * (ctx.GAM_A[1] - ctx.GAM_A[ctx.N]) * sds;
 }
 
-void naca(XFoilState &ctx, int ides1) {
+void naca(XFoilState &ctx, int ides1, bool ltes) {
     const int iqx = (static_cast<int>(ctx.W1.size()) - 1) / 6;
     const int nside = iqx / 3;
 
@@ -271,11 +274,11 @@ void naca(XFoilState &ctx, int ides1) {
     int nb = 0;
     std::string name;
     if (itype == 4) {
-        auto out = naca4(ides, xx, yt, yc, nside, ctx.XB, ctx.YB);
+        auto out = naca4(ides, xx, yt, yc, nside, ctx.XB, ctx.YB, ltes);
         nb = out.first;
         name = out.second;
     } else {
-        auto out = naca5(ides, xx, yt, yc, nside, ctx.XB, ctx.YB);
+        auto out = naca5(ides, xx, yt, yc, nside, ctx.XB, ctx.YB, ltes);
         nb = out.first;
         name = out.second;
     }

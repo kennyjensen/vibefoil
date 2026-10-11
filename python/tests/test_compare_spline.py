@@ -28,7 +28,7 @@ class TestSplineParity(unittest.TestCase):
         ]
         driver_path = pathlib.Path(cls._tmpdir.name) / "spline_driver"
         subprocess.run(
-            ["gfortran", "-O2", "-ffixed-form", *map(str, srcs), "-o", str(driver_path)],
+            ["gfortran", "-fdefault-real-8", "-fdefault-double-8", "-ffp-contract=off",  "-O2", "-ffixed-form", *map(str, srcs), "-o", str(driver_path)],
             check=True,
             capture_output=True,
             text=True,
@@ -111,7 +111,7 @@ class TestSplineParity(unittest.TestCase):
             elif tag == "sinvrt":
                 out_sinvrt.append(vals[0])
 
-        tol = 1.0e-5
+        tol = 2.0e-12
         for a, b in zip(out_scalc, js_results["scalc"]):
             self.assertLessEqual(abs(a - b), tol)
 

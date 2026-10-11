@@ -16,9 +16,9 @@ import {
 import { lefind } from './xgeom.js';
 
 const PANGEN_DEFAULTS = {
-  npan: 160,
+  npan: 240,
   cvpar: 1.0,
-  cterat: 0.15,
+  cterat: 0.3,
   ctrrat: 0.2,
   xsref1: 1.0,
   xsref2: 1.0,
@@ -107,6 +107,7 @@ function clcalc(nb, x, y, gam, gamA, alfa, minf, qinf, xref = 0.25, yref = 0.0) 
 function cdcalc(ctxPanel, blCtx, alfa, qinf) {
   let cd = 0.0;
   let cdf = 0.0;
+  let clf = 0.0;
 
   if (blCtx?.LVISC && blCtx?.LBLINI) {
     // Extrapolate wake to downstream infinity using Squire-Young relation.
@@ -129,10 +130,12 @@ function cdcalc(ctxPanel, blCtx, alfa, qinf) {
       const im = blCtx.IPAN[ibl - 1][is] - 1;
       const dx = (x[i] - x[im]) * ca + (y[i] - y[im]) * sa;
       cdf += 0.5 * (blCtx.TAU[ibl][is] + blCtx.TAU[ibl - 1][is]) * dx * 2.0 / qinf ** 2;
+      const dy = -(x[i] - x[im]) * sa + (y[i] - y[im]) * ca;
+      clf += 0.5 * (blCtx.TAU[ibl][is] + blCtx.TAU[ibl - 1][is]) * dy * 2.0 / qinf ** 2;
     }
   }
 
-  return { cd, cdf };
+  return { cd, cdf, clf };
 }
 
 // Trailing-edge geometry diagnostics (TECALC).
@@ -149,13 +152,15 @@ function tecalc(ctx) {
   const aste = dxs * dxte + dys * dyte;
   const dste = Math.sqrt(dxte * dxte + dyte * dyte);
 
-  let xmin = Infinity;
-  let xmax = -Infinity;
-  for (let i = 0; i < n; i += 1) {
-    xmin = Math.min(xmin, x[i]);
-    xmax = Math.max(xmax, x[i]);
+  let chord = ctx.CHORD;
+  if (!Number.isFinite(chord)) {
+    const s = ctx.S ?? new Float64Array(n);
+    if (!ctx.S) scalc(x, y, s, n);
+    const sle = lefind(x, xp, y, yp, s, n);
+    const dx = 0.5 * (x[0] + x[n - 1]) - seval(sle, x, xp, s, n);
+    const dy = 0.5 * (y[0] + y[n - 1]) - seval(sle, y, yp, s, n);
+    chord = Math.sqrt(dx * dx + dy * dy);
   }
-  const chord = Math.max(xmax - xmin, 1.0e-12);
   const sharp = dste < 0.0001 * chord;
 
   ctx.ANTE = ante;
@@ -549,7 +554,7 @@ function computeCoefficients(nb, ctxPanel, blCtx, alphaRad, qinvA, viscous) {
     qinf,
   );
 
-  let cdRes = { cd: 0.0, cdf: 0.0 };
+  let cdRes = { cd: 0.0, cdf: 0.0, clf: 0.0 };
   if (viscous && blCtx) {
     cdRes = cdcalc(ctxPanel, blCtx, alfa, qinf);
   }
@@ -559,6 +564,7 @@ function computeCoefficients(nb, ctxPanel, blCtx, alphaRad, qinvA, viscous) {
     cm: clRes.cm,
     cd: cdRes.cd,
     cdf: cdRes.cdf,
+    clf: cdRes.clf,
     cdp: clRes.cdp,
     clAlf: clRes.clAlf,
     clMsq: clRes.clMsq,

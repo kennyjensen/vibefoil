@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-constexpr int IQX = 370;
+constexpr int IQX = 601;
 constexpr int IPX = 5;
 constexpr int ISX = 2;
 constexpr int IWX = IQX / 8 + 2;
@@ -42,6 +42,7 @@ struct XFoilState {
     double CD;
     double CDP;
     double CDF;
+    double CLF;
     double CL_ALF;
     double CL_MSQ;
     double CLSPEC;
@@ -138,6 +139,10 @@ struct XFoilState {
     std::vector<std::vector<double>> CTAU;
     std::vector<std::vector<double>> DELT;
     std::vector<std::vector<double>> TSTR;
+    std::vector<std::vector<double>> DSSR;
+    std::vector<std::vector<double>> MDEF;
+    std::vector<std::vector<double>> PDEF;
+    std::vector<std::vector<double>> KDEF;
     std::vector<std::vector<double>> USLP;
     std::vector<std::vector<double>> GUXQ;
     std::vector<std::vector<double>> GUXD;
@@ -207,7 +212,6 @@ struct XFoilState {
     double QDOF1;
     double QDOF2;
     double QDOF3;
-    double CLSPEC;
     double FFILT;
 
     std::vector<double> GAM;

@@ -25,7 +25,7 @@ void trisol(DVec &a, DVec &b, DVec &c, DVec &d, int kk) {
 }
 
 void splind(const DVec &x, DVec &xs, const DVec &s, int n, double xs1, double xs2) {
-    const int nmax = 1000;
+    const int nmax = 2500;
     if (n > nmax) {
         throw std::runtime_error("SPLIND: array overflow, increase NMAX");
     }
@@ -138,6 +138,10 @@ void scalc(const DVec &x, const DVec &y, DVec &s, int n) {
 }
 
 void segspl(const DVec &x, DVec &xs, const DVec &s, int n) {
+    segspld(x, xs, s, n, -999.0, -999.0);
+}
+
+void segspld(const DVec &x, DVec &xs, const DVec &s, int n, double xs1, double xs2) {
     if (s[1] == s[2]) {
         throw std::runtime_error("SEGSPL:  First input point duplicated");
     }
@@ -157,7 +161,7 @@ void segspl(const DVec &x, DVec &xs, const DVec &s, int n) {
                 xst[i] = xs[iseg0 + i - 1];
                 st[i] = s[iseg0 + i - 1];
             }
-            splind(xt, xst, st, nseg, -999.0, -999.0);
+            splind(xt, xst, st, nseg, iseg0 == 1 ? xs1 : -999.0, -999.0);
             for (int i = 1; i <= nseg; ++i) {
                 xs[iseg0 + i - 1] = xst[i];
             }
@@ -174,7 +178,7 @@ void segspl(const DVec &x, DVec &xs, const DVec &s, int n) {
         xst[i] = xs[iseg0 + i - 1];
         st[i] = s[iseg0 + i - 1];
     }
-    splind(xt, xst, st, nseg, -999.0, -999.0);
+    splind(xt, xst, st, nseg, iseg0 == 1 ? xs1 : -999.0, xs2);
     for (int i = 1; i <= nseg; ++i) {
         xs[iseg0 + i - 1] = xst[i];
     }

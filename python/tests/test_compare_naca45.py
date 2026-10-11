@@ -32,7 +32,7 @@ class TestNaca45Parity(unittest.TestCase):
         ]
         driver_path = pathlib.Path(cls._tmpdir.name) / "naca45_driver"
         subprocess.run(
-            ["gfortran", "-O2", *map(str, srcs), "-o", str(driver_path)],
+            ["gfortran", "-fdefault-real-8", "-fdefault-double-8", "-ffp-contract=off",  "-O2", *map(str, srcs), "-o", str(driver_path)],
             check=True,
             capture_output=True,
             text=True,

@@ -9,27 +9,15 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-import python.xbl as xbl_mod
 from python.xbl import XBlState, blpini
 from python.tests.test_compare_viscal import build_payload, build_viscal_context
 from python.xoper import viscal
-from python.xsolve import gauss as gauss_base
 
 
 class TestViscalReuseParity(unittest.TestCase):
     def test_viscal_reuse_two_calls(self):
         if not shutil.which("node"):
             self.skipTest("node is required for JS/Python parity checks")
-
-        def gauss1(nsiz, nn, z, r, nrhs):
-            rmat = [[0.0] * (nrhs + 1) for _ in range(nn + 1)]
-            for i in range(1, nn + 1):
-                rmat[i][1] = r[i]
-            gauss_base(nsiz, nn, z, rmat, nrhs)
-            for i in range(1, nn + 1):
-                r[i] = rmat[i][1]
-
-        xbl_mod.gauss = gauss1
 
         cases = [
             {"ides": 12, "minf": 0.0, "reinf": 1.0e6, "alfa": 0.0, "waklen": 1.0},

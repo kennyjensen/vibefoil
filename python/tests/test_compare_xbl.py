@@ -10,6 +10,8 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from python.tests.fortran_reference import reference_source
+
 
 def max_abs_diff(a, b):
     if len(a) != len(b):
@@ -29,7 +31,7 @@ class TestXblParity(unittest.TestCase):
         driver_src = ROOT / "python" / "tests" / "xbl_driver.f"
         xbl_src = ROOT / "third_party" / "Xfoil" / "src" / "xbl.f"
         xblsys_src = ROOT / "third_party" / "Xfoil" / "src" / "xblsys.f"
-        xfoil_ref = ROOT / "python" / "tests" / "xfoil_ref.f"
+        xfoil_ref = reference_source(cls._tmpdir.name, 'xfoil.f', ('MRCL', 'COMSET'))
         xpanel_src = ROOT / "third_party" / "Xfoil" / "src" / "xpanel.f"
         xutils_src = ROOT / "third_party" / "Xfoil" / "src" / "xutils.f"
         xsolve_src = ROOT / "third_party" / "Xfoil" / "src" / "xsolve.f"
@@ -38,7 +40,7 @@ class TestXblParity(unittest.TestCase):
         driver_path = pathlib.Path(cls._tmpdir.name) / "xbl_driver"
         subprocess.run(
             [
-                "gfortran",
+                "gfortran", "-fdefault-real-8", "-fdefault-double-8", "-ffp-contract=off",
                 "-O2",
                 "-I",
                 str(include_dir),
@@ -440,10 +442,13 @@ class TestXblParity(unittest.TestCase):
         mass2_ref = [float(out[idx + i]) for i in range(nbl2 - 1)]
         self.assertEqual(itran1_ref, js_case["itran1"])
         self.assertEqual(itran2_ref, js_case["itran2"])
-        tol = 1.0e-3
+        tol = 1.0e-10
         self.assertLessEqual(max_abs_diff(thet1_ref, js_case["thet1"]), tol)
         self.assertLessEqual(max_abs_diff(thet2_ref, js_case["thet2"]), tol)
-        # DSTR/CTAU/MASS parity is looser due to solver sensitivity; focus on THET/ITRAN.
+        for key, ref in [('dstr1', dstr1_ref), ('dstr2', dstr2_ref),
+                         ('ctau1', ctau1_ref), ('ctau2', ctau2_ref),
+                         ('mass1', mass1_ref), ('mass2', mass2_ref)]:
+            self.assertLessEqual(max_abs_diff(ref, js_case[key]), tol, key)
 
     def test_mrchdu_deeper(self):
         n = 3
@@ -551,10 +556,13 @@ class TestXblParity(unittest.TestCase):
         mass2_ref = [float(out[idx + i]) for i in range(nbl2 - 1)]
         self.assertEqual(itran1_ref, js_case["itran1"])
         self.assertEqual(itran2_ref, js_case["itran2"])
-        tol = 1.0e-3
+        tol = 1.0e-10
         self.assertLessEqual(max_abs_diff(thet1_ref, js_case["thet1"]), tol)
         self.assertLessEqual(max_abs_diff(thet2_ref, js_case["thet2"]), tol)
-        # DSTR/CTAU/MASS parity is looser due to solver sensitivity; focus on THET/ITRAN.
+        for key, ref in [('dstr1', dstr1_ref), ('dstr2', dstr2_ref),
+                         ('ctau1', ctau1_ref), ('ctau2', ctau2_ref),
+                         ('mass1', mass1_ref), ('mass2', mass2_ref)]:
+            self.assertLessEqual(max_abs_diff(ref, js_case[key]), tol, key)
 
     def test_update(self):
         n = 4

@@ -2,6 +2,7 @@ C***********************************************************************
 C  XBLsys function driver for JS/Fortran parity.
 C***********************************************************************
       PROGRAM XBLSYSDR
+      INCLUDE 'BLPAR.INC'
       INTEGER NHKIN, NDIL, NDILW, NHSL, NCFL, NDIT, NHST, NCFT, NHCT
       INTEGER NDSLIM, I
       REAL H, MSQ, HK, HK_H, HK_MSQ
@@ -9,7 +10,6 @@ C***********************************************************************
       REAL HS, HS_HK, HS_RT, HS_MSQ
       REAL CF, CF_HK, CF_RT, CF_MSQ
       REAL US, ST, DI_US, DI_CF, DI_ST, DI_HS
-      REAL CFFAC
       REAL HC, HC_HK, HC_MSQ
       REAL DSTR, THET, UEDG, HKLIM
 
@@ -61,7 +61,7 @@ C***********************************************************************
 
       DO I=1, NCFT
         READ(*,*) HK, RT, MSQ, CFFAC
-        CALL CFT(HK, RT, MSQ, CFFAC, CF, CF_HK, CF_RT, CF_MSQ)
+        CALL CFT(HK, RT, MSQ, CF, CF_HK, CF_RT, CF_MSQ)
         WRITE(*,'(A,1X,4(1X,ES24.16))') 'CFT', CF, CF_HK, CF_RT, CF_MSQ
       END DO
 

@@ -4,32 +4,30 @@ import pathlib
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-import python.xbl as xbl_mod
 from python.xbl import XBlState, blpini
 from python.xoper import viscal
-from python.xsolve import gauss as gauss_base
 from python.tests.test_compare_viscal import build_viscal_context, build_payload
+from python.tests.fortran_reference import build_viscal_reference, run_viscal_reference
 
 
 class TestViscalSummaryCase(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not shutil.which('gfortran'):
+            raise unittest.SkipTest('gfortran is required for the current upstream reference')
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(cls.tmp.cleanup)
+        cls.reference = build_viscal_reference(cls.tmp.name)
+
     def test_viscal_summary_case(self):
         if not shutil.which("node"):
             self.skipTest("node is required for JS/Python parity checks")
-
-        def gauss1(nsiz, nn, z, r, nrhs):
-            rmat = [[0.0] * (nrhs + 1) for _ in range(nn + 1)]
-            for i in range(1, nn + 1):
-                rmat[i][1] = r[i]
-            gauss_base(nsiz, nn, z, rmat, nrhs)
-            for i in range(1, nn + 1):
-                r[i] = rmat[i][1]
-
-        xbl_mod.gauss = gauss1
 
         case = {"ides": 2412, "minf": 0.0, "reinf": 1.0e6, "alfa": -10.0 * math.pi / 180.0, "waklen": 1.0}
         ctx = build_viscal_context(case["ides"], case["minf"], case["reinf"], case["alfa"], case["waklen"])
@@ -53,31 +51,16 @@ class TestViscalSummaryCase(unittest.TestCase):
 
         viscal(ctx, bl, 1)
 
-        expected = {
-            "XOCTR1": 1.0000,
-            "XOCTR2": 0.0196,
-            "ITRAN1": 68,
-            "ITRAN2": 28,
-            "TFORCE1": True,
-            "TFORCE2": False,
-            "RMSBL": 0.23324,
-            "RMXBL": 1.2229,
-            "IMXBL": 98,
-            "ISMXBL": 2,
-            "VMXBL": "D",
-            "RLX": 0.8115,
-            "ALFA_DEG": -10.000,
-            "CL": -0.9933,
-            "CM": -0.0296,
-            "CD": 0.01369,
-            "CDF": 0.00531,
-            "CDP": 0.00838,
-        }
+        expected = run_viscal_reference(self.reference, 2412, 0.0, 1.0e6, -10.0,
+                                       npan=160, cterat=0.15)
+        for name in ('XOCTR', 'ITRAN', 'TFORCE'):
+            for side in (1, 2):
+                expected[f'{name}{side}'] = expected[name][side]
 
-        tol_transition = 5.0e-4
-        tol_summary = 5.0e-4
-        tol_coeff = 5.0e-4
-        tol_rlx = 5.0e-4
+        tol_transition = 1.0e-9
+        tol_summary = 1.0e-9
+        tol_coeff = 1.0e-9
+        tol_rlx = 1.0e-9
 
         self.assertLessEqual(abs(ctx.XOCTR[1] - expected["XOCTR1"]), tol_transition, "XOCTR1")
         self.assertLessEqual(abs(ctx.XOCTR[2] - expected["XOCTR2"]), tol_transition, "XOCTR2")

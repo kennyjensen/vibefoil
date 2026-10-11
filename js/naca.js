@@ -17,7 +17,7 @@ function digit(n) {
 
 // 4-digit series: standard thickness distribution with parabolic mean line.
 // Matches NACA4 in naca.f.
-function naca4(ides, xx, yt, yc, nside, xb, yb) {
+function naca4(ides, xx, yt, yc, nside, xb, yb, ltes = false) {
   const n4 = Math.floor(ides / 1000);
   const n3 = Math.floor((ides - n4 * 1000) / 100);
   const n2 = Math.floor((ides - n4 * 1000 - n3 * 100) / 10);
@@ -37,12 +37,13 @@ function naca4(ides, xx, yt, yc, nside, xb, yb) {
     }
 
     // Thickness polynomial (Abbott & von Doenhoff), scaled to t/c.
+    const xt = ltes ? xx[i] * 1.00893041136514270931482193883054 : xx[i];
     yt[i] = (
-      0.29690 * Math.sqrt(xx[i])
-      - 0.12600 * xx[i]
-      - 0.35160 * (xx[i] ** 2)
-      + 0.28430 * (xx[i] ** 3)
-      - 0.10150 * (xx[i] ** 4)
+      0.29690 * Math.sqrt(xt)
+      - 0.12600 * xt
+      - 0.35160 * (xt ** 2)
+      + 0.28430 * (xt ** 3)
+      - 0.10150 * (xt ** 4)
     ) * t / 0.20;
 
     // Standard mean line: piecewise quadratic camber distribution.
@@ -72,7 +73,7 @@ function naca4(ides, xx, yt, yc, nside, xb, yb) {
 
 // 5-digit series: design CL and reflex/non-reflex camber with 4-digit thickness.
 // Matches NACA5 in naca.f.
-function naca5(ides, xx, yt, yc, nside, xb, yb) {
+function naca5(ides, xx, yt, yc, nside, xb, yb, ltes = false) {
   const n5 = Math.floor(ides / 10000);
   const n4 = Math.floor((ides - n5 * 10000) / 1000);
   const n3 = Math.floor((ides - n5 * 10000 - n4 * 1000) / 100);
@@ -117,12 +118,13 @@ function naca5(ides, xx, yt, yc, nside, xb, yb) {
     }
 
     // Thickness is the same 4-digit polynomial, scaled by t/c.
+    const xt = ltes ? xx[i] * 1.00893041136514270931482193883054 : xx[i];
     yt[i] = (
-      0.29690 * Math.sqrt(xx[i])
-      - 0.12600 * xx[i]
-      - 0.35160 * (xx[i] ** 2)
-      + 0.28430 * (xx[i] ** 3)
-      - 0.10150 * (xx[i] ** 4)
+      0.29690 * Math.sqrt(xt)
+      - 0.12600 * xt
+      - 0.35160 * (xt ** 2)
+      + 0.28430 * (xt ** 3)
+      - 0.10150 * (xt ** 4)
     ) * t / 0.20;
 
     // 5-digit camber definition (design CL mapping).

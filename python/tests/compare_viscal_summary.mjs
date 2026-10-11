@@ -1,6 +1,6 @@
 import fs from 'fs';
 
-import { pangen, tecalc } from '../../js/xfoil.js';
+import { pangen, tecalc, cpcalc } from '../../js/xfoil.js';
 import { scalc, segspl } from '../../js/spline.js';
 import { apcalc, ggcalc, ncalc } from '../../js/xpanel.js';
 import { createMatrix } from '../../js/arrays.js';
@@ -105,7 +105,7 @@ const blCtx = buildBlContext(n, ctxPanel, ncrit);
 blCtx.MINF = minf;
 ctxPanel.QINF = 1.0;
 
-viscal(blCtx, ctxPanel, alphaRad, reinf, { maxIter: 1, maxRetry: 0 });
+const solution = viscal(blCtx, ctxPanel, alphaRad, reinf, { maxIter: payload.iterations ?? 1 });
 
 const results = {
   ALFA_DEG: blCtx.ALFA / blCtx.DTOR,
@@ -113,7 +113,9 @@ const results = {
   CM: blCtx.CM,
   CD: blCtx.CD,
   CDF: blCtx.CDF,
+  CLF: blCtx.CLF,
   CDP: blCtx.CD - blCtx.CDF,
+  CDP_SURFACE: blCtx.CDP,
   RMSBL: blCtx.RMSBL,
   RMXBL: blCtx.RMXBL,
   IMXBL: blCtx.IMXBL,
@@ -123,6 +125,16 @@ const results = {
   ITRAN: Array.from(blCtx.ITRAN),
   TFORCE: blCtx.TFORCE.slice(),
   XOCTR: Array.from(blCtx.XOCTR),
+  LVCONV: Boolean(blCtx.LVCONV),
+  N: n,
+  NW: ctxPanel.NW,
 };
+
+const cpv = cpcalc(solution.qvis, 1.0, minf);
+results.panel = Array.from({ length: n + ctxPanel.NW }, (_, i) => [
+  ctxPanel.X[i], ctxPanel.Y[i], solution.qinv[i + 1], solution.qvis[i + 1], cpv[i + 1],
+]);
+const fields = ['UEDG', 'THET', 'DSTR', 'CTAU', 'MASS', 'TSTR', 'DSSR', 'MDEF', 'PDEF', 'KDEF'];
+results.bl = [1, 2].map((side) => Array.from({ length: blCtx.NBL[side] }, (_, i) => fields.map((key) => blCtx[key][i + 1][side])));
 
 process.stdout.write(JSON.stringify({ results }));

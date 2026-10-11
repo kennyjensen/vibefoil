@@ -187,12 +187,15 @@ def cdcalc(ctx):
         ctx.CD = 0.0
 
     ctx.CDF = 0.0
+    ctx.CLF = 0.0
     for is_ in range(1, 3):
         for ibl in range(3, ctx.IBLTE[is_] + 1):
             i = ctx.IPAN[ibl][is_]
             im = ctx.IPAN[ibl - 1][is_]
             dx = (ctx.X[i] - ctx.X[im]) * ca + (ctx.Y[i] - ctx.Y[im]) * sa
             ctx.CDF = ctx.CDF + 0.5 * (ctx.TAU[ibl][is_] + ctx.TAU[ibl - 1][is_]) * dx * 2.0 / ctx.QINF**2
+            dy = -(ctx.X[i] - ctx.X[im]) * sa + (ctx.Y[i] - ctx.Y[im]) * ca
+            ctx.CLF = ctx.CLF + 0.5 * (ctx.TAU[ibl][is_] + ctx.TAU[ibl - 1][is_]) * dy * 2.0 / ctx.QINF**2
 
 
 def tecalc(ctx):
@@ -222,7 +225,7 @@ def tecalc(ctx):
     ctx.GAMTE_A = -0.5 * (ctx.GAM_A[1] - ctx.GAM_A[ctx.N]) * sds
 
 
-def naca(ctx, ides1):
+def naca(ctx, ides1, ltes=False):
     iqx = (len(ctx.W1) - 1) // 6
     nside = iqx // 3
 
@@ -246,9 +249,9 @@ def naca(ctx, ides1):
     yc = ctx.W3
 
     if itype == 4:
-        nb, name = naca4(ides, xx, yt, yc, nside, ctx.XB, ctx.YB)
+        nb, name = naca4(ides, xx, yt, yc, nside, ctx.XB, ctx.YB, ltes)
     else:
-        nb, name = naca5(ides, xx, yt, yc, nside, ctx.XB, ctx.YB)
+        nb, name = naca5(ides, xx, yt, yc, nside, ctx.XB, ctx.YB, ltes)
 
     ctx.NB = nb
     ctx.NAME = name

@@ -21,7 +21,7 @@ def trisol(a, b, c, d, kk):
 
 
 def splind(x, xs, s, n, xs1, xs2):
-    nmax = 1000
+    nmax = 2500
     if n > nmax:
         raise RuntimeError("SPLIND: array overflow, increase NMAX")
 
@@ -129,6 +129,10 @@ def scalc(x, y, s, n):
 
 
 def segspl(x, xs, s, n):
+    segspld(x, xs, s, n, -999.0, -999.0)
+
+
+def segspld(x, xs, s, n, xs1, xs2):
     if s[1] == s[2]:
         raise RuntimeError("SEGSPL:  First input point duplicated")
     if s[n] == s[n - 1]:
@@ -145,7 +149,7 @@ def segspl(x, xs, s, n):
                 xt[i] = x[iseg0 + i - 1]
                 xst[i] = xs[iseg0 + i - 1]
                 st[i] = s[iseg0 + i - 1]
-            splind(xt, xst, st, nseg, -999.0, -999.0)
+            splind(xt, xst, st, nseg, xs1 if iseg0 == 1 else -999.0, -999.0)
             for i in range(1, nseg + 1):
                 xs[iseg0 + i - 1] = xst[i]
             iseg0 = iseg + 1
@@ -158,7 +162,7 @@ def segspl(x, xs, s, n):
         xt[i] = x[iseg0 + i - 1]
         xst[i] = xs[iseg0 + i - 1]
         st[i] = s[iseg0 + i - 1]
-    splind(xt, xst, st, nseg, -999.0, -999.0)
+    splind(xt, xst, st, nseg, xs1 if iseg0 == 1 else -999.0, xs2)
     for i in range(1, nseg + 1):
         xs[iseg0 + i - 1] = xst[i]
 def d2val(ss, x, xs, s, n):

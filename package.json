@@ -1,6 +1,7 @@
 {
   "type": "module",
   "scripts": {
+    "start": "python3 serve.py",
     "test": "node tests/alpha_axes.test.js && node tests/airfoil_route.test.js"
   }
 }

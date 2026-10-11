@@ -9,7 +9,6 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-import python.xbl as xbl_mod
 from python.xbl import XFoilState, XBlState, blpini, iblsys
 from python.xfoil import comset, naca
 from python.xpanel import (
@@ -26,7 +25,6 @@ from python.xpanel import (
     stmove,
     xywake,
 )
-from python.xsolve import gauss as gauss_base
 from python.xbl import setbl
 from python.xblsys import blsys, blvar, blmid, trchek, tesys
 from python.xblcom import sync_vars_to_com
@@ -71,16 +69,6 @@ def build_context(ides, minf, reinf, alfa, waklen):
 
 
 def prepare_bl_state():
-    def gauss1(nsiz, nn, z, r, nrhs):
-        rmat = [[0.0] * (nrhs + 1) for _ in range(nn + 1)]
-        for i in range(1, nn + 1):
-            rmat[i][1] = r[i]
-        gauss_base(nsiz, nn, z, rmat, nrhs)
-        for i in range(1, nn + 1):
-            r[i] = rmat[i][1]
-
-    xbl_mod.gauss = gauss1
-
     ctx = build_context(2412, 0.1, 3.0e6, 0.0, 1.0)
     bl = XBlState()
     blpini(bl)

@@ -10,6 +10,8 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from python.tests.fortran_reference import reference_source
+
 
 def max_abs_diff(a, b):
     if len(a) != len(b):
@@ -47,12 +49,12 @@ class TestXpanelParity(unittest.TestCase):
         xutils_src = ROOT / "third_party" / "Xfoil" / "src" / "xutils.f"
         xsolve_src = ROOT / "third_party" / "Xfoil" / "src" / "xsolve.f"
         spline_src = ROOT / "third_party" / "Xfoil" / "src" / "spline.f"
-        xbl_ref = ROOT / "python" / "tests" / "xbl_ref.f"
+        xbl_ref = reference_source(cls._tmpdir.name, 'xbl.f', ('IBLSYS',))
         include_dir = ROOT / "third_party" / "Xfoil" / "src"
         driver_path = pathlib.Path(cls._tmpdir.name) / "xpanel_driver"
         subprocess.run(
             [
-                "gfortran",
+                "gfortran", "-fdefault-real-8", "-fdefault-double-8", "-ffp-contract=off",
                 "-O2",
                 "-I",
                 str(include_dir),
@@ -233,7 +235,7 @@ class TestXpanelParity(unittest.TestCase):
             parts = line.strip().split()
             xn_ref.append(float(parts[0]))
             yn_ref.append(float(parts[1]))
-        tol = 1.0e-6
+        tol = 1.0e-10
         self.assertLessEqual(max_abs_diff(xn_ref, js_case["xn"]), tol)
         self.assertLessEqual(max_abs_diff(yn_ref, js_case["yn"]), tol)
 
@@ -253,7 +255,7 @@ class TestXpanelParity(unittest.TestCase):
             lines.append(f"{xi} {yi} {nxi} {nyi}")
         out = self._run_fortran(lines)
         ap_ref = [float(line.split()[0]) for line in out[1:]]
-        tol = 1.0e-6
+        tol = 1.0e-10
         self.assertLessEqual(max_abs_diff(ap_ref, js_case["apanel"]), tol)
 
     def test_psilin(self):
@@ -314,9 +316,9 @@ class TestXpanelParity(unittest.TestCase):
 
         header, z_extra, out_lines = run_fortran_psilin(i_ft, i_js)
         header_ref, _, _ = run_fortran_psilin(i_ref_ft, i_ref_js)
-        psi_ref, psi_ni_ref, qtan1_ref, qtan2_ref, qtanm_ref, zqinf_ref, zalfa_ref, zq0_ref, zq1_ref = header
+        psi_ref, psi_ni_ref, qtan1_ref, qtan2_ref, zqinf_ref, zalfa_ref, zq0_ref, zq1_ref = header
         zq2_ref, zq3_ref = z_extra
-        tol = 1.0e-5
+        tol = 1.0e-9
         psi_delta_ref = psi_ref - header_ref[0]
         psi_delta_js = js_case["result"]["psi"] - js_ref["result"]["psi"]
         self.assertLessEqual(abs(psi_delta_ref - psi_delta_js), tol)
@@ -346,10 +348,12 @@ class TestXpanelParity(unittest.TestCase):
             dzdm_ref.append(vals[0])
             dqdm_ref.append(vals[1])
             idx += 1
-        self.assertLessEqual(max_abs_diff(dzdg_ref[1:-1], js_case["dzdg"][1:-1]), tol)
-        self.assertLessEqual(max_abs_diff(dzdn_ref[1:-1], js_case["dzdn"][1:-1]), tol)
+        self.assertLessEqual(max_abs_diff(dzdg_ref, js_case["dzdg"]), tol)
+        self.assertLessEqual(max_abs_diff(dzdn_ref, js_case["dzdn"]), tol)
         self.assertLessEqual(max_abs_diff(dqdg_ref, js_case["dqdg"]), tol)
-        # dzdm/dqdm involve source sensitivity; JS uses a different constant offset convention.
+        self.assertLessEqual(abs(psi_ref - js_case["result"]["psi"]), tol)
+        self.assertLessEqual(max_abs_diff(dzdm_ref, js_case["dzdm"]), tol)
+        self.assertLessEqual(max_abs_diff(dqdm_ref, js_case["dqdm"]), tol)
 
     def test_pswlin(self):
         n = self.base["n"]
@@ -381,7 +385,7 @@ class TestXpanelParity(unittest.TestCase):
         lines.append(f"{state['x'][i_js]} {state['y'][i_js]} {state['nx'][i_js]} {state['ny'][i_js]}")
         out = self._run_fortran(lines)
         psi_ref, psi_ni_ref = map(float, out[0].split())
-        tol = 1.0e-6
+        tol = 1.0e-10
         self.assertLessEqual(abs(psi_ref - js_case["result"]["psi"]), tol)
         self.assertLessEqual(abs(psi_ni_ref - js_case["result"]["psiNi"]), tol)
 
@@ -426,7 +430,7 @@ class TestXpanelParity(unittest.TestCase):
         for line in out[1:]:
             vals = list(map(float, line.split()))
             qinvu_ref.append(vals)
-        tol = 1.0e-5
+        tol = 1.0e-9
         self.assertLessEqual(
             max_abs_diff([v[0] for v in qinvu_ref], [v[0] for v in js_case["qinvu"][:n]]), tol
         )
@@ -464,7 +468,7 @@ class TestXpanelParity(unittest.TestCase):
         for line in out[1:]:
             vals = list(map(float, line.split()))
             qinvu_ref.append(vals)
-        tol = 1.0e-5
+        tol = 1.0e-9
         self.assertLessEqual(
             max_abs_diff([v[0] for v in qinvu_ref], [v[0] for v in js_case["qinvu"]]), tol
         )
@@ -495,7 +499,7 @@ class TestXpanelParity(unittest.TestCase):
         for j in range(n):
             lines.append("0.0 0.0 0.0 0.0")
         out = self._run_fortran(lines)
-        tol = 3.0e-5
+        tol = 1.0e-8
         # compare selected DIJ columns
         dij = js_case["dij"]
         for i in range(n):
@@ -543,7 +547,7 @@ class TestXpanelParity(unittest.TestCase):
         for j in range(n + nw):
             lines.append(f"{state['sig'][j]}")
         out = self._run_fortran(lines)
-        tol = 1.0e-5
+        tol = 1.0e-9
         for j in range(n, n + nw):
             vals = list(map(float, out[j + 1].split()))
             self.assertLessEqual(abs(vals[0] - js_case["x"][j]), tol)
@@ -614,7 +618,7 @@ class TestXpanelParity(unittest.TestCase):
         xssi1_ref = [float(out[idx + i]) for i in range(nbl1)]
         idx += nbl1
         xssi2_ref = [float(out[idx + i]) for i in range(nbl2)]
-        tol = 1.0e-6
+        tol = 1.0e-10
         self.assertLessEqual(max_abs_diff(xssi1_ref, js_case["xssi1"]), tol)
         self.assertLessEqual(max_abs_diff(xssi2_ref, js_case["xssi2"]), tol)
 
@@ -643,7 +647,7 @@ class TestXpanelParity(unittest.TestCase):
             lines.append(f"{state['qinv'][j+1]} {state['qinvA'][j+1]}")
         out = self._run_fortran(lines)
         uinv_ref = [float(out[i].split()[0]) for i in range(nbl1)]
-        tol = 1.0e-6
+        tol = 1.0e-10
         self.assertLessEqual(max_abs_diff(uinv_ref, js_uicalc["uinv1"]), tol)
 
         # QISET

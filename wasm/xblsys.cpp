@@ -1829,7 +1829,13 @@ static std::tuple<double, double, double, double> cft(double hk, double rt, doub
     const double gm1 = gam - 1.0;
     const double fc = std::sqrt(1.0 + 0.5 * gm1 * msq);
     double grt = std::log(rt / fc);
-    grt = std::max(grt, 3.0);
+    double grt_rt = 1.0 / rt;
+    double grt_msq = -0.25 * gm1 / (fc * fc);
+    if (grt < 3.0) {
+        grt = 3.0;
+        grt_rt = 0.0;
+        grt_msq = 0.0;
+    }
 
     const double gex = -1.74 - 0.31 * hk;
 
@@ -1841,8 +1847,8 @@ static std::tuple<double, double, double, double> cft(double hk, double rt, doub
     const double cfo = cffac * 0.3 * std::exp(arg) * std::pow(grt / 2.3026, gex);
     const double cf = (cfo + 1.1e-4 * (thk - 1.0)) / fc;
     const double cf_hk = (-1.33 * cfo - 0.31 * std::log(grt / 2.3026) * cfo - 1.1e-4 * (1.0 - thk * thk) / 0.875) / fc;
-    const double cf_rt = gex * cfo / (fc * grt) / rt;
-    const double cf_msq = gex * cfo / (fc * grt) * (-0.25 * gm1 / (fc * fc)) - 0.25 * gm1 * cf / (fc * fc);
+    const double cf_rt = gex * cfo / (fc * grt) * grt_rt;
+    const double cf_msq = gex * cfo / (fc * grt) * grt_msq - 0.25 * gm1 * cf / (fc * fc);
 
     return {cf, cf_hk, cf_rt, cf_msq};
 }

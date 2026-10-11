@@ -67,10 +67,11 @@ function buildCtx(state) {
     ACRIT: new Float64Array([0.0, state.acrit1 ?? 9.0, state.acrit2 ?? 9.0]),
     TFORCE: new Array(3).fill(false),
     XSSITR: new Float64Array(3),
-    REYBL: state.reybl ?? 1.0e6,
+    REYBL: state.reybl ?? 0.0,
     GM1BL: state.gm1bl ?? 0.4,
     HSTINV: state.hstinv ?? 0.0,
     HVRAT: state.hvrat ?? 0.0,
+    IDAMPV: state.idampv ?? 0,
     ANTE: state.ante ?? 0.0,
   };
 

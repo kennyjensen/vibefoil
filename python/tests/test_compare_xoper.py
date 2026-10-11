@@ -8,6 +8,10 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
+import sys
+sys.path.insert(0, str(ROOT))
+from python.tests.fortran_reference import reference_source
+
 
 class TestXoperParity(unittest.TestCase):
     @classmethod
@@ -19,11 +23,11 @@ class TestXoperParity(unittest.TestCase):
         driver_src = ROOT / "python" / "tests" / "xoper_driver.f"
         srcs = [
             driver_src,
-            ROOT / "python" / "tests" / "xpanel_qiset.f",
+            reference_source(cls._tmpdir.name, 'xpanel.f', ('QISET',)),
         ]
         driver_path = pathlib.Path(cls._tmpdir.name) / "xoper_driver"
         subprocess.run(
-            ["gfortran", "-O2", "-ffixed-form", "-I", str(ROOT / "third_party" / "Xfoil" / "src"), *map(str, srcs), "-o", str(driver_path)],
+            ["gfortran", "-fdefault-real-8", "-fdefault-double-8", "-ffp-contract=off",  "-O2", "-ffixed-form", "-I", str(ROOT / "third_party" / "Xfoil" / "src"), *map(str, srcs), "-o", str(driver_path)],
             check=True,
             capture_output=True,
             text=True,

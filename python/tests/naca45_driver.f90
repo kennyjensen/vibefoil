@@ -10,9 +10,9 @@ program naca45_driver
   allocate(xb(2 * nside), yb(2 * nside))
 
   if (ides .le. 9999) then
-     call naca4(ides, xx, yt, yc, nside, xb, yb, nb, name)
+     call naca4(ides, xx, yt, yc, nside, xb, yb, nb, name, .false.)
   else
-     call naca5(ides, xx, yt, yc, nside, xb, yb, nb, name)
+     call naca5(ides, xx, yt, yc, nside, xb, yb, nb, name, .false.)
   endif
 
   write (*, '(I0)') nb

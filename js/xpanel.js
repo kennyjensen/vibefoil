@@ -7,7 +7,7 @@
 import { segspl, seval } from './spline.js';
 import { lefind } from './xgeom.js';
 import { atanc, setexp } from './xutils.js?v=1';
-import { ludcmp, baksub } from './xsolve.js';
+import { ludcmp, baksub, baksubMany } from './xsolve.js';
 import { iblsys } from './xbl.js';
 
 // Panel-method core: geometry processing, wake setup, and influence calculations.
@@ -176,7 +176,8 @@ function ncalc(x, y, s, n, xn, yn) {
 }
 
 // Assemble the panel influence matrix and RHS for gamma solution (GGCALC).
-function ggcalc(ctx) {
+// The worker may supply a factorizer that reuses an exactly matching matrix.
+function ggcalc(ctx, factorize = ludcmp) {
   const {
     N: n,
     X: x,
@@ -268,7 +269,7 @@ function ggcalc(ctx) {
   }
 
   // Factor matrix and solve for alpha=0 and alpha=90 distributions.
-  ludcmp(n + 1, aij, aijpiv);
+  factorize(n + 1, aij, aijpiv);
 
   const rhs1 = new Float64Array(n + 1);
   const rhs2 = new Float64Array(n + 1);
@@ -393,6 +394,8 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
   let teJo = 0;
   let teJp = 0;
   let skipTe = false;
+  // Matching indices also prevents reuse across skipped zero-length panels.
+  let previousEndpoint = -1;
 
   for (let jo = 0; jo < n; jo += 1) {
     let jp = jo + 1;
@@ -446,7 +449,9 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
 
     // Guard self-influence for logarithms.
     if (io !== jo && rs1 > 0.0) {
-      g1 = Math.log(rs1);
+      // Adjacent panels share this distance and the same self-influence guard.
+      // Reuse only the logarithm; the local panel angle still changes.
+      g1 = previousEndpoint === jo ? g2 : Math.log(rs1);
       t1 = Math.atan2(sgn * x1, sgn * yy) + (0.5 - 0.5 * sgn) * pi;
     } else {
       g1 = 0.0;
@@ -460,6 +465,7 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
       g2 = 0.0;
       t2 = 0.0;
     }
+    previousEndpoint = jp;
 
     x1i = sx * nxi + sy * nyi;
     x2i = sx * nxi + sy * nyi;
@@ -709,6 +715,8 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
     };
   }
 
+  // Reflected endpoints have their own distances; restart the carried value.
+  previousEndpoint = -1;
   for (let jo = 0; jo < n; jo += 1) {
     let jp = jo + 1;
     let jm = jo - 1;
@@ -764,11 +772,12 @@ function psilin(i, xi, yi, nxi, nyi, geolin, siglin, ctx) {
 
     const sgn = (io >= 0 && io <= n - 1) ? 1.0 : sign1(yy);
 
-    g1 = Math.log(rs1);
+    g1 = previousEndpoint === jo ? g2 : Math.log(rs1);
     t1 = Math.atan2(sgn * x1, sgn * yy) + (0.5 - 0.5 * sgn) * pi;
 
     g2 = Math.log(rs2);
     t2 = Math.atan2(sgn * x2, sgn * yy) + (0.5 - 0.5 * sgn) * pi;
+    previousEndpoint = jp;
 
     x1i = sx * nxi + sy * nyi;
     x2i = sx * nxi + sy * nyi;
@@ -1164,14 +1173,15 @@ function qdcalc(ctx) {
     dij[i] = new Float64Array(total + 1);
   }
 
-  for (let j = 0; j < n; j += 1) {
-    const rhs = new Float64Array(n1);
-    for (let i = 0; i < n1; i += 1) {
-      rhs[i] = ctx.BIJ[i][j];
+  const rhs = Array.from({ length: Math.min(4, Math.max(n, nw)) }, () => new Float64Array(n1));
+  for (let j = 0; j < n; j += 4) {
+    const count = Math.min(4, n - j);
+    for (let k = 0; k < count; k += 1) {
+      for (let i = 0; i < n1; i += 1) rhs[k][i] = ctx.BIJ[i][j + k];
     }
-    baksub(n1, ctx.AIJ, ctx.AIJPIV, rhs);
-    for (let i = 0; i < n; i += 1) {
-      dij[i + 1][j + 1] = rhs[i];
+    baksubMany(n1, ctx.AIJ, ctx.AIJPIV, rhs, count);
+    for (let k = 0; k < count; k += 1) {
+      for (let i = 0; i < n; i += 1) dij[i + 1][j + k + 1] = rhs[k][i];
     }
   }
 
@@ -1206,15 +1216,17 @@ function qdcalc(ctx) {
       }
     }
 
-    for (let j = n; j < total; j += 1) {
-      const rhs = new Float64Array(n1);
-      for (let i = 0; i < n1; i += 1) {
-        rhs[i] = ctx.BIJ[i][j];
+    for (let j = n; j < total; j += 4) {
+      const count = Math.min(4, total - j);
+      for (let k = 0; k < count; k += 1) {
+        for (let i = 0; i < n1; i += 1) rhs[k][i] = ctx.BIJ[i][j + k];
       }
-      baksub(n1, ctx.AIJ, ctx.AIJPIV, rhs);
-      for (let i = 0; i < n; i += 1) {
-        ctx.BIJ[i][j] = rhs[i];
-        dij[i + 1][j + 1] = rhs[i];
+      baksubMany(n1, ctx.AIJ, ctx.AIJPIV, rhs, count);
+      for (let k = 0; k < count; k += 1) {
+        for (let i = 0; i < n; i += 1) {
+          ctx.BIJ[i][j + k] = rhs[k][i];
+          dij[i + 1][j + k + 1] = rhs[k][i];
+        }
       }
     }
 

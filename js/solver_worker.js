@@ -12,6 +12,9 @@ import { buildBlContext, bldump, cpdump, computeQvisFromUedg, specal, viscal } f
 import { createMatrix } from './arrays.js';
 import { flap as applyFlap } from './xgdes.js';
 import { MIXED } from './xqdes.js';
+import { createStreamfunctionEvaluator } from './streamfunction.js';
+import { cloneFloat64Rows, resultTransfers } from './worker_data.js';
+import { createCachedLudcmp } from './panel_lu.js';
 
 const DEBUG_QDES = false;
 
@@ -30,6 +33,7 @@ let panelY = null;
 let panelXP = null;
 let panelYP = null;
 const panelCache = { ctx: null, key: null };
+const factorizePanel = createCachedLudcmp();
 const blCache = { ctx: null, key: null };
 let lastDumpState = null;
 
@@ -239,7 +243,7 @@ function buildPanelContext(nb, alphaRad, opts = {}) {
   tecalc(panelCtx);
   apcalc(panelCtx);
   panelCtx.ALFA = alphaRad;
-  ggcalc(panelCtx);
+  ggcalc(panelCtx, factorizePanel);
 
   if (resetViscous && panelCtx.QVIS) {
     panelCtx.QVIS.fill(0.0);
@@ -256,7 +260,7 @@ function buildPanelContext(nb, alphaRad, opts = {}) {
     if (restored) {
       // Ensure the restored panel state honors the requested alpha.
       panelCtx.ALFA = alphaRad;
-      ggcalc(panelCtx);
+      ggcalc(panelCtx, factorizePanel);
       panelCache.ctx = panelCtx;
       panelCache.key = geometryKey;
     }
@@ -558,18 +562,8 @@ function cloneInt32Array(arr) {
   return arr ? new Int32Array(arr) : null;
 }
 
-function cloneArrayOfFloat64Arrays(arr) {
-  if (!arr) return null;
-  const out = new Array(arr.length);
-  for (let i = 0; i < arr.length; i += 1) {
-    const row = arr[i];
-    out[i] = row instanceof Float64Array ? new Float64Array(row) : row;
-  }
-  return out;
-}
-
 function cloneMatrix1(mat) {
-  return cloneArrayOfFloat64Arrays(mat);
+  return cloneFloat64Rows(mat);
 }
 
 function snapshotPanelCtx(ctx) {
@@ -611,12 +605,12 @@ function snapshotPanelCtx(ctx) {
     QVIS: cloneFloat64Array(ctx.QVIS),
     GAM: cloneFloat64Array(ctx.GAM),
     GAM_A: cloneFloat64Array(ctx.GAM_A),
-    GAMU: cloneArrayOfFloat64Arrays(ctx.GAMU),
-    QINVU: cloneArrayOfFloat64Arrays(ctx.QINVU),
-    AIJ: cloneArrayOfFloat64Arrays(ctx.AIJ),
-    BIJ: cloneArrayOfFloat64Arrays(ctx.BIJ),
+    GAMU: cloneFloat64Rows(ctx.GAMU),
+    QINVU: cloneFloat64Rows(ctx.QINVU),
+    AIJ: cloneFloat64Rows(ctx.AIJ),
+    BIJ: cloneFloat64Rows(ctx.BIJ),
     AIJPIV: cloneInt32Array(ctx.AIJPIV),
-    DIJ: cloneArrayOfFloat64Arrays(ctx.DIJ),
+    DIJ: cloneFloat64Rows(ctx.DIJ),
   };
 }
 
@@ -680,7 +674,7 @@ function applyPanelSnapshot(ctx, snap) {
   if (snap.AIJPIV) ctx.AIJPIV.set(snap.AIJPIV);
   if (snap.DIJ) {
     if (!ctx.DIJ || ctx.DIJ.length !== snap.DIJ.length) {
-      ctx.DIJ = cloneArrayOfFloat64Arrays(snap.DIJ);
+      ctx.DIJ = cloneFloat64Rows(snap.DIJ);
     } else {
       for (let i = 0; i < snap.DIJ.length; i += 1) {
         if (snap.DIJ[i]) ctx.DIJ[i].set(snap.DIJ[i]);
@@ -930,9 +924,12 @@ function buildStreamlineGrid(bounds, nb, ctxPanel) {
   const dx = xSpan / (gridX - 1);
   const dy = ySpan / (gridY - 1);
   const grid = new Float64Array(gridX * gridY);
+  const streamfunction = createStreamfunctionEvaluator(ctxPanel);
 
   let psiMin = Infinity;
   let psiMax = -Infinity;
+  let lastX;
+  let lastY;
 
   for (let j = 0; j < gridY; j += 1) {
     for (let i = 0; i < gridX; i += 1) {
@@ -945,12 +942,18 @@ function buildStreamlineGrid(bounds, nb, ctxPanel) {
         continue;
       }
 
-      const { psi } = psilin(nb, x, y, 0.0, 0.0, false, false, ctxPanel);
+      const psi = streamfunction(x, y);
+      lastX = x;
+      lastY = y;
       grid[idx] = psi;
       if (psi < psiMin) psiMin = psi;
       if (psi > psiMax) psiMax = psi;
     }
   }
+
+  // Preserve PSILIN's final scratch state for snapshots and inverse design.
+  // Only the last evaluated point needs the full derivative calculation.
+  if (lastX !== undefined) psilin(nb, lastX, lastY, 0.0, 0.0, false, false, ctxPanel);
 
   if (!Number.isFinite(psiMin) || !Number.isFinite(psiMax)) {
     return null;
@@ -1271,7 +1274,7 @@ function computeCase(settings) {
     deflection: settings?.flap?.deflection,
   };
 
-  return {
+  const payload = {
     ok: true,
     nb,
     airfoilName: geom.airfoilName,
@@ -1289,6 +1292,15 @@ function computeCase(settings) {
     viscous,
     reuseState: reuseSnapshot,
   };
+  // Opt-in transport metadata; older clients and numerical benchmarks keep the
+  // same response shape. A successful snapshot alone does not prove that a
+  // failed restoration populated both caches with the returned live contexts.
+  if (settings.reportReuseCache) {
+    payload.reuseCacheReady = !!(reuseSnapshot && blCtx.LVCONV === true
+      && panelCache.ctx === ctxPanel && panelCache.key === geometryKey
+      && blCache.ctx === blCtx && blCache.key === geometryKey);
+  }
+  return payload;
 }
 
 function normalizeAirfoilName(raw, fallback) {
@@ -1379,7 +1391,7 @@ self.onmessage = (event) => {
   if (action === 'qdes') {
     try {
       const result = runQdesFromCp(cpSpec, Number.isFinite(niter) ? niter : 10);
-      self.postMessage({ requestId, type: 'qdes', ok: true, ...result });
+      self.postMessage({ requestId, type: 'qdes', ok: true, ...result }, resultTransfers(result));
     } catch (err) {
       self.postMessage({
         requestId,
@@ -1404,7 +1416,7 @@ self.onmessage = (event) => {
 
   try {
     const payload = computeCase(settings);
-    self.postMessage({ requestId, ...payload });
+    self.postMessage({ requestId, ...payload }, resultTransfers(payload));
   } catch (err) {
     self.postMessage({
       requestId,

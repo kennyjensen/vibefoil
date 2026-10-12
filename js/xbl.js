@@ -7,30 +7,17 @@
 // Integral boundary-layer method: marching, closures, and coupling terms.
 
 import { splind, sinvrt, seval } from './spline.js';
-import { gauss } from './xsolve.js';
+import { gauss1 } from './xsolve.js';
+import { blprv as defaultBlprv, blkin as defaultBlkin, blprvKin } from './xblsys.js';
 
-// 1-based to 0-based wrapper for Gaussian elimination (Fortran compatibility).
-function gauss1(n, z, r) {
-  const z0 = new Array(n);
-  for (let i = 0; i < n; i += 1) {
-    z0[i] = new Float64Array(n);
-    for (let j = 0; j < n; j += 1) {
-      z0[i][j] = z[i + 1][j + 1];
-    }
-  }
-
-  const r0 = new Float64Array(n);
-  for (let i = 0; i < n; i += 1) {
-    r0[i] = r[i + 1];
-  }
-
-  gauss(n, z0, r0);
-
-  for (let i = 0; i < n; i += 1) {
-    r[i + 1] = r0[i];
-    for (let j = 0; j < n; j += 1) {
-      z[i + 1][j + 1] = z0[i][j];
-    }
+// Publish one completed snapshot when both station routines are the built-ins.
+// Custom routines retain the predictor snapshot and original method calls.
+function prepareBlStation(ctx, xsi, ami, cti, thi, dsi, dswaki, uei) {
+  if (ctx.blprv === defaultBlprv && ctx.blkin === defaultBlkin) {
+    blprvKin(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
+  } else {
+    ctx.blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
+    ctx.blkin(ctx);
   }
 }
 
@@ -222,8 +209,7 @@ function mrchue(ctx) {
       let hklim = 0.0;
 
       for (let itbl = 1; itbl <= 25; itbl += 1) {
-        ctx.blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
-        ctx.blkin(ctx);
+        prepareBlStation(ctx, xsi, ami, cti, thi, dsi, dswaki, uei);
 
         if (!simi && !ctx.TURB) {
           ctx.trchek(ctx);
@@ -387,8 +373,7 @@ function mrchue(ctx) {
           }
         }
 
-        ctx.blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
-        ctx.blkin(ctx);
+        prepareBlStation(ctx, xsi, ami, cti, thi, dsi, dswaki, uei);
         if (!simi && !ctx.TURB) {
           ctx.trchek(ctx);
           ami = ctx.AMPL2;
@@ -421,8 +406,7 @@ function mrchue(ctx) {
       ctx.KDEF[ibl][is] = ctx.R2 * ctx.U2 * ctx.U2 * ctx.U2 * ctx.T2 * ctx.HS2 * 0.5;
 
 
-      ctx.blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
-      ctx.blkin(ctx);
+      prepareBlStation(ctx, xsi, ami, cti, thi, dsi, dswaki, uei);
       for (let icom = 1; icom <= ctx.NCOM; icom += 1) {
         ctx.COM1[icom] = ctx.COM2[icom];
       }
@@ -478,6 +462,8 @@ function mrchdu(ctx) {
   const VSREZ = ctx.VSREZ;
   const blprv = ctx.blprv;
   const blkin = ctx.blkin;
+  // Keep this routine's existing callback capture behavior.
+  const combinePredictor = blprv === defaultBlprv && blkin === defaultBlkin;
   const trchek = ctx.trchek;
   const blsys = ctx.blsys;
   const tesys = ctx.tesys;
@@ -558,8 +544,12 @@ function mrchdu(ctx) {
       let dmax = 0.0;
 
       for (let itbl = 1; itbl <= 25; itbl += 1) {
-        blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
-        blkin(ctx);
+        if (combinePredictor) {
+          blprvKin(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
+        } else {
+          blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
+          blkin(ctx);
+        }
 
         if (!simi && !ctx.TURB) {
           trchek(ctx);
@@ -703,8 +693,12 @@ function mrchdu(ctx) {
       }
 
       if (dmax > deps) {
-        blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
-        blkin(ctx);
+        if (combinePredictor) {
+          blprvKin(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
+        } else {
+          blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
+          blkin(ctx);
+        }
 
         if (!simi && !ctx.TURB) {
           trchek(ctx);
@@ -738,8 +732,12 @@ function mrchdu(ctx) {
       ctx.PDEF[ibl][is] = ctx.R2 * ctx.U2 * ctx.U2 * ctx.T2;
       ctx.KDEF[ibl][is] = ctx.R2 * ctx.U2 * ctx.U2 * ctx.U2 * ctx.T2 * ctx.HS2 * 0.5;
 
-      blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
-      blkin(ctx);
+      if (combinePredictor) {
+        blprvKin(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
+      } else {
+        blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
+        blkin(ctx);
+      }
       for (let icom = 1; icom <= ctx.NCOM; icom += 1) {
         ctx.COM1[icom] = ctx.COM2[icom];
       }
@@ -756,6 +754,61 @@ function mrchdu(ctx) {
 
       ctx.TRAN = false;
     }
+  }
+}
+
+// Assemble the three independent equation rows together. Source values and
+// the leading-edge term are shared, with each coefficient's arithmetic kept
+// in the same order as the separate row expressions.
+function assembleMassRows(ctx, iv, d1M, u1M, d2M, u2M, ule1M, ule2M, xiUle1, xiUle2) {
+  const nsys = ctx.NSYS;
+  const vs1 = ctx.VS1F;
+  const vs2 = ctx.VS2F;
+  const vm1 = ctx.VM[1];
+  const vm2 = ctx.VM[2];
+  const vm3 = ctx.VM[3];
+  // VS rows have stride 6; use columns 3, 4, and 5 of rows 1 through 3.
+  const r1d1 = vs1[9];
+  const r1u1 = vs1[10];
+  const r1d2 = vs2[9];
+  const r1u2 = vs2[10];
+  const r1x = vs1[11] + vs2[11] + ctx.VSX[1];
+  const r2d1 = vs1[15];
+  const r2u1 = vs1[16];
+  const r2d2 = vs2[15];
+  const r2u2 = vs2[16];
+  const r2x = vs1[17] + vs2[17] + ctx.VSX[2];
+  const r3d1 = vs1[21];
+  const r3u1 = vs1[22];
+  const r3d2 = vs2[21];
+  const r3u2 = vs2[22];
+  const r3x = vs1[23] + vs2[23] + ctx.VSX[3];
+  const flat = ctx.VMF;
+  const stride = nsys + 1;
+  const plane = stride * stride;
+  if (flat && flat.length === 4 * plane) {
+    let index = stride + iv;
+    for (let jv = 1; jv <= nsys; jv += 1, index += stride) {
+      const d1 = d1M[jv];
+      const u1 = u1M[jv];
+      const d2 = d2M[jv];
+      const u2 = u2M[jv];
+      const xi = xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv];
+      flat[plane + index] = r1d1 * d1 + r1u1 * u1 + r1d2 * d2 + r1u2 * u2 + r1x * xi;
+      flat[2 * plane + index] = r2d1 * d1 + r2u1 * u1 + r2d2 * d2 + r2u2 * u2 + r2x * xi;
+      flat[3 * plane + index] = r3d1 * d1 + r3u1 * u1 + r3d2 * d2 + r3u2 * u2 + r3x * xi;
+    }
+    return;
+  }
+  for (let jv = 1; jv <= nsys; jv += 1) {
+    const d1 = d1M[jv];
+    const u1 = u1M[jv];
+    const d2 = d2M[jv];
+    const u2 = u2M[jv];
+    const xi = xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv];
+    vm1[jv][iv] = r1d1 * d1 + r1u1 * u1 + r1d2 * d2 + r1u2 * u2 + r1x * xi;
+    vm2[jv][iv] = r2d1 * d1 + r2u1 * u1 + r2d2 * d2 + r2u2 * u2 + r2x * xi;
+    vm3[jv][iv] = r3d1 * d1 + r3u1 * u1 + r3d2 * d2 + r3u2 * u2 + r3x * xi;
   }
 }
 
@@ -989,10 +1042,27 @@ function setbl(ctx) {
     ute2M.fill(0.0);
   }
 
+  // Capture source addressing once; the nested assembly loops only need
+  // these panel indices, system indices, and signs, in the original order.
+  const sourceCount = NBL[1] + NBL[2] - 2;
+  let sources = ctx._setblSources;
+  if (!sources || sources.panel.length < sourceCount) {
+    sources = {
+      panel: new Int32Array(sourceCount),
+      system: new Int32Array(sourceCount),
+      sign: new Float64Array(sourceCount),
+    };
+    ctx._setblSources = sources;
+  }
+  let source = 0;
   for (let js = 1; js <= 2; js += 1) {
     for (let jbl = 2; jbl <= NBL[js]; jbl += 1) {
       const j = IPAN[jbl][js];
       const jv = ISYS[jbl][js];
+      sources.panel[source] = j;
+      sources.system[source] = jv;
+      sources.sign[source] = VTI[jbl][js];
+      source += 1;
       ule1M[jv] = -VTI[2][1] * VTI[jbl][js] * DIJ[ile1][j];
       ule2M[jv] = -VTI[2][2] * VTI[jbl][js] * DIJ[ile2][j];
       ute1M[jv] = -VTI[IBLTE[1]][1] * VTI[jbl][js] * DIJ[ite1][j];
@@ -1007,12 +1077,10 @@ function setbl(ctx) {
   ctx.TINDEX[2] = 0.0;
 
   for (let is = 1; is <= 2; is += 1) {
-    for (let js = 1; js <= 2; js += 1) {
-      for (let jbl = 2; jbl <= NBL[js]; jbl += 1) {
-        const jv = ISYS[jbl][js];
-        u1M[jv] = 0.0;
-        d1M[jv] = 0.0;
-      }
+    for (let j = 0; j < sourceCount; j += 1) {
+      const jv = sources.system[j];
+      u1M[jv] = 0.0;
+      d1M[jv] = 0.0;
     }
     let u1A = 0.0;
     let d1A = 0.0;
@@ -1055,13 +1123,12 @@ function setbl(ctx) {
       const d2M2 = 1.0 / uei;
       const d2U2 = -dsi / uei;
 
-      for (let js = 1; js <= 2; js += 1) {
-        for (let jbl = 2; jbl <= NBL[js]; jbl += 1) {
-          const j = IPAN[jbl][js];
-          const jv = ISYS[jbl][js];
-          u2M[jv] = -VTI[ibl][is] * VTI[jbl][js] * DIJ[i][j];
-          d2M[jv] = d2U2 * u2M[jv];
-        }
+      const influence = DIJ[i];
+      const direction = -VTI[ibl][is];
+      for (let j = 0; j < sourceCount; j += 1) {
+        const jv = sources.system[j];
+        u2M[jv] = direction * sources.sign[j] * influence[sources.panel[j]];
+        d2M[jv] = d2U2 * u2M[jv];
       }
       d2M[iv] += d2M2;
 
@@ -1071,8 +1138,7 @@ function setbl(ctx) {
       const due2 = UEDG[ibl][is] - usav[ibl][is];
       const dds2 = d2U2 * due2;
 
-      ctx.blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
-      ctx.blkin(ctx);
+      prepareBlStation(ctx, xsi, ami, cti, thi, dsi, dswaki, uei);
 
       if (ctx.TRAN) {
         ctx.trchek(ctx);
@@ -1103,12 +1169,9 @@ function setbl(ctx) {
         const cteTte1 = (CTAU[IBLTE[1]][1] - cte) / tte;
         const cteTte2 = (CTAU[IBLTE[2]][2] - cte) / tte;
 
-        for (let js = 1; js <= 2; js += 1) {
-          for (let jbl = 2; jbl <= NBL[js]; jbl += 1) {
-            const j = IPAN[jbl][js];
-            const jv = ISYS[jbl][js];
-            d1M[jv] = dteUte1 * ute1M[jv] + dteUte2 * ute2M[jv];
-          }
+        for (let j = 0; j < sourceCount; j += 1) {
+          const jv = sources.system[j];
+          d1M[jv] = dteUte1 * ute1M[jv] + dteUte2 * ute2M[jv];
         }
         d1M[jvte1] += dteMte1;
         d1M[jvte2] += dteMte2;
@@ -1117,12 +1180,7 @@ function setbl(ctx) {
         dds1 = dteUte1 * (UEDG[IBLTE[1]][1] - usav[IBLTE[1]][1])
           + dteUte2 * (UEDG[IBLTE[2]][2] - usav[IBLTE[2]][2]);
 
-        for (let jv = 1; jv <= nsys; jv += 1) {
-          VM[1][jv][iv] = vs1[vs1r1 + 3] * d1M[jv] + vs1[vs1r1 + 4] * u1M[jv]
-            + vs2[vs2r1 + 3] * d2M[jv] + vs2[vs2r1 + 4] * u2M[jv]
-            + (vs1[vs1r1 + 5] + vs2[vs2r1 + 5] + VSX[1])
-            * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
-        }
+        assembleMassRows(ctx, iv, d1M, u1M, d2M, u2M, ule1M, ule2M, xiUle1, xiUle2);
 
         VB[1][1][iv] = vs1[vs1r1 + 1];
         VB[1][2][iv] = vs1[vs1r1 + 2];
@@ -1143,12 +1201,6 @@ function setbl(ctx) {
           + (vs1[vs1r1 + 5] + vs2[vs2r1 + 5] + VSX[1])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
-        for (let jv = 1; jv <= nsys; jv += 1) {
-          VM[2][jv][iv] = vs1[vs1r2 + 3] * d1M[jv] + vs1[vs1r2 + 4] * u1M[jv]
-            + vs2[vs2r2 + 3] * d2M[jv] + vs2[vs2r2 + 4] * u2M[jv]
-            + (vs1[vs1r2 + 5] + vs2[vs2r2 + 5] + VSX[2])
-            * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
-        }
         VB[2][1][iv] = vs1[vs1r2 + 1];
         VB[2][2][iv] = vs1[vs1r2 + 2];
         VA[2][1][iv] = vs2[vs2r2 + 1];
@@ -1167,12 +1219,6 @@ function setbl(ctx) {
           + (vs1[vs1r2 + 5] + vs2[vs2r2 + 5] + VSX[2])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
-        for (let jv = 1; jv <= nsys; jv += 1) {
-          VM[3][jv][iv] = vs1[vs1r3 + 3] * d1M[jv] + vs1[vs1r3 + 4] * u1M[jv]
-            + vs2[vs2r3 + 3] * d2M[jv] + vs2[vs2r3 + 4] * u2M[jv]
-            + (vs1[vs1r3 + 5] + vs2[vs2r3 + 5] + VSX[3])
-            * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
-        }
         VB[3][1][iv] = vs1[vs1r3 + 1];
         VB[3][2][iv] = vs1[vs1r3 + 2];
         VA[3][1][iv] = vs2[vs2r3 + 1];
@@ -1208,12 +1254,7 @@ function setbl(ctx) {
       } else {
         ctx.blsys(ctx);
 
-        for (let jv = 1; jv <= nsys; jv += 1) {
-          VM[1][jv][iv] = vs1[vs1r1 + 3] * d1M[jv] + vs1[vs1r1 + 4] * u1M[jv]
-            + vs2[vs2r1 + 3] * d2M[jv] + vs2[vs2r1 + 4] * u2M[jv]
-            + (vs1[vs1r1 + 5] + vs2[vs2r1 + 5] + VSX[1])
-            * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
-        }
+        assembleMassRows(ctx, iv, d1M, u1M, d2M, u2M, ule1M, ule2M, xiUle1, xiUle2);
         VB[1][1][iv] = vs1[vs1r1 + 1];
         VB[1][2][iv] = vs1[vs1r1 + 2];
         VA[1][1][iv] = vs2[vs2r1 + 1];
@@ -1230,12 +1271,6 @@ function setbl(ctx) {
           + (vs1[vs1r1 + 5] + vs2[vs2r1 + 5] + VSX[1])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
-        for (let jv = 1; jv <= nsys; jv += 1) {
-          VM[2][jv][iv] = vs1[vs1r2 + 3] * d1M[jv] + vs1[vs1r2 + 4] * u1M[jv]
-            + vs2[vs2r2 + 3] * d2M[jv] + vs2[vs2r2 + 4] * u2M[jv]
-            + (vs1[vs1r2 + 5] + vs2[vs2r2 + 5] + VSX[2])
-            * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
-        }
         VB[2][1][iv] = vs1[vs1r2 + 1];
         VB[2][2][iv] = vs1[vs1r2 + 2];
         VA[2][1][iv] = vs2[vs2r2 + 1];
@@ -1252,12 +1287,6 @@ function setbl(ctx) {
           + (vs1[vs1r2 + 5] + vs2[vs2r2 + 5] + VSX[2])
           * (xiUle1 * dule1 + xiUle2 * dule2);
 
-        for (let jv = 1; jv <= nsys; jv += 1) {
-          VM[3][jv][iv] = vs1[vs1r3 + 3] * d1M[jv] + vs1[vs1r3 + 4] * u1M[jv]
-            + vs2[vs2r3 + 3] * d2M[jv] + vs2[vs2r3 + 4] * u2M[jv]
-            + (vs1[vs1r3 + 5] + vs2[vs2r3 + 5] + VSX[3])
-            * (xiUle1 * ule1M[jv] + xiUle2 * ule2M[jv]);
-        }
         VB[3][1][iv] = vs1[vs1r3 + 1];
         VB[3][2][iv] = vs1[vs1r3 + 2];
         VA[3][1][iv] = vs2[vs2r3 + 1];
@@ -1316,12 +1345,10 @@ function setbl(ctx) {
         ctx.blmid(3, ctx);
       }
 
-      for (let js = 1; js <= 2; js += 1) {
-        for (let jbl = 2; jbl <= NBL[js]; jbl += 1) {
-          const jv = ISYS[jbl][js];
-          u1M[jv] = u2M[jv];
-          d1M[jv] = d2M[jv];
-        }
+      for (let j = 0; j < sourceCount; j += 1) {
+        const jv = sources.system[j];
+        u1M[jv] = u2M[jv];
+        d1M[jv] = d2M[jv];
       }
       u1A = u2A;
       d1A = d2A;
@@ -1390,6 +1417,40 @@ function xifset(ctx, is) {
   }
 }
 
+// Gather the source stations once per evaluation. Their values are constant
+// across the receiving stations, and their order matches the original side/BL
+// loops so floating-point accumulation stays unchanged.
+function velocitySources(ctx, corrections) {
+  const count = ctx.NBL[1] + ctx.NBL[2] - 2;
+  let sources = ctx._velocitySources;
+  if (!sources || sources.panel.length < count) {
+    sources = {
+      panel: new Int32Array(count),
+      sign: new Float64Array(count),
+      mass: new Float64Array(count),
+      sensitivity: new Float64Array(count),
+    };
+    ctx._velocitySources = sources;
+  }
+  sources.count = count;
+  let index = 0;
+  for (let side = 1; side <= 2; side += 1) {
+    for (let ibl = 2; ibl <= ctx.NBL[side]; ibl += 1) {
+      sources.panel[index] = ctx.IPAN[ibl][side];
+      sources.sign[index] = ctx.VTI[ibl][side];
+      if (corrections) {
+        const iv = ctx.ISYS[ibl][side];
+        sources.mass[index] = ctx.MASS[ibl][side] + ctx.VDEL[3][1][iv];
+        sources.sensitivity[index] = -ctx.VDEL[3][2][iv];
+      } else {
+        sources.mass[index] = ctx.MASS[ibl][side];
+      }
+      index += 1;
+    }
+  }
+  return sources;
+}
+
 // Finalize BL step: update state variables and derived quantities (UPDATE).
 // Computes Newton deltas for (Ctau, Theta, m) and applies them to the BL state.
 function update(ctx) {
@@ -1407,25 +1468,28 @@ function update(ctx) {
 
   const hstinv = ctx.GAMM1 * (ctx.MINF / ctx.QINF) ** 2 / (1.0 + 0.5 * ctx.GAMM1 * ctx.MINF ** 2);
 
-  const unew = Array.from({ length: ctx.IVX + 1 }, () => new Float64Array(3));
-  const uAc = Array.from({ length: ctx.IVX + 1 }, () => new Float64Array(3));
+  // Each side is traversed independently. Store its stations contiguously
+  // instead of allocating a three-number row for every station. Fresh arrays
+  // preserve zero initialization, including entries outside the active BL.
+  const blSize = ctx.IVX + 1;
+  const unew = [null, new Float64Array(blSize), new Float64Array(blSize)];
+  const uAc = [null, new Float64Array(blSize), new Float64Array(blSize)];
   const qnew = new Float64Array(ctx.IQX + 1);
   const qAc = new Float64Array(ctx.IQX + 1);
+  const sources = velocitySources(ctx, true);
 
   for (let is = 1; is <= 2; is += 1) {
     for (let ibl = 2; ibl <= ctx.NBL[is]; ibl += 1) {
       const i = ctx.IPAN[ibl][is];
+      const influence = ctx.DIJ[i];
+      const direction = -ctx.VTI[ibl][is];
 
       let dui = 0.0;
       let duiAc = 0.0;
-      for (let js = 1; js <= 2; js += 1) {
-        for (let jbl = 2; jbl <= ctx.NBL[js]; jbl += 1) {
-          const j = ctx.IPAN[jbl][js];
-          const jv = ctx.ISYS[jbl][js];
-          const ueM = -ctx.VTI[ibl][is] * ctx.VTI[jbl][js] * ctx.DIJ[i][j];
-          dui += ueM * (ctx.MASS[jbl][js] + ctx.VDEL[3][1][jv]);
-          duiAc += ueM * (-ctx.VDEL[3][2][jv]);
-        }
+      for (let j = 0; j < sources.count; j += 1) {
+        const ueM = direction * sources.sign[j] * influence[sources.panel[j]];
+        dui += ueM * sources.mass[j];
+        duiAc += ueM * sources.sensitivity[j];
       }
 
       let uinvAc = 0.0;
@@ -1433,16 +1497,16 @@ function update(ctx) {
         uinvAc = ctx.UINV_A[ibl][is];
       }
 
-      unew[ibl][is] = ctx.UINV[ibl][is] + dui;
-      uAc[ibl][is] = uinvAc + duiAc;
+      unew[is][ibl] = ctx.UINV[ibl][is] + dui;
+      uAc[is][ibl] = uinvAc + duiAc;
     }
   }
 
   for (let is = 1; is <= 2; is += 1) {
     for (let ibl = 2; ibl <= ctx.IBLTE[is]; ibl += 1) {
       const i = ctx.IPAN[ibl][is];
-      qnew[i] = ctx.VTI[ibl][is] * unew[ibl][is];
-      qAc[i] = ctx.VTI[ibl][is] * uAc[ibl][is];
+      qnew[i] = ctx.VTI[ibl][is] * unew[is][ibl];
+      qAc[i] = ctx.VTI[ibl][is] * uAc[is][ibl];
     }
   }
 
@@ -1534,7 +1598,7 @@ function update(ctx) {
       const dctau = ctx.VDEL[1][1][iv] - dac * ctx.VDEL[1][2][iv];
       const dthet = ctx.VDEL[2][1][iv] - dac * ctx.VDEL[2][2][iv];
       const dmass = ctx.VDEL[3][1][iv] - dac * ctx.VDEL[3][2][iv];
-      const duedg = unew[ibl][is] + dac * uAc[ibl][is] - ctx.UEDG[ibl][is];
+      const duedg = unew[is][ibl] + dac * uAc[is][ibl] - ctx.UEDG[ibl][is];
       const ddstr = (dmass - ctx.DSTR[ibl][is] * duedg) / ctx.UEDG[ibl][is];
 
       let dn1 = dctau / 10.0;
@@ -1604,7 +1668,7 @@ function update(ctx) {
       const dctau = ctx.VDEL[1][1][iv] - dac * ctx.VDEL[1][2][iv];
       const dthet = ctx.VDEL[2][1][iv] - dac * ctx.VDEL[2][2][iv];
       const dmass = ctx.VDEL[3][1][iv] - dac * ctx.VDEL[3][2][iv];
-      const duedg = unew[ibl][is] + dac * uAc[ibl][is] - ctx.UEDG[ibl][is];
+      const duedg = unew[is][ibl] + dac * uAc[is][ibl] - ctx.UEDG[ibl][is];
       const ddstr = (dmass - ctx.DSTR[ibl][is] * duedg) / ctx.UEDG[ibl][is];
 
       ctx.CTAU[ibl][is] = ctx.CTAU[ibl][is] + rlx * dctau;
@@ -1662,16 +1726,16 @@ function update(ctx) {
 }
 
 function ueset(ctx) {
+  const sources = velocitySources(ctx, false);
   for (let is = 1; is <= 2; is += 1) {
     for (let ibl = 2; ibl <= ctx.NBL[is]; ibl += 1) {
       const i = ctx.IPAN[ibl][is];
+      const influence = ctx.DIJ[i];
+      const direction = -ctx.VTI[ibl][is];
       let dui = 0.0;
-      for (let js = 1; js <= 2; js += 1) {
-        for (let jbl = 2; jbl <= ctx.NBL[js]; jbl += 1) {
-          const j = ctx.IPAN[jbl][js];
-          const ueM = -ctx.VTI[ibl][is] * ctx.VTI[jbl][js] * ctx.DIJ[i][j];
-          dui += ueM * ctx.MASS[jbl][js];
-        }
+      for (let j = 0; j < sources.count; j += 1) {
+        const ueM = direction * sources.sign[j] * influence[sources.panel[j]];
+        dui += ueM * sources.mass[j];
       }
       ctx.UEDG[ibl][is] = ctx.UINV[ibl][is] + dui;
     }
@@ -1679,6 +1743,7 @@ function ueset(ctx) {
 }
 
 export {
+  assembleMassRows,
   dslim,
   blpini,
   iblsys,

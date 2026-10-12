@@ -1,6 +1,7 @@
-import { buildBlContext, computeQvisFromUedg, specal, viscal } from './xoper.js';
 import { computeAlphaAxisRanges } from './alpha_axes.js';
 import { airfoilNameFromPath, nacaSettingsForName, restoredAirfoilURL } from './airfoil_route.js';
+import { createWorkerReuse } from './worker_reuse.js';
+import { createContourCache } from './contours.js';
 
 const appBaseURL = new URL('../', import.meta.url);
 const restoredURL = restoredAirfoilURL(new URL(location.href), appBaseURL.pathname);
@@ -177,13 +178,8 @@ const downloadRunCasesButton = document.getElementById('downloadRunCases');
 
 // Geometry buffers (airfoil surface and custom inputs); sizes follow XFOIL nside.
 const nside = 200; // XFOIL IQX / 3 (integer division), IQX = 601.
-const xx = new Float64Array(nside);
-const yt = new Float64Array(nside);
-const yc = new Float64Array(nside);
 const xb = new Float64Array(2 * nside);
 const yb = new Float64Array(2 * nside);
-const xbBuffer = new Float64Array(2 * nside);
-const ybBuffer = new Float64Array(2 * nside);
 const xbCustom = new Float64Array(2 * nside);
 const ybCustom = new Float64Array(2 * nside);
 let customAirfoil = null;
@@ -198,6 +194,7 @@ let sweeping = false;
 const blCache = { ctx: null, key: null };
 let reuseState = null;
 let solverWorker = null;
+const workerReuse = createWorkerReuse();
 let solverRequestId = 0;
 let latestSolverId = 0;
 let solverInFlight = false;
@@ -2176,121 +2173,20 @@ function renderCpPlotFromCache() {
   );
 }
 
+const getContourSegments = createContourCache();
+
 function drawContours(bounds, grid, nx, ny, isoValues) {
-  const edgeTable = [
-    [],
-    [3, 0],
-    [0, 1],
-    [3, 1],
-    [1, 2],
-    [3, 0, 1, 2],
-    [0, 2],
-    [3, 2],
-    [2, 3],
-    [0, 2],
-    [0, 1, 2, 3],
-    [1, 2],
-    [1, 3],
-    [0, 1],
-    [3, 0],
-    [],
-  ];
-
-  const xSpan = bounds.xmax - bounds.xmin;
-  const ySpan = bounds.ymax - bounds.ymin;
-  const dx = xSpan / (nx - 1);
-  const dy = ySpan / (ny - 1);
-
-  isoValues.forEach((iso) => {
+  const contours = getContourSegments(bounds, grid, nx, ny, isoValues);
+  for (const points of contours) {
     ctx.beginPath();
-    for (let j = 0; j < ny - 1; j += 1) {
-      for (let i = 0; i < nx - 1; i += 1) {
-        const idx = j * nx + i;
-        const v0 = grid[idx];
-        const v1 = grid[idx + 1];
-        const v2 = grid[idx + 1 + nx];
-        const v3 = grid[idx + nx];
-
-        const caseIndex = (v0 > iso ? 1 : 0)
-          | (v1 > iso ? 2 : 0)
-          | (v2 > iso ? 4 : 0)
-          | (v3 > iso ? 8 : 0);
-
-        const edges = edgeTable[caseIndex];
-        if (edges.length === 0) {
-          continue;
-        }
-
-        const x0 = bounds.xmin + i * dx;
-        const y0 = bounds.ymin + j * dy;
-
-        const points = [];
-
-        for (let e = 0; e < edges.length; e += 1) {
-          const edge = edges[e];
-          let ax;
-          let ay;
-          let bx;
-          let by;
-          let va;
-          let vb;
-
-          if (edge === 0) {
-            ax = x0;
-            ay = y0;
-            bx = x0 + dx;
-            by = y0;
-            va = v0;
-            vb = v1;
-          } else if (edge === 1) {
-            ax = x0 + dx;
-            ay = y0;
-            bx = x0 + dx;
-            by = y0 + dy;
-            va = v1;
-            vb = v2;
-          } else if (edge === 2) {
-            ax = x0 + dx;
-            ay = y0 + dy;
-            bx = x0;
-            by = y0 + dy;
-            va = v2;
-            vb = v3;
-          } else {
-            ax = x0;
-            ay = y0 + dy;
-            bx = x0;
-            by = y0;
-            va = v3;
-            vb = v0;
-          }
-
-          const denom = vb - va;
-          const t = denom !== 0.0 ? (iso - va) / denom : 0.5;
-          const px = ax + (bx - ax) * t;
-          const py = ay + (by - ay) * t;
-          points.push({ x: px, y: py });
-        }
-
-        if (points.length === 2) {
-          const p0 = worldToCanvas(points[0].x, points[0].y, bounds);
-          const p1 = worldToCanvas(points[1].x, points[1].y, bounds);
-          ctx.moveTo(p0.x, p0.y);
-          ctx.lineTo(p1.x, p1.y);
-        } else if (points.length === 4) {
-          const p0 = worldToCanvas(points[0].x, points[0].y, bounds);
-          const p1 = worldToCanvas(points[1].x, points[1].y, bounds);
-          const p2 = worldToCanvas(points[2].x, points[2].y, bounds);
-          const p3 = worldToCanvas(points[3].x, points[3].y, bounds);
-          ctx.moveTo(p0.x, p0.y);
-          ctx.lineTo(p1.x, p1.y);
-          ctx.moveTo(p2.x, p2.y);
-          ctx.lineTo(p3.x, p3.y);
-        }
-      }
+    for (let i = 0; i < points.length; i += 4) {
+      const p0 = worldToCanvas(points[i], points[i + 1], bounds);
+      const p1 = worldToCanvas(points[i + 2], points[i + 3], bounds);
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
     }
     ctx.stroke();
-  });
+  }
 }
 
 // Streamline sketch from inviscid flow field, clipped to avoid airfoil interior.
@@ -2676,9 +2572,11 @@ function cancelPendingDumps() {
 }
 
 function spawnSolverWorker() {
+  workerReuse.clear();
   solverWorker = new Worker(new URL('./solver_worker.js', import.meta.url), { type: 'module' });
   solverWorker.onmessage = (event) => {
     const payload = event.data;
+    workerReuse.accept(payload);
     if (payload?.type === 'dump') {
       resolvePendingDump(payload.requestId, payload);
       return;
@@ -2707,6 +2605,7 @@ function spawnSolverWorker() {
     flushQueuedUpdate();
   };
   solverWorker.onerror = (event) => {
+    workerReuse.clear();
     solverInFlight = false;
     cancelPendingSolves();
     cancelPendingQdes();
@@ -2715,6 +2614,7 @@ function spawnSolverWorker() {
     flushQueuedUpdate();
   };
   solverWorker.onmessageerror = (event) => {
+    workerReuse.clear();
     solverInFlight = false;
     cancelPendingSolves();
     cancelPendingQdes();
@@ -2864,6 +2764,7 @@ function requestQdes(cpSpec, niter = 10) {
   }
   const requestId = nextQdesId;
   nextQdesId += 1;
+  workerReuse.clear();
   solverWorker.postMessage({ requestId, action: 'qdes', cpSpec, niter });
   return new Promise((resolve) => {
     pendingQdes.set(requestId, resolve);
@@ -3034,7 +2935,8 @@ function update() {
   latestSolverId = solverRequestId;
   solverInFlight = true;
   pendingGeometrySettings = geometry;
-  solverWorker.postMessage({ requestId: solverRequestId, settings });
+  solverWorker.postMessage({ requestId: solverRequestId,
+    settings: workerReuse.prepare(solverRequestId, settings) });
   return new Promise((resolve) => {
     pendingSolves.set(solverRequestId, resolve);
   });

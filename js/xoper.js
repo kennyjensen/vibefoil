@@ -511,12 +511,13 @@ function solveViscous(
   qinv,
   qinvA,
   maxIter = 20,
+  residualTolerance = 1.0e-4,
 ) {
   // Fortran comments (VISCAL) highlight:
   // - Iterate BL/panel coupling to convergence.
   const total = ctxPanel.N + (ctxPanel.NW ?? 0);
   const qvis = new Float64Array(total + 1);
-  const eps1 = 1.0e-4;
+  const eps1 = residualTolerance;
 
   let converged = false;
   console.log('');
@@ -628,7 +629,11 @@ function viscal(
     maxIter = 20,
     logSurface = false,
     reuseSolution = false,
+    residualTolerance = 1.0e-4,
   } = opts;
+  if (!Number.isFinite(residualTolerance) || residualTolerance <= 0) {
+    throw new RangeError('Residual tolerance must be finite and positive');
+  }
 
   const { qinv, qinvA } = initViscousPanel(ctxPanel);
   applyXfoilOperInit(blCtx, alphaRad, Number.isFinite(reinf) ? reinf : 1.0e6, {
@@ -701,7 +706,7 @@ function viscal(
   console.log(` A     =${blCtx.GACON.toFixed(4).padStart(8)}     B     =${blCtx.GBCON.toFixed(4).padStart(8)}       KCt =${blCtx.CTCON.toFixed(5).padStart(8)}`);
   console.log(` CtiniK=${blCtx.CTRCON.toFixed(4).padStart(8)}     CtiniX=${blCtx.CTRCEX.toFixed(4).padStart(8)}`);
 
-  const { qvis, converged } = solveViscous(blCtx, ctxPanel, qinv, qinvA, maxIter);
+  const { qvis, converged } = solveViscous(blCtx, ctxPanel, qinv, qinvA, maxIter, residualTolerance);
 
   for (let i = 0; i < ctxPanel.N; i += 1) {
     if (!Number.isFinite(ctxPanel.GAM[i])) {

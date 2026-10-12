@@ -1069,6 +1069,7 @@ function computeCase(settings) {
     reynolds,
     ncr,
     nIter,
+    residualTolerance,
     canvasWidth,
     canvasHeight,
   } = settings;
@@ -1137,6 +1138,7 @@ function computeCase(settings) {
           maxIter,
           logSurface: true,
           reuseSolution: useReuse,
+          residualTolerance,
         },
       );
     };

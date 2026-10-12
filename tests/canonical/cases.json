@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "reference": {
+    "name": "XFOIL 6.996",
+    "source_commit": "32ff3c2",
+    "source_sha256": "62f5b1447a4a6855c4c00fc786e10d7ba43ef01faab62f03bb6b898c5f624225"
+  },
+  "airfoils": [
+    {
+      "id": "naca0012",
+      "naca": 12
+    },
+    {
+      "id": "naca2412",
+      "naca": 2412
+    },
+    {
+      "id": "naca4412",
+      "naca": 4412
+    },
+    {
+      "id": "naca23012",
+      "naca": 23012
+    },
+    {
+      "id": "e387",
+      "coordinates": "third_party/Xfoil/runs/e387.dat",
+      "sha256": "98aa8a4076edbfd1c52e3a2d0cf17b1ef1cbc51ae5da3ab8e5361047b89ee523"
+    }
+  ],
+  "viscous_grid": {
+    "alpha": [
+      -4,
+      0,
+      4,
+      8
+    ],
+    "mach": [
+      0,
+      0.15,
+      0.3
+    ],
+    "reynolds": [
+      500000,
+      1000000,
+      5000000
+    ],
+    "ncrit": [
+      5,
+      9,
+      12
+    ]
+  },
+  "inviscid_grid": {
+    "alpha": [
+      -8,
+      -4,
+      0,
+      4,
+      8
+    ],
+    "mach": [
+      0,
+      0.15,
+      0.3
+    ]
+  },
+  "iterations": 100,
+  "residual_tolerance": 1e-8,
+  "tolerances": {
+    "geometry": {
+      "atol": 2e-12,
+      "rtol": 2e-12
+    },
+    "coefficient": {
+      "atol": 1e-08,
+      "rtol": 1e-08
+    },
+    "drag": {
+      "atol": 1e-09,
+      "rtol": 1e-08
+    },
+    "distribution": {
+      "atol": 1e-08,
+      "rtol": 1e-07
+    },
+    "thickness": {
+      "atol": 1e-10,
+      "rtol": 1e-07
+    },
+    "transition": {
+      "atol": 1e-08,
+      "rtol": 1e-08
+    }
+  }
+}

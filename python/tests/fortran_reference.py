@@ -1,10 +1,14 @@
 """Compile test oracles from the checked-in upstream source, never stale copies."""
 
 import pathlib
+import math
 import re
 import subprocess
 
 SOURCE_DIR = pathlib.Path(__file__).resolve().parents[2] / "third_party" / "Xfoil" / "src"
+REFERENCE_FLAGS = ('-O2', '-fdefault-real-8', '-fdefault-double-8',
+                   '-ffp-contract=off', '-ffunction-sections', '-fdata-sections',
+                   '-Wl,--gc-sections')
 _START = re.compile(r"^      \s*(?:(?:REAL|COMPLEX|INTEGER|LOGICAL)\s+)?(?:SUBROUTINE|FUNCTION)\s+(\w+)", re.I)
 _END = re.compile(r"^      \s*END\s*(?:!.*)?$", re.I)
 
@@ -36,25 +40,44 @@ def reference_source(output_dir, source_name, names):
     return output
 
 
-def build_viscal_reference(output_dir):
+def set_residual_tolerance(source, tolerance):
+    """Change only VISCAL's stopping threshold in a generated build copy."""
+    if not math.isfinite(tolerance) or tolerance <= 0:
+        raise ValueError('Residual tolerance must be finite and positive')
+    original = '      DATA EPS1 / 1.0E-4 /'
+    if source.count(original) != 1:
+        raise ValueError('Expected exactly one original VISCAL stopping threshold')
+    return source.replace(original, f'      DATA EPS1 / {tolerance:.17E} /')
+
+
+def build_viscal_reference(output_dir, *, driver=None, load_coordinates=False,
+                           compiler='gfortran', residual_tolerance=None):
     """Build the current upstream solver without its interactive/plot UI."""
-    sources = [pathlib.Path(__file__).with_name('viscal_reference_driver.f')]
+    sources = [pathlib.Path(driver) if driver else
+               pathlib.Path(__file__).with_name('viscal_reference_driver.f')]
     sources += [SOURCE_DIR / name for name in (
         'naca.f', 'spline.f', 'xgeom.f', 'xpanel.f', 'xbl.f', 'xblsys.f',
         'xsolve.f', 'xutils.f', 'userio.f')]
-    for filename, routines in {
+    routines_by_file = {
         'xfoil.f': ('INIT', 'MRCL', 'COMSET', 'CPCALC', 'CLCALC', 'CDCALC',
                     'NACA', 'PANGEN', 'TECALC'),
         'xoper.f': ('SPECAL', 'VISCAL', 'MHINGE'),
         'xgdes.f': ('GETXYF', 'INSIDE'),
-    }.items():
-        sources.append(reference_source(output_dir, filename, routines))
+    }
+    if load_coordinates:
+        sources.append(SOURCE_DIR / 'aread.f')
+        routines_by_file['xfoil.f'] += ('LOAD',)
+        routines_by_file['xgdes.f'] += ('ABCOPY',)
+    for filename, routines in routines_by_file.items():
+        source = reference_source(output_dir, filename, routines)
+        if filename == 'xoper.f' and residual_tolerance is not None:
+            source.write_text(set_residual_tolerance(source.read_text(), residual_tolerance))
+        sources.append(source)
     target = pathlib.Path(output_dir) / 'viscal_reference'
     result = subprocess.run([
-        'gfortran', '-O2', '-fdefault-real-8', '-fdefault-double-8',
-        '-ffp-contract=off', '-ffunction-sections', '-fdata-sections',
-        '-Wl,--gc-sections', '-I', str(SOURCE_DIR), *map(str, sources),
-        '-o', str(target)], capture_output=True, text=True)
+        compiler, *REFERENCE_FLAGS, '-I', str(SOURCE_DIR), *map(str, sources),
+        '-o', str(target)], capture_output=True, text=True, timeout=300)
+    (pathlib.Path(output_dir) / 'compiler.log').write_text(result.stdout + result.stderr)
     if result.returncode:
         raise RuntimeError(result.stdout + result.stderr)
     return target

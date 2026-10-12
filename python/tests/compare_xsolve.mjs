@@ -1,7 +1,8 @@
 import fs from 'fs';
+import assert from 'node:assert/strict';
 
 import { gauss, ludcmp, baksub, blsolv } from '../../js/xsolve.js';
-import { createMatrix1, createTensor3 } from '../../js/arrays.js';
+import { createMatrix1, createTensor3, createTensor3Flat } from '../../js/arrays.js';
 
 const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
 
@@ -128,8 +129,22 @@ if (payload.blsolv) {
     }
   }
 
-  if (!blsolv(ctx)) {
+  // Exercise the browser's flat storage as well as the nested reference used
+  // for the Fortran comparison. Every mutated coefficient must agree.
+  const flatCtx = structuredClone(ctx);
+  for (const name of ['VA', 'VB', 'VM', 'VDEL']) {
+    const { flat, view } = createTensor3Flat(3, name === 'VM' ? nsys : 2, nsys);
+    for (let k = 0; k < view.length; k += 1) {
+      for (let j = 0; j < view[k].length; j += 1) view[k][j].set(ctx[name][k][j]);
+    }
+    flatCtx[name] = view;
+    flatCtx[`${name}F`] = flat;
+  }
+  if (!blsolv(ctx) || !blsolv(flatCtx)) {
     throw new Error('blsolv failed');
+  }
+  for (const name of ['VA', 'VB', 'VM', 'VDEL', 'VZ']) {
+    assert.deepStrictEqual(flatCtx[name], ctx[name], `BLSOLV ${name}: flat/nested mismatch`);
   }
 
   const flattenTensor3 = (arr, d1, d2, d3) => {

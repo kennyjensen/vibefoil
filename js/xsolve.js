@@ -6,6 +6,8 @@
 // Port of xsolve.f LU decomposition and back-substitution.
 // Numerical linear algebra used by the panel/BL solvers (classic pivoting).
 
+import { tryWasmBlsolv } from './blsolv_wasm.js';
+
 const NVX = 515;
 
 // In-place Gaussian elimination with partial pivoting for multiple RHS (GAUSS).
@@ -81,6 +83,47 @@ function gauss(n, z, r, nrhs = 1) {
       }
       setR(np, l, value);
     }
+  }
+}
+
+// GAUSS for the boundary-layer solver's 1-based Float64 rows and single RHS.
+// Work in place instead of allocating/copying a 0-based matrix at every station.
+// Keep GAUSS's pivot choices, diagonal writes, and arithmetic order exactly.
+function gauss1(n, z, r) {
+  for (let np = 1; np < n; np += 1) {
+    const np1 = np + 1;
+    let nx = np;
+    for (let nn = np1; nn <= n; nn += 1) {
+      if (Math.abs(z[nn][np]) > Math.abs(z[nx][np])) nx = nn;
+    }
+
+    const pivot = 1.0 / z[nx][np];
+    z[nx][np] = z[np][np];
+    for (let l = np1; l <= n; l += 1) {
+      const temp = z[nx][l] * pivot;
+      z[nx][l] = z[np][l];
+      z[np][l] = temp;
+    }
+    const temp = r[nx] * pivot;
+    r[nx] = r[np];
+    r[np] = temp;
+
+    for (let k = np1; k <= n; k += 1) {
+      const ztmp = z[k][np];
+      for (let l = np1; l <= n; l += 1) {
+        z[k][l] = z[k][l] - ztmp * z[np][l];
+      }
+      r[k] = r[k] - ztmp * r[np];
+    }
+  }
+
+  r[n] = r[n] / z[n][n];
+  for (let np = n - 1; np >= 1; np -= 1) {
+    let value = r[np];
+    for (let k = np + 1; k <= n; k += 1) {
+      value -= z[np][k] * r[k];
+    }
+    r[np] = value;
   }
 }
 
@@ -172,17 +215,188 @@ function baksub(n, a, indx, b) {
   }
 }
 
+// Solve independent Float64 RHS columns against the same read-only LU matrix.
+// Four columns share coefficient reads; each retains BAKSUB's operation order
+// and first-nonzero rule. The RHS vectors must not overlap each other or A.
+function baksubMany(n, a, indx, columns, count = columns.length) {
+  let column = 0;
+  for (; column + 3 < count; column += 4) {
+    const b0 = columns[column], b1 = columns[column + 1];
+    const b2 = columns[column + 2], b3 = columns[column + 3];
+    let ii0 = -1, ii1 = -1, ii2 = -1, ii3 = -1;
+    for (let i = 0; i < n; i += 1) {
+      const row = a[i];
+      const ll = indx[i];
+      let s0 = b0[ll], s1 = b1[ll], s2 = b2[ll], s3 = b3[ll];
+      b0[ll] = b0[i];
+      b1[ll] = b1[i];
+      b2[ll] = b2[i];
+      b3[ll] = b3[i];
+      if (ii0 === -1 && s0 !== 0.0) ii0 = i;
+      if (ii1 === -1 && s1 !== 0.0) ii1 = i;
+      if (ii2 === -1 && s2 !== 0.0) ii2 = i;
+      if (ii3 === -1 && s3 !== 0.0) ii3 = i;
+
+      // Columns may start at different rows. Finish their separate prefixes
+      // before sharing reads over the common remainder of this dot product.
+      const start = Math.max(ii0 < 0 ? i : ii0, ii1 < 0 ? i : ii1,
+        ii2 < 0 ? i : ii2, ii3 < 0 ? i : ii3);
+      if (ii0 >= 0) for (let j = ii0; j < start; j += 1) s0 -= row[j] * b0[j];
+      if (ii1 >= 0) for (let j = ii1; j < start; j += 1) s1 -= row[j] * b1[j];
+      if (ii2 >= 0) for (let j = ii2; j < start; j += 1) s2 -= row[j] * b2[j];
+      if (ii3 >= 0) for (let j = ii3; j < start; j += 1) s3 -= row[j] * b3[j];
+      for (let j = start; j < i; j += 1) {
+        const coefficient = row[j];
+        s0 -= coefficient * b0[j];
+        s1 -= coefficient * b1[j];
+        s2 -= coefficient * b2[j];
+        s3 -= coefficient * b3[j];
+      }
+      b0[i] = s0;
+      b1[i] = s1;
+      b2[i] = s2;
+      b3[i] = s3;
+    }
+    for (let i = n - 1; i >= 0; i -= 1) {
+      const row = a[i];
+      let s0 = b0[i], s1 = b1[i], s2 = b2[i], s3 = b3[i];
+      for (let j = i + 1; j < n; j += 1) {
+        const coefficient = row[j];
+        s0 -= coefficient * b0[j];
+        s1 -= coefficient * b1[j];
+        s2 -= coefficient * b2[j];
+        s3 -= coefficient * b3[j];
+      }
+      const diagonal = row[i];
+      b0[i] = s0 / diagonal;
+      b1[i] = s1 / diagonal;
+      b2[i] = s2 / diagonal;
+      b3[i] = s3 / diagonal;
+    }
+  }
+  for (; column < count; column += 1) baksub(n, a, indx, columns[column]);
+}
+
+// VM is assembled as [equation][source][station]. Elimination walks sources,
+// so transpose each active plane to make its inner loops contiguous. Swapping
+// back preserves the public VM/VMF views, including on a singular-block exit.
+// Only storage order changes; every floating-point operation stays in order.
+function transposeMassCoefficients(vm, nsys) {
+  const stride = nsys + 1;
+  const plane = stride * stride;
+  for (let k = 1; k <= 3; k += 1) {
+    const base = k * plane;
+    for (let row = 1; row < nsys; row += 1) {
+      const rowBase = base + row * stride;
+      for (let col = row + 1; col <= nsys; col += 1) {
+        const a = rowBase + col;
+        const b = base + col * stride + row;
+        const value = vm[a];
+        vm[a] = vm[b];
+        vm[b] = value;
+      }
+    }
+  }
+}
+
 // Custom solver for coupled viscous-inviscid Newton system (XFOIL BLSOLV).
 // Solves the block-tridiagonal BL system:
 //   A d = R - dRe * S
 // where A/B/Z are 3x3 blocks and d is the Newton delta for (Ctau, Theta, m).
 function blsolv(ctx) {
+  if (!(ctx.VAF && ctx.VBF && ctx.VMF && ctx.VDELF)) return blsolvImpl(ctx);
+  if (tryWasmBlsolv(ctx)) return true;
+  const vm = ctx.VMF;
+  const nsys = ctx.NSYS;
+  transposeMassCoefficients(vm, nsys);
+  try {
+    return blsolvImpl(ctx);
+  } finally {
+    transposeMassCoefficients(vm, nsys);
+  }
+}
+
+// Keep the hot row updates separate from station setup so these small kernels
+// can warm up independently. Source and destination rows are disjoint here.
+// Four consecutive entries share index calculations and loop control; each
+// multiply/subtract stays in order, and the scalar tail leaves padding alone.
+function subtractScaledRows1(matrix, source, dest1, factor1, count) {
+  let j = 0;
+  for (; j + 3 < count; j += 4) {
+    const value0 = matrix[source + j];
+    matrix[dest1 + j] -= factor1 * value0;
+    const value1 = matrix[source + j + 1];
+    matrix[dest1 + j + 1] -= factor1 * value1;
+    const value2 = matrix[source + j + 2];
+    matrix[dest1 + j + 2] -= factor1 * value2;
+    const value3 = matrix[source + j + 3];
+    matrix[dest1 + j + 3] -= factor1 * value3;
+  }
+  for (; j < count; j += 1) {
+    const value = matrix[source + j];
+    matrix[dest1 + j] -= factor1 * value;
+  }
+}
+
+function subtractScaledRows2(matrix, source, dest1, dest2, factor1, factor2, count) {
+  let j = 0;
+  for (; j + 3 < count; j += 4) {
+    const value0 = matrix[source + j];
+    matrix[dest1 + j] -= factor1 * value0;
+    matrix[dest2 + j] -= factor2 * value0;
+    const value1 = matrix[source + j + 1];
+    matrix[dest1 + j + 1] -= factor1 * value1;
+    matrix[dest2 + j + 1] -= factor2 * value1;
+    const value2 = matrix[source + j + 2];
+    matrix[dest1 + j + 2] -= factor1 * value2;
+    matrix[dest2 + j + 2] -= factor2 * value2;
+    const value3 = matrix[source + j + 3];
+    matrix[dest1 + j + 3] -= factor1 * value3;
+    matrix[dest2 + j + 3] -= factor2 * value3;
+  }
+  for (; j < count; j += 1) {
+    const value = matrix[source + j];
+    matrix[dest1 + j] -= factor1 * value;
+    matrix[dest2 + j] -= factor2 * value;
+  }
+}
+
+function subtractScaledRows3(matrix, source, dest1, dest2, dest3, factor1, factor2, factor3, count) {
+  let j = 0;
+  for (; j + 3 < count; j += 4) {
+    const value0 = matrix[source + j];
+    matrix[dest1 + j] -= factor1 * value0;
+    matrix[dest2 + j] -= factor2 * value0;
+    matrix[dest3 + j] -= factor3 * value0;
+    const value1 = matrix[source + j + 1];
+    matrix[dest1 + j + 1] -= factor1 * value1;
+    matrix[dest2 + j + 1] -= factor2 * value1;
+    matrix[dest3 + j + 1] -= factor3 * value1;
+    const value2 = matrix[source + j + 2];
+    matrix[dest1 + j + 2] -= factor1 * value2;
+    matrix[dest2 + j + 2] -= factor2 * value2;
+    matrix[dest3 + j + 2] -= factor3 * value2;
+    const value3 = matrix[source + j + 3];
+    matrix[dest1 + j + 3] -= factor1 * value3;
+    matrix[dest2 + j + 3] -= factor2 * value3;
+    matrix[dest3 + j + 3] -= factor3 * value3;
+  }
+  for (; j < count; j += 1) {
+    const value = matrix[source + j];
+    matrix[dest1 + j] -= factor1 * value;
+    matrix[dest2 + j] -= factor2 * value;
+    matrix[dest3 + j] -= factor3 * value;
+  }
+}
+
+function blsolvImpl(ctx) {
   const nsys = ctx.NSYS;
   const VAF = ctx.VAF;
   const VBF = ctx.VBF;
   const VMF = ctx.VMF;
   const VDELF = ctx.VDELF;
   if (VAF && VBF && VMF && VDELF) {
+    // The wrapper has transposed VMF to [equation][station][source].
     const ISYS = ctx.ISYS;
     const IBLTE = ctx.IBLTE;
     const ivte1 = ISYS[IBLTE[1]][1];
@@ -243,7 +457,7 @@ function blsolv(ctx) {
       let pivot = 1.0 / va11;
       VAF[va12Base + iv] *= pivot;
       for (let l = iv; l <= nsys; l += 1) {
-        VMF[vmBase1 + l * vmStride3 + iv] *= pivot;
+        VMF[vmBase1 + iv * vmStride3 + l] *= pivot;
       }
       VDELF[vdel11Base + iv] *= pivot;
       VDELF[vdel12Base + iv] *= pivot;
@@ -255,8 +469,8 @@ function blsolv(ctx) {
         const vtmp = VAF[vaBase + vStride3 + iv];
         VAF[vaBase + 2 * vStride3 + iv] -= vtmp * VAF[va12Base + iv];
         for (let l = iv; l <= nsys; l += 1) {
-          const vmkl = vmBase + l * vmStride3 + iv;
-          const vm1l = vmBase1 + l * vmStride3 + iv;
+          const vmkl = vmBase + iv * vmStride3 + l;
+          const vm1l = vmBase1 + iv * vmStride3 + l;
           VMF[vmkl] -= vtmp * VMF[vm1l];
         }
         VDELF[vdelBase + vStride3 + iv] -= vtmp * VDELF[vdel11Base + iv];
@@ -265,7 +479,7 @@ function blsolv(ctx) {
 
       pivot = 1.0 / VAF[va22Base + iv];
       for (let l = iv; l <= nsys; l += 1) {
-        VMF[vmBase2 + l * vmStride3 + iv] *= pivot;
+        VMF[vmBase2 + iv * vmStride3 + l] *= pivot;
       }
       VDELF[vdel21Base + iv] *= pivot;
       VDELF[vdel22Base + iv] *= pivot;
@@ -273,8 +487,8 @@ function blsolv(ctx) {
       {
         const vtmp = VAF[va32Base + iv];
         for (let l = iv; l <= nsys; l += 1) {
-          const vm3l = vmBase3 + l * vmStride3 + iv;
-          const vm2l = vmBase2 + l * vmStride3 + iv;
+          const vm3l = vmBase3 + iv * vmStride3 + l;
+          const vm2l = vmBase2 + iv * vmStride3 + l;
           VMF[vm3l] -= vtmp * VMF[vm2l];
         }
         VDELF[vdel31Base + iv] -= vtmp * VDELF[vdel21Base + iv];
@@ -283,7 +497,7 @@ function blsolv(ctx) {
 
       pivot = 1.0 / VMF[vmBase3 + iv * vmStride3 + iv];
       for (let l = ivp; l <= nsys; l += 1) {
-        VMF[vmBase3 + l * vmStride3 + iv] *= pivot;
+        VMF[vmBase3 + iv * vmStride3 + l] *= pivot;
       }
       VDELF[vdel31Base + iv] *= pivot;
       VDELF[vdel32Base + iv] *= pivot;
@@ -292,9 +506,9 @@ function blsolv(ctx) {
         const vtmp1 = VMF[vmBase1 + iv * vmStride3 + iv];
         const vtmp2 = VMF[vmBase2 + iv * vmStride3 + iv];
         for (let l = ivp; l <= nsys; l += 1) {
-          const vm1l = vmBase1 + l * vmStride3 + iv;
-          const vm2l = vmBase2 + l * vmStride3 + iv;
-          const vm3l = vmBase3 + l * vmStride3 + iv;
+          const vm1l = vmBase1 + iv * vmStride3 + l;
+          const vm2l = vmBase2 + iv * vmStride3 + l;
+          const vm3l = vmBase3 + iv * vmStride3 + l;
           VMF[vm1l] -= vtmp1 * VMF[vm3l];
           VMF[vm2l] -= vtmp2 * VMF[vm3l];
         }
@@ -307,8 +521,8 @@ function blsolv(ctx) {
       {
         const vtmp = VAF[va12Base + iv];
         for (let l = ivp; l <= nsys; l += 1) {
-          const vm1l = vmBase1 + l * vmStride3 + iv;
-          const vm2l = vmBase2 + l * vmStride3 + iv;
+          const vm1l = vmBase1 + iv * vmStride3 + l;
+          const vm2l = vmBase2 + iv * vmStride3 + l;
           VMF[vm1l] -= vtmp * VMF[vm2l];
         }
         VDELF[vdel11Base + iv] -= vtmp * VDELF[vdel21Base + iv];
@@ -323,12 +537,12 @@ function blsolv(ctx) {
         const vmBase = k === 1 ? vmBase1 : (k === 2 ? vmBase2 : vmBase3);
         const vtmp1 = VBF[vbBase + vStride3 + ivp];
         const vtmp2 = VBF[vbBase + 2 * vStride3 + ivp];
-        const vtmp3 = VMF[vmBase + iv * vmStride3 + ivp];
+        const vtmp3 = VMF[vmBase + ivp * vmStride3 + iv];
         for (let l = ivp; l <= nsys; l += 1) {
-          const vmkl = vmBase + l * vmStride3 + ivp;
-          const vm1l = vmBase1 + l * vmStride3 + iv;
-          const vm2l = vmBase2 + l * vmStride3 + iv;
-          const vm3l = vmBase3 + l * vmStride3 + iv;
+          const vmkl = vmBase + ivp * vmStride3 + l;
+          const vm1l = vmBase1 + iv * vmStride3 + l;
+          const vm2l = vmBase2 + iv * vmStride3 + l;
+          const vm3l = vmBase3 + iv * vmStride3 + l;
           VMF[vmkl] -= vtmp1 * VMF[vm1l]
             + vtmp2 * VMF[vm2l]
             + vtmp3 * VMF[vm3l];
@@ -349,9 +563,9 @@ function blsolv(ctx) {
           const vdelBase = k === 1 ? vdelBase1 : (k === 2 ? vdelBase2 : vdelBase3);
           const vmBase = k === 1 ? vmBase1 : (k === 2 ? vmBase2 : vmBase3);
           for (let l = ivp; l <= nsys; l += 1) {
-            const vmkl = vmBase + l * vmStride3 + ivz;
-            const vm1l = vmBase1 + l * vmStride3 + iv;
-            const vm2l = vmBase2 + l * vmStride3 + iv;
+            const vmkl = vmBase + ivz * vmStride3 + l;
+            const vm1l = vmBase1 + iv * vmStride3 + l;
+            const vm2l = vmBase2 + iv * vmStride3 + l;
             VMF[vmkl] -= vtmp1 * VMF[vm1l]
               + vtmp2 * VMF[vm2l];
           }
@@ -365,34 +579,53 @@ function blsolv(ctx) {
       if (ivp === nsys) continue;
 
       for (let kv = iv + 2; kv <= nsys; kv += 1) {
-        const vtmp1 = VMF[vmBase1 + iv * vmStride3 + kv];
-        const vtmp2 = VMF[vmBase2 + iv * vmStride3 + kv];
-        const vtmp3 = VMF[vmBase3 + iv * vmStride3 + kv];
+        const vtmp1 = VMF[vmBase1 + kv * vmStride3 + iv];
+        const vtmp2 = VMF[vmBase2 + kv * vmStride3 + iv];
+        const vtmp3 = VMF[vmBase3 + kv * vmStride3 + iv];
 
-        if (Math.abs(vtmp1) > vacc1) {
-          for (let l = ivp; l <= nsys; l += 1) {
-            const vm1l = vmBase1 + l * vmStride3 + kv;
-            const vm3l = vmBase3 + l * vmStride3 + iv;
-            VMF[vm1l] -= vtmp1 * VMF[vm3l];
-          }
-          VDELF[vdel11Base + kv] -= vtmp1 * VDELF[vdel31Base + iv];
-          VDELF[vdel12Base + kv] -= vtmp1 * VDELF[vdel32Base + iv];
-        }
-        if (Math.abs(vtmp2) > vacc2) {
-          for (let l = ivp; l <= nsys; l += 1) {
-            const vm2l = vmBase2 + l * vmStride3 + kv;
-            const vm3l = vmBase3 + l * vmStride3 + iv;
-            VMF[vm2l] -= vtmp2 * VMF[vm3l];
+        const active1 = Math.abs(vtmp1) > vacc1;
+        const active2 = Math.abs(vtmp2) > vacc2;
+        const active3 = Math.abs(vtmp3) > vacc3;
+        // These destination rows are independent and use the same source row.
+        // Fuse the common two/three-row updates without reordering arithmetic
+        // within any coefficient or changing the acceleration thresholds.
+        if (active2 && active3) {
+          if (active1) {
+            subtractScaledRows3(VMF, vmBase3 + iv * vmStride3 + ivp,
+              vmBase1 + kv * vmStride3 + ivp, vmBase2 + kv * vmStride3 + ivp, vmBase3 + kv * vmStride3 + ivp,
+              vtmp1, vtmp2, vtmp3, nsys - iv);
+            VDELF[vdel11Base + kv] -= vtmp1 * VDELF[vdel31Base + iv];
+            VDELF[vdel12Base + kv] -= vtmp1 * VDELF[vdel32Base + iv];
+          } else {
+            subtractScaledRows2(VMF, vmBase3 + iv * vmStride3 + ivp,
+              vmBase2 + kv * vmStride3 + ivp, vmBase3 + kv * vmStride3 + ivp,
+              vtmp2, vtmp3, nsys - iv);
           }
           VDELF[vdel21Base + kv] -= vtmp2 * VDELF[vdel31Base + iv];
           VDELF[vdel22Base + kv] -= vtmp2 * VDELF[vdel32Base + iv];
+          VDELF[vdel31Base + kv] -= vtmp3 * VDELF[vdel31Base + iv];
+          VDELF[vdel32Base + kv] -= vtmp3 * VDELF[vdel32Base + iv];
+          continue;
         }
-        if (Math.abs(vtmp3) > vacc3) {
-          for (let l = ivp; l <= nsys; l += 1) {
-            const vm3l = vmBase3 + l * vmStride3 + kv;
-            const vm3lIv = vmBase3 + l * vmStride3 + iv;
-            VMF[vm3l] -= vtmp3 * VMF[vm3lIv];
-          }
+
+        if (active1) {
+          subtractScaledRows1(VMF, vmBase3 + iv * vmStride3 + ivp,
+            vmBase1 + kv * vmStride3 + ivp,
+            vtmp1, nsys - iv);
+          VDELF[vdel11Base + kv] -= vtmp1 * VDELF[vdel31Base + iv];
+          VDELF[vdel12Base + kv] -= vtmp1 * VDELF[vdel32Base + iv];
+        }
+        if (active2) {
+          subtractScaledRows1(VMF, vmBase3 + iv * vmStride3 + ivp,
+            vmBase2 + kv * vmStride3 + ivp,
+            vtmp2, nsys - iv);
+          VDELF[vdel21Base + kv] -= vtmp2 * VDELF[vdel31Base + iv];
+          VDELF[vdel22Base + kv] -= vtmp2 * VDELF[vdel32Base + iv];
+        }
+        if (active3) {
+          subtractScaledRows1(VMF, vmBase3 + iv * vmStride3 + ivp,
+            vmBase3 + kv * vmStride3 + ivp,
+            vtmp3, nsys - iv);
           VDELF[vdel31Base + kv] -= vtmp3 * VDELF[vdel31Base + iv];
           VDELF[vdel32Base + kv] -= vtmp3 * VDELF[vdel32Base + iv];
         }
@@ -402,15 +635,15 @@ function blsolv(ctx) {
     for (let iv = nsys; iv >= 2; iv -= 1) {
       let vtmp = VDELF[vdel31Base + iv];
       for (let kv = iv - 1; kv >= 1; kv -= 1) {
-        VDELF[vdel11Base + kv] -= VMF[vmBase1 + iv * vmStride3 + kv] * vtmp;
-        VDELF[vdel21Base + kv] -= VMF[vmBase2 + iv * vmStride3 + kv] * vtmp;
-        VDELF[vdel31Base + kv] -= VMF[vmBase3 + iv * vmStride3 + kv] * vtmp;
+        VDELF[vdel11Base + kv] -= VMF[vmBase1 + kv * vmStride3 + iv] * vtmp;
+        VDELF[vdel21Base + kv] -= VMF[vmBase2 + kv * vmStride3 + iv] * vtmp;
+        VDELF[vdel31Base + kv] -= VMF[vmBase3 + kv * vmStride3 + iv] * vtmp;
       }
       vtmp = VDELF[vdel32Base + iv];
       for (let kv = iv - 1; kv >= 1; kv -= 1) {
-        VDELF[vdel12Base + kv] -= VMF[vmBase1 + iv * vmStride3 + kv] * vtmp;
-        VDELF[vdel22Base + kv] -= VMF[vmBase2 + iv * vmStride3 + kv] * vtmp;
-        VDELF[vdel32Base + kv] -= VMF[vmBase3 + iv * vmStride3 + kv] * vtmp;
+        VDELF[vdel12Base + kv] -= VMF[vmBase1 + kv * vmStride3 + iv] * vtmp;
+        VDELF[vdel22Base + kv] -= VMF[vmBase2 + kv * vmStride3 + iv] * vtmp;
+        VDELF[vdel32Base + kv] -= VMF[vmBase3 + kv * vmStride3 + iv] * vtmp;
       }
     }
 
@@ -633,4 +866,4 @@ function blsolv(ctx) {
   return true;
 }
 
-export { gauss, ludcmp, baksub, blsolv };
+export { gauss, gauss1, ludcmp, baksub, baksubMany, blsolv };

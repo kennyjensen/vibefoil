@@ -117,23 +117,318 @@ function ensureCtx(ctx) {
   ctx._ENSURED = true;
 }
 
+// Copy the fixed COMMON layout directly to avoid per-field name lookups.
+// Keep offsets/order aligned with XBL.INC; bl_com.test.js checks every field.
+// The name tables above are still used for one-time context initialization.
 // Copy COM common-block data into local variables for computations.
 function syncComToVars(ctx, which) {
   ensureCtx(ctx);
-  const names = which === 1 ? COM1_NAMES : COM2_NAMES;
-  const src = which === 1 ? ctx.COM1 : ctx.COM2;
-  for (let i = 1; i <= NCOM; i += 1) {
-    ctx[names[i]] = src[i];
+  if (which === 1) {
+    const data = ctx.COM1;
+    ctx.X1 = data[1];
+    ctx.U1 = data[2];
+    ctx.T1 = data[3];
+    ctx.D1 = data[4];
+    ctx.S1 = data[5];
+    ctx.AMPL1 = data[6];
+    ctx.U1_UEI = data[7];
+    ctx.U1_MS = data[8];
+    ctx.DW1 = data[9];
+    ctx.H1 = data[10];
+    ctx.H1_T1 = data[11];
+    ctx.H1_D1 = data[12];
+    ctx.M1 = data[13];
+    ctx.M1_U1 = data[14];
+    ctx.M1_MS = data[15];
+    ctx.R1 = data[16];
+    ctx.R1_U1 = data[17];
+    ctx.R1_MS = data[18];
+    ctx.V1 = data[19];
+    ctx.V1_U1 = data[20];
+    ctx.V1_MS = data[21];
+    ctx.V1_RE = data[22];
+    ctx.HK1 = data[23];
+    ctx.HK1_U1 = data[24];
+    ctx.HK1_T1 = data[25];
+    ctx.HK1_D1 = data[26];
+    ctx.HK1_MS = data[27];
+    ctx.HS1 = data[28];
+    ctx.HS1_U1 = data[29];
+    ctx.HS1_T1 = data[30];
+    ctx.HS1_D1 = data[31];
+    ctx.HS1_MS = data[32];
+    ctx.HS1_RE = data[33];
+    ctx.HC1 = data[34];
+    ctx.HC1_U1 = data[35];
+    ctx.HC1_T1 = data[36];
+    ctx.HC1_D1 = data[37];
+    ctx.HC1_MS = data[38];
+    ctx.RT1 = data[39];
+    ctx.RT1_U1 = data[40];
+    ctx.RT1_T1 = data[41];
+    ctx.RT1_MS = data[42];
+    ctx.RT1_RE = data[43];
+    ctx.CF1 = data[44];
+    ctx.CF1_U1 = data[45];
+    ctx.CF1_T1 = data[46];
+    ctx.CF1_D1 = data[47];
+    ctx.CF1_MS = data[48];
+    ctx.CF1_RE = data[49];
+    ctx.DI1 = data[50];
+    ctx.DI1_U1 = data[51];
+    ctx.DI1_T1 = data[52];
+    ctx.DI1_D1 = data[53];
+    ctx.DI1_S1 = data[54];
+    ctx.DI1_MS = data[55];
+    ctx.DI1_RE = data[56];
+    ctx.US1 = data[57];
+    ctx.US1_U1 = data[58];
+    ctx.US1_T1 = data[59];
+    ctx.US1_D1 = data[60];
+    ctx.US1_MS = data[61];
+    ctx.US1_RE = data[62];
+    ctx.CQ1 = data[63];
+    ctx.CQ1_U1 = data[64];
+    ctx.CQ1_T1 = data[65];
+    ctx.CQ1_D1 = data[66];
+    ctx.CQ1_MS = data[67];
+    ctx.CQ1_RE = data[68];
+    ctx.DE1 = data[69];
+    ctx.DE1_U1 = data[70];
+    ctx.DE1_T1 = data[71];
+    ctx.DE1_D1 = data[72];
+    ctx.DE1_MS = data[73];
+  } else {
+    const data = ctx.COM2;
+    ctx.X2 = data[1];
+    ctx.U2 = data[2];
+    ctx.T2 = data[3];
+    ctx.D2 = data[4];
+    ctx.S2 = data[5];
+    ctx.AMPL2 = data[6];
+    ctx.U2_UEI = data[7];
+    ctx.U2_MS = data[8];
+    ctx.DW2 = data[9];
+    ctx.H2 = data[10];
+    ctx.H2_T2 = data[11];
+    ctx.H2_D2 = data[12];
+    ctx.M2 = data[13];
+    ctx.M2_U2 = data[14];
+    ctx.M2_MS = data[15];
+    ctx.R2 = data[16];
+    ctx.R2_U2 = data[17];
+    ctx.R2_MS = data[18];
+    ctx.V2 = data[19];
+    ctx.V2_U2 = data[20];
+    ctx.V2_MS = data[21];
+    ctx.V2_RE = data[22];
+    ctx.HK2 = data[23];
+    ctx.HK2_U2 = data[24];
+    ctx.HK2_T2 = data[25];
+    ctx.HK2_D2 = data[26];
+    ctx.HK2_MS = data[27];
+    ctx.HS2 = data[28];
+    ctx.HS2_U2 = data[29];
+    ctx.HS2_T2 = data[30];
+    ctx.HS2_D2 = data[31];
+    ctx.HS2_MS = data[32];
+    ctx.HS2_RE = data[33];
+    ctx.HC2 = data[34];
+    ctx.HC2_U2 = data[35];
+    ctx.HC2_T2 = data[36];
+    ctx.HC2_D2 = data[37];
+    ctx.HC2_MS = data[38];
+    ctx.RT2 = data[39];
+    ctx.RT2_U2 = data[40];
+    ctx.RT2_T2 = data[41];
+    ctx.RT2_MS = data[42];
+    ctx.RT2_RE = data[43];
+    ctx.CF2 = data[44];
+    ctx.CF2_U2 = data[45];
+    ctx.CF2_T2 = data[46];
+    ctx.CF2_D2 = data[47];
+    ctx.CF2_MS = data[48];
+    ctx.CF2_RE = data[49];
+    ctx.DI2 = data[50];
+    ctx.DI2_U2 = data[51];
+    ctx.DI2_T2 = data[52];
+    ctx.DI2_D2 = data[53];
+    ctx.DI2_S2 = data[54];
+    ctx.DI2_MS = data[55];
+    ctx.DI2_RE = data[56];
+    ctx.US2 = data[57];
+    ctx.US2_U2 = data[58];
+    ctx.US2_T2 = data[59];
+    ctx.US2_D2 = data[60];
+    ctx.US2_MS = data[61];
+    ctx.US2_RE = data[62];
+    ctx.CQ2 = data[63];
+    ctx.CQ2_U2 = data[64];
+    ctx.CQ2_T2 = data[65];
+    ctx.CQ2_D2 = data[66];
+    ctx.CQ2_MS = data[67];
+    ctx.CQ2_RE = data[68];
+    ctx.DE2 = data[69];
+    ctx.DE2_U2 = data[70];
+    ctx.DE2_T2 = data[71];
+    ctx.DE2_D2 = data[72];
+    ctx.DE2_MS = data[73];
   }
 }
 
 // Copy local variables back into COM common-block storage.
 function syncVarsToCom(ctx, which) {
   ensureCtx(ctx);
-  const names = which === 1 ? COM1_NAMES : COM2_NAMES;
-  const dst = which === 1 ? ctx.COM1 : ctx.COM2;
-  for (let i = 1; i <= NCOM; i += 1) {
-    dst[i] = ctx[names[i]];
+  if (which === 1) {
+    const data = ctx.COM1;
+    data[1] = ctx.X1;
+    data[2] = ctx.U1;
+    data[3] = ctx.T1;
+    data[4] = ctx.D1;
+    data[5] = ctx.S1;
+    data[6] = ctx.AMPL1;
+    data[7] = ctx.U1_UEI;
+    data[8] = ctx.U1_MS;
+    data[9] = ctx.DW1;
+    data[10] = ctx.H1;
+    data[11] = ctx.H1_T1;
+    data[12] = ctx.H1_D1;
+    data[13] = ctx.M1;
+    data[14] = ctx.M1_U1;
+    data[15] = ctx.M1_MS;
+    data[16] = ctx.R1;
+    data[17] = ctx.R1_U1;
+    data[18] = ctx.R1_MS;
+    data[19] = ctx.V1;
+    data[20] = ctx.V1_U1;
+    data[21] = ctx.V1_MS;
+    data[22] = ctx.V1_RE;
+    data[23] = ctx.HK1;
+    data[24] = ctx.HK1_U1;
+    data[25] = ctx.HK1_T1;
+    data[26] = ctx.HK1_D1;
+    data[27] = ctx.HK1_MS;
+    data[28] = ctx.HS1;
+    data[29] = ctx.HS1_U1;
+    data[30] = ctx.HS1_T1;
+    data[31] = ctx.HS1_D1;
+    data[32] = ctx.HS1_MS;
+    data[33] = ctx.HS1_RE;
+    data[34] = ctx.HC1;
+    data[35] = ctx.HC1_U1;
+    data[36] = ctx.HC1_T1;
+    data[37] = ctx.HC1_D1;
+    data[38] = ctx.HC1_MS;
+    data[39] = ctx.RT1;
+    data[40] = ctx.RT1_U1;
+    data[41] = ctx.RT1_T1;
+    data[42] = ctx.RT1_MS;
+    data[43] = ctx.RT1_RE;
+    data[44] = ctx.CF1;
+    data[45] = ctx.CF1_U1;
+    data[46] = ctx.CF1_T1;
+    data[47] = ctx.CF1_D1;
+    data[48] = ctx.CF1_MS;
+    data[49] = ctx.CF1_RE;
+    data[50] = ctx.DI1;
+    data[51] = ctx.DI1_U1;
+    data[52] = ctx.DI1_T1;
+    data[53] = ctx.DI1_D1;
+    data[54] = ctx.DI1_S1;
+    data[55] = ctx.DI1_MS;
+    data[56] = ctx.DI1_RE;
+    data[57] = ctx.US1;
+    data[58] = ctx.US1_U1;
+    data[59] = ctx.US1_T1;
+    data[60] = ctx.US1_D1;
+    data[61] = ctx.US1_MS;
+    data[62] = ctx.US1_RE;
+    data[63] = ctx.CQ1;
+    data[64] = ctx.CQ1_U1;
+    data[65] = ctx.CQ1_T1;
+    data[66] = ctx.CQ1_D1;
+    data[67] = ctx.CQ1_MS;
+    data[68] = ctx.CQ1_RE;
+    data[69] = ctx.DE1;
+    data[70] = ctx.DE1_U1;
+    data[71] = ctx.DE1_T1;
+    data[72] = ctx.DE1_D1;
+    data[73] = ctx.DE1_MS;
+  } else {
+    const data = ctx.COM2;
+    data[1] = ctx.X2;
+    data[2] = ctx.U2;
+    data[3] = ctx.T2;
+    data[4] = ctx.D2;
+    data[5] = ctx.S2;
+    data[6] = ctx.AMPL2;
+    data[7] = ctx.U2_UEI;
+    data[8] = ctx.U2_MS;
+    data[9] = ctx.DW2;
+    data[10] = ctx.H2;
+    data[11] = ctx.H2_T2;
+    data[12] = ctx.H2_D2;
+    data[13] = ctx.M2;
+    data[14] = ctx.M2_U2;
+    data[15] = ctx.M2_MS;
+    data[16] = ctx.R2;
+    data[17] = ctx.R2_U2;
+    data[18] = ctx.R2_MS;
+    data[19] = ctx.V2;
+    data[20] = ctx.V2_U2;
+    data[21] = ctx.V2_MS;
+    data[22] = ctx.V2_RE;
+    data[23] = ctx.HK2;
+    data[24] = ctx.HK2_U2;
+    data[25] = ctx.HK2_T2;
+    data[26] = ctx.HK2_D2;
+    data[27] = ctx.HK2_MS;
+    data[28] = ctx.HS2;
+    data[29] = ctx.HS2_U2;
+    data[30] = ctx.HS2_T2;
+    data[31] = ctx.HS2_D2;
+    data[32] = ctx.HS2_MS;
+    data[33] = ctx.HS2_RE;
+    data[34] = ctx.HC2;
+    data[35] = ctx.HC2_U2;
+    data[36] = ctx.HC2_T2;
+    data[37] = ctx.HC2_D2;
+    data[38] = ctx.HC2_MS;
+    data[39] = ctx.RT2;
+    data[40] = ctx.RT2_U2;
+    data[41] = ctx.RT2_T2;
+    data[42] = ctx.RT2_MS;
+    data[43] = ctx.RT2_RE;
+    data[44] = ctx.CF2;
+    data[45] = ctx.CF2_U2;
+    data[46] = ctx.CF2_T2;
+    data[47] = ctx.CF2_D2;
+    data[48] = ctx.CF2_MS;
+    data[49] = ctx.CF2_RE;
+    data[50] = ctx.DI2;
+    data[51] = ctx.DI2_U2;
+    data[52] = ctx.DI2_T2;
+    data[53] = ctx.DI2_D2;
+    data[54] = ctx.DI2_S2;
+    data[55] = ctx.DI2_MS;
+    data[56] = ctx.DI2_RE;
+    data[57] = ctx.US2;
+    data[58] = ctx.US2_U2;
+    data[59] = ctx.US2_T2;
+    data[60] = ctx.US2_D2;
+    data[61] = ctx.US2_MS;
+    data[62] = ctx.US2_RE;
+    data[63] = ctx.CQ2;
+    data[64] = ctx.CQ2_U2;
+    data[65] = ctx.CQ2_T2;
+    data[66] = ctx.CQ2_D2;
+    data[67] = ctx.CQ2_MS;
+    data[68] = ctx.CQ2_RE;
+    data[69] = ctx.DE2;
+    data[70] = ctx.DE2_U2;
+    data[71] = ctx.DE2_T2;
+    data[72] = ctx.DE2_D2;
+    data[73] = ctx.DE2_MS;
   }
 }
 
@@ -361,8 +656,8 @@ function trchek2(ctx) {
     ctx.T2 = tt;
     ctx.D2 = dt;
     ctx.U2 = ut;
-    syncVarsToCom(ctx, 2);
 
+    // BLKIN reads these variables directly and saves the completed COM2 state.
     blkin(ctx);
 
     hkt = ctx.HK2;
@@ -584,8 +879,7 @@ function blsys(ctxIn) {
     blmid(1, ctx);
   }
 
-  syncVarsToCom(ctx, 2);
-
+  // BLVAR already saved COM2; BLMID changes only station-1 and midpoint fields.
   // Similarity station: copy COM2 into COM1.
   if (simi) {
     for (let icom = 1; icom <= NCOM; icom += 1) {
@@ -674,11 +968,20 @@ function tesys(cte, tte, dte, ctxIn) {
 
 // Predictor step for BL marching (BLPRV).
 function blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctxIn) {
-  // Fortran comments (BLPRV) highlight:
-  // - Predictor step uses previous-station values.
   const ctx = ctxIn || this;
-  ensureCtx(ctx);
+  predictBlStation(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
+  syncVarsToCom(ctx, 2);
+}
 
+// Marching can defer the predictor snapshot until BLKIN completes it.
+function blprvKin(xsi, ami, cti, thi, dsi, dswaki, uei, ctxIn) {
+  const ctx = ctxIn || this;
+  predictBlStation(xsi, ami, cti, thi, dsi, dswaki, uei, ctx);
+  blkin(ctx);
+}
+
+function predictBlStation(xsi, ami, cti, thi, dsi, dswaki, uei, ctx) {
+  ensureCtx(ctx);
   // Predictor: populate station-2 variables from inputs.
   ctx.X2 = xsi;
   ctx.AMPL2 = ami;
@@ -692,8 +995,6 @@ function blprv(xsi, ami, cti, thi, dsi, dswaki, uei, ctxIn) {
     / (1.0 - ctx.TKBL * (uei / ctx.QINFBL) ** 2);
   ctx.U2_MS = (ctx.U2 * (uei / ctx.QINFBL) ** 2 - uei) * ctx.TKBL_MS
     / (1.0 - ctx.TKBL * (uei / ctx.QINFBL) ** 2);
-
-  syncVarsToCom(ctx, 2);
 }
 
 // Initialize BL profiles at the leading edge (BLKIN).
@@ -1272,8 +1573,8 @@ function trdif(ctxIn) {
 
   ctx.AMPL2 = ctx.AMCRIT;
   ctx.S2 = 0.0;
-  syncVarsToCom(ctx, 2);
 
+  // BLKIN replaces the full COM2 snapshot before anything consumes it.
   blkin(ctx);
   blvar(1, ctx);
   blmid(1, ctx);
@@ -2234,6 +2535,7 @@ export {
   blsys,
   tesys,
   blprv,
+  blprvKin,
   blkin,
   blvar,
   blmid,

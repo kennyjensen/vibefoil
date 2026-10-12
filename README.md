@@ -26,6 +26,154 @@ The solver tracks the checked-in XFOIL 6.996 source. See the
 for corrections, Fortran/native/WASM comparisons, precision settings, tolerances,
 and the limits of feature equivalence.
 
+`npm run test:canonical` compiles the checked-in original Fortran XFOIL and
+compares it with the actual website worker, using its automatic WebAssembly
+acceleration and its forced JavaScript fallback. It requires Python 3, Node with
+WebAssembly SIMD, and GNU Fortran (`gfortran` on PATH). No Python packages,
+network downloads, browser, or Emscripten installation are required. For a compiler outside PATH, use
+`npm run test:canonical -- --compiler /path/to/gfortran`.
+
+The fixed grid in `tests/canonical/cases.json` contains 615 operating points:
+
+| Parameter | Values |
+| --- | --- |
+| Airfoils | NACA 0012, 2412, 4412, 23012, and the upstream E387 coordinate file |
+| Viscous angle of attack | −4°, 0°, 4°, 8° |
+| Mach | 0, 0.15, 0.3 |
+| Reynolds number | 500,000; 1,000,000; 5,000,000 |
+| Ncrit | 5, 9, 12 |
+| Inviscid angle of attack | −8°, −4°, 0°, 4°, 8° at all three Mach numbers |
+
+Every combination is run: 540 viscous and 75 inviscid points, or 1,230 worker
+comparisons. Each reference point starts in a fresh Fortran process. Worker
+points disable solution reuse. NACA profiles use the normal 240-panel defaults;
+E387 retains its original nodes, matching XFOIL's LOAD command and the website.
+The iteration limit is 100. Both implementations must reach `RMSBL < 1e-8`;
+this is the canonical test's stopping threshold, distinct from the output
+comparison tolerances below. The website's normal default remains `1e-4`.
+Unconverged points are recorded and still compared, including their convergence
+flags. They do not establish the accuracy of a converged aerodynamic solution.
+
+The build extracts complete original routines. Its one numerical configuration
+change replaces VISCAL's `EPS1 = 1e-4` stopping constant with the manifest's
+`residual_tolerance` in a generated build copy; the checked-in Fortran is
+untouched. The replacement is guarded against source drift and recorded in
+`metadata.json`. The equations and update steps remain original XFOIL.
+A small driver replaces interactive input and plot initialization.
+Fortran REAL and DOUBLE PRECISION both use 64 bits, matching JavaScript Number;
+fast math and fused multiply-add are disabled. The manifest fingerprints the
+original source and E387 input, so changes require an explicit reference review.
+
+The gate compares lift, moment, total drag, skin-friction drag, pressure drag,
+transition locations and flags, panel geometry, pressure and edge velocities,
+and active surface/wake boundary-layer arrays. `CDP_SURFACE` is the pressure
+integral returned by CLCALC; `CDP` is the polar quantity `CD - CDF`. The two are
+recorded separately. Coefficients are nondimensional; angles are in degrees,
+and geometry follows the input coordinate scale (unit chord for NACA profiles).
+
+Discrete flags, counts and indices must agree exactly. Finite numeric outputs
+use `abs(actual - reference) <= atol + rtol * abs(reference)`:
+
+| Quantity | Absolute tolerance | Relative tolerance |
+| --- | ---: | ---: |
+| Surface coordinates | 2e-12 | 2e-12 |
+| Lift, moment, surface pressure integral | 1e-8 | 1e-8 |
+| Total, friction and residual pressure drag | 1e-9 | 1e-8 |
+| Pressure, velocity and other distributions | 1e-8 | 1e-7 |
+| Boundary-layer thickness, mass, stress and dissipation | 1e-10 | 1e-7 |
+| Transition location and operating conditions | 1e-8 | 1e-8 |
+
+These are strict comparison budgets, not certified rounding-error estimates.
+Different elementary-function rounding can be amplified by the coupled Newton
+solve. Each backend comparison receives one of four classifications:
+
+- `match`: the complete result satisfies the strict comparisons above.
+- `reference_unstable`: original Fortran itself exceeds those same bounds or
+  changes convergence/discrete results when just one input moves by one adjacent
+  binary64 value. The runner probes nonzero operating inputs, then, if needed,
+  NACA trailing-edge panel spacing or one interior database coordinate. It keeps
+  the original result, every probe, and all differences as evidence.
+- `reference_invalid`: original Fortran does not converge and raises an IEEE
+  invalid-operation, overflow, or divide-by-zero flag during the solve. The
+  driver observes these flags without changing rounding or exception handling.
+  Underflow and inexact flags do not invalidate a reference.
+- `mismatch`: a difference without sufficient reference evidence, or a failed
+  safeguard. This remains a hard failure.
+
+Both reference exception categories require the website to match a fresh,
+arithmetic-clean first viscous iteration under the original strict bounds.
+Final surface geometry, panel counts and operating conditions must still match.
+No case-ID exclusion list or enlarged tolerances are used. Raw failed comparisons
+remain failed in the artifacts; the separate classification means the final
+solution is **not validated**, not that it numerically matches XFOIL. A matching
+unconverged iterate also does not establish a valid aerodynamic solution.
+
+By default, the gate succeeds only after completing every selected comparison
+with no `mismatch`; unstable and invalid references have separate counters and
+case lists. Use `--strict-reference` to fail on those categories as well.
+With strict mode, add `--diagnose-roundoff` to retain sensitivity probes;
+otherwise strict mode avoids the extra sensitivity runs.
+
+Each run creates `artifacts/canonical/<timestamp>/` with `polar.csv`, compressed
+full-precision results and solver logs in `results.jsonl.gz`, `summary.json`,
+and `metadata.json` containing the manifest, compiler/runtime versions, build
+flags and input hashes. The summary records completion separately from success
+and numerical matches separately from reference exceptions. Missing tools,
+crashes, timeouts, incomplete runs and unexplained numerical/nonfinite differences
+fail the gate. Generated artifacts are ignored by Git.
+
+Use `npm run test:canonical:quick` for a fixed 25-point diagnostic subset,
+`npm run test:canonical -- --case 'naca0012-*'` to investigate a profile, or
+`--backend javascript` / `--backend auto` to isolate a backend. Filtered or
+single-backend runs are explicitly marked as partial checks. Run
+`npm run test:canonical:unit` to test the comparator, source fingerprints,
+coverage, worker timeouts and incomplete-run handling without compiling XFOIL.
+Sensitivity evidence is stored in `reference_sensitivity`, guarded early results
+in `first_iteration`, and IEEE flags in the Fortran output's `diagnostics`.
+
+The full `1e-8` stopping-threshold run on 2026-10-12, with Node 24.16.0 and
+GNU Fortran 15.2.0 on arm64, completed all 615 points on both backends:
+
+| Classification per backend | Earlier `1e-4` run | Current `1e-8` run |
+| --- | ---: | ---: |
+| Strict match | 578 | 592 |
+| Proven unstable reference | 31 | 17 |
+| Invalid reference | 6 | 6 |
+| Unexplained mismatch | 0 | 0 |
+
+All 14 previously converged-but-mismatching points now match strictly, without
+changing the output comparison tolerances. All 75 inviscid points matched.
+The website backends produced identical result data throughout. The 592 matches
+comprise 494 converged viscous points, 75 inviscid points, and 23 matching
+unconverged iterates. Reference exceptions and matching unconverged iterates
+do not establish valid final aerodynamic solutions.
+Strict-mode controls reject both exception categories. The earlier audit also
+corrected inviscid coefficient integration to use the requested Mach number;
+five original-Fortran fixtures cover that regression.
+
+The remaining 17 unstable points all use E387's 61 raw surface nodes: both
+implementations fail to converge in 13, only original XFOIL fails in two, and
+only the website fails in two. Their iteration histories show oscillation or
+divergence, often with strong Newton-step damping. In a separate diagnostic,
+original XFOIL redistributed the E387 spline into denser surface nodes; both
+implementations then loaded exactly the same exported coordinates. At the same
+`1e-8` threshold and 100-iteration limit, 160 nodes made 11 of these 17 points
+converge and match strictly, 240 nodes made 15 match, and 320 nodes made 13 match.
+The canonical grid retains the raw coordinates, so those gains are not included
+in the table above.
+
+This supports panel resolution and placement as a major contributor, consistent
+with XFOIL's documented sensitivity to underresolved transition and separation
+bubbles. More nodes alone are not a universal fix. Among the 13 points where
+original XFOIL converged on both 240- and 320-node grids, drag changed by up to
+3.9%, so solver convergence does not establish mesh independence. Starting from
+a nearby converged angle rescued one of the two remaining original-XFOIL
+failures at 240 nodes; disabling its matrix-acceleration approximation alone
+rescued neither. These are diagnostic results, not changes to website defaults
+or a validated general retry policy. See the upstream
+[XFOIL documentation](https://web.mit.edu/drela/Public/web/xfoil/xfoil_doc.txt)
+for panel-resolution and convergence guidance.
+
 ## Performance checks
 
 Run `npm run benchmark` to time the browser worker's calculation path in Node.

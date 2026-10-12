@@ -16,6 +16,22 @@ python3 -m unittest python.tests.test_compare_blsolv_strict
 
 ## XFOIL numerical audit
 
+The broader website-worker comparison is available separately as
+`npm run test:canonical`. It compiles original Fortran XFOIL and covers five
+airfoils at 615 operating points, including Mach, Reynolds, Ncrit and angle
+variations, on both website solver backends. Stable cases retain strict bounds;
+the canonical run sets `RMSBL < 1e-8` in both implementations. The Fortran build
+changes only VISCAL's stopping constant in its generated copy, leaving the
+checked-in source and the focused tests below at the original `1e-4` threshold.
+Proven reference sensitivity and unconverged references with invalid arithmetic
+are reported separately, with fresh first-iteration and fixed-input safeguards.
+Those categories do not establish numerical parity; `--strict-reference` makes
+them hard failures too. See the root
+[numerical verification instructions](../../README.md#numerical-verification)
+for the grid, precision, tolerances, commands and generated data. The existing
+four-point tests below remain useful focused regressions, but do not establish
+parity over this broader grid.
+
 The numerical reference is the XFOIL 6.996 source checked into
 `third_party/Xfoil` by commit `32ff3c2`, including the September 2020 and January
 2023 addenda. The tests compile that source directly, or extract complete

@@ -536,7 +536,7 @@ function pangen(xb, yb, nb, params = {}) {
 
 function computeCoefficients(nb, ctxPanel, blCtx, alphaRad, qinvA, viscous) {
   const qinf = viscous && Number.isFinite(blCtx?.QINF) ? blCtx.QINF : (ctxPanel.QINF ?? 1.0);
-  const minf = viscous ? blCtx?.MINF ?? 0.0 : 0.0;
+  const minf = viscous ? blCtx?.MINF ?? 0.0 : (ctxPanel.MINF ?? 0.0);
   const alfa = viscous && Number.isFinite(blCtx?.ALFA) ? blCtx.ALFA : alphaRad;
 
   const gamA = viscous

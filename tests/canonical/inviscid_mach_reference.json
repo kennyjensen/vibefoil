@@ -1,0 +1,117 @@
+{
+  "description": "Original double-precision XFOIL output for a fast inviscid Mach regression. The canonical suite recompiles the oracle; this fixture does not replace it.",
+  "reference": {
+    "name": "XFOIL 6.996",
+    "source_commit": "32ff3c2",
+    "source_sha256": "62f5b1447a4a6855c4c00fc786e10d7ba43ef01faab62f03bb6b898c5f624225"
+  },
+  "flags": [
+    "-O2",
+    "-fdefault-real-8",
+    "-fdefault-double-8",
+    "-ffp-contract=off"
+  ],
+  "records": [
+    {
+      "case": {
+        "foil": {
+          "id": "naca0012",
+          "naca": 12
+        },
+        "alpha": 4,
+        "mach": 0.3,
+        "reynolds": 1000000,
+        "ncrit": 9,
+        "viscous": false,
+        "iterations": 0,
+        "id": "naca0012-inv-a4-m0.3-re1e+06-n9"
+      },
+      "coefficients": {
+        "CL": 0.5150331179846384,
+        "CM": -0.005322246590349734,
+        "CDP_SURFACE": -0.0029666195737710686
+      }
+    },
+    {
+      "case": {
+        "foil": {
+          "id": "naca2412",
+          "naca": 2412
+        },
+        "alpha": 4,
+        "mach": 0.3,
+        "reynolds": 1000000,
+        "ncrit": 9,
+        "viscous": false,
+        "iterations": 0,
+        "id": "naca2412-inv-a4-m0.3-re1e+06-n9"
+      },
+      "coefficients": {
+        "CL": 0.7862966285981734,
+        "CM": -0.0645143397908656,
+        "CDP_SURFACE": -0.003097665164405785
+      }
+    },
+    {
+      "case": {
+        "foil": {
+          "id": "naca4412",
+          "naca": 4412
+        },
+        "alpha": 4,
+        "mach": 0.3,
+        "reynolds": 1000000,
+        "ncrit": 9,
+        "viscous": false,
+        "iterations": 0,
+        "id": "naca4412-inv-a4-m0.3-re1e+06-n9"
+      },
+      "coefficients": {
+        "CL": 1.0577631663841596,
+        "CM": -0.1240426154984992,
+        "CDP_SURFACE": -0.0033364253122661804
+      }
+    },
+    {
+      "case": {
+        "foil": {
+          "id": "naca23012",
+          "naca": 23012
+        },
+        "alpha": 4,
+        "mach": 0.3,
+        "reynolds": 1000000,
+        "ncrit": 9,
+        "viscous": false,
+        "iterations": 0,
+        "id": "naca23012-inv-a4-m0.3-re1e+06-n9"
+      },
+      "coefficients": {
+        "CL": 0.662498419595354,
+        "CM": -0.017860791792178494,
+        "CDP_SURFACE": -0.0028713069842999372
+      }
+    },
+    {
+      "case": {
+        "foil": {
+          "id": "e387",
+          "coordinates": "third_party/Xfoil/runs/e387.dat",
+          "sha256": "98aa8a4076edbfd1c52e3a2d0cf17b1ef1cbc51ae5da3ab8e5361047b89ee523"
+        },
+        "alpha": 4,
+        "mach": 0.3,
+        "reynolds": 1000000,
+        "ncrit": 9,
+        "viscous": false,
+        "iterations": 0,
+        "id": "e387-inv-a4-m0.3-re1e+06-n9"
+      },
+      "coefficients": {
+        "CL": 0.9379252887479307,
+        "CM": -0.09243466849163944,
+        "CDP_SURFACE": -0.0038713560908056476
+      }
+    }
+  ]
+}

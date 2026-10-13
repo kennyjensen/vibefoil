@@ -16,6 +16,14 @@ function createMatrix1(rows, cols) {
   return mat;
 }
 
+// Same 1-based row interface, with disjoint views into one Float64 allocation.
+// Boundary-layer state can then cross the WASM boundary one matrix at a time.
+function createMatrix1Flat(rows, cols) {
+  const stride = cols + 1;
+  const data = new Float64Array((rows + 1) * stride);
+  return Array.from({ length: rows + 1 }, (_, i) => data.subarray(i * stride, (i + 1) * stride));
+}
+
 function createTensor3(d1, d2, d3) {
   const arr = new Array(d1 + 1);
   for (let i = 0; i <= d1; i += 1) {
@@ -42,4 +50,4 @@ function createTensor3Flat(d1, d2, d3) {
   return { flat, view };
 }
 
-export { createMatrix, createMatrix1, createTensor3, createTensor3Flat };
+export { createMatrix, createMatrix1, createMatrix1Flat, createTensor3, createTensor3Flat };

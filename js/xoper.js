@@ -6,6 +6,7 @@
 // Port of xoper.f viscous iteration driver.
 // Orchestrates the viscous Newton loop for the webapp.
 
+import { tryWasmBoundaryLayer } from './boundary_layer_wasm.js';
 import {
   setbl,
   update as blUpdate,
@@ -45,7 +46,7 @@ import {
   blsys,
   hkin,
 } from './xblsys.js';
-import { createMatrix1, createTensor3Flat } from './arrays.js';
+import { createMatrix1, createMatrix1Flat, createTensor3Flat } from './arrays.js';
 
 function formatFixed(value, width, decimals) {
   const text = Number.isFinite(value) ? value.toFixed(decimals) : String(value);
@@ -315,27 +316,28 @@ function buildBlContext(nb, ctxPanel, ncr) {
     S: new Float64Array(total + 1),
     NBL: new Int32Array(3),
     IBLTE: new Int32Array(3),
-    ISYS: createMatrix1(nbl, 2),
-    IPAN: createMatrix1(nbl, 2),
-    VTI: createMatrix1(nbl, 2),
-    XSSI: createMatrix1(nbl, 2),
-    UEDG: createMatrix1(nbl, 2),
-    UINV: createMatrix1(nbl, 2),
-    UINV_A: createMatrix1(nbl, 2),
-    THET: createMatrix1(nbl, 2),
-    DSTR: createMatrix1(nbl, 2),
-    CTAU: createMatrix1(nbl, 2),
-    MASS: createMatrix1(nbl, 2),
-    TAU: createMatrix1(nbl, 2),
-    DIS: createMatrix1(nbl, 2),
-    CTQ: createMatrix1(nbl, 2),
-    DELT: createMatrix1(nbl, 2),
-    TSTR: createMatrix1(nbl, 2),
-    DSSR: createMatrix1(nbl, 2),
-    USLP: createMatrix1(nbl, 2),
-    MDEF: createMatrix1(nbl, 2),
-    PDEF: createMatrix1(nbl, 2),
-    KDEF: createMatrix1(nbl, 2),
+    _USAV: createMatrix1Flat(nbl, 2),
+    ISYS: createMatrix1Flat(nbl, 2),
+    IPAN: createMatrix1Flat(nbl, 2),
+    VTI: createMatrix1Flat(nbl, 2),
+    XSSI: createMatrix1Flat(nbl, 2),
+    UEDG: createMatrix1Flat(nbl, 2),
+    UINV: createMatrix1Flat(nbl, 2),
+    UINV_A: createMatrix1Flat(nbl, 2),
+    THET: createMatrix1Flat(nbl, 2),
+    DSTR: createMatrix1Flat(nbl, 2),
+    CTAU: createMatrix1Flat(nbl, 2),
+    MASS: createMatrix1Flat(nbl, 2),
+    TAU: createMatrix1Flat(nbl, 2),
+    DIS: createMatrix1Flat(nbl, 2),
+    CTQ: createMatrix1Flat(nbl, 2),
+    DELT: createMatrix1Flat(nbl, 2),
+    TSTR: createMatrix1Flat(nbl, 2),
+    DSSR: createMatrix1Flat(nbl, 2),
+    USLP: createMatrix1Flat(nbl, 2),
+    MDEF: createMatrix1Flat(nbl, 2),
+    PDEF: createMatrix1Flat(nbl, 2),
+    KDEF: createMatrix1Flat(nbl, 2),
     WGAP: new Float64Array(nw + 1),
     ACRIT: new Float64Array(3),
     XSTRIP: new Float64Array(3),
@@ -533,9 +535,11 @@ function solveViscous(
   }
 
   for (let iter = 0; iter < maxIter; iter += 1) {
-    // Assemble BL system and solve for Newton deltas.
-    setbl(blCtx);
-    const ok = blsolv(blCtx);
+    // Keep assembly and elimination in one WASM transaction. On rejection,
+    // both original routines run from the unchanged JavaScript state.
+    const solved = tryWasmBoundaryLayer(blCtx, true);
+    if (!solved) setbl(blCtx);
+    const ok = solved || blsolv(blCtx);
     if (!ok) break;
     // Update BL state with Newton step.
     blUpdate(blCtx);

@@ -9,7 +9,13 @@ if (backend === 'javascript') globalThis.WebAssembly = undefined;
 else {
   const { createWasmBlsolv } = await import('../../js/blsolv_wasm.js');
   assert.equal(typeof createWasmBlsolv(), 'function', 'Auto-backend audit requires WebAssembly/SIMD');
+  const { createWasmBoundaryLayer } = await import('../../js/boundary_layer_wasm.js');
+  assert.equal(typeof createWasmBoundaryLayer(), 'function', 'Auto-backend audit requires the boundary-layer kernel');
+  const { createWasmPanel } = await import('../../js/panel_wasm.js');
+  assert.ok(createWasmPanel(), 'Auto-backend audit requires the panel kernel');
 }
+const { getBoundaryLayerWasmStats } = await import('../../js/boundary_layer_wasm.js');
+const { getPanelWasmStats } = await import('../../js/panel_wasm.js');
 const { cpcalc } = await import('../../js/xfoil.js');
 let response;
 let logs = [];
@@ -49,7 +55,12 @@ function run(input) {
     residualTolerance: input.residual_tolerance,
     flap: { x: 0.75, yrel: 0.5, deflection: 0 }, canvasWidth: 800, canvasHeight: 500,
   };
+  const before = getBoundaryLayerWasmStats();
+  const beforePanel = getPanelWasmStats();
   self.onmessage({ data: { requestId: input.id, settings } });
+  const after = getBoundaryLayerWasmStats();
+  const boundaryLayer = Object.fromEntries(Object.keys(after).map(key => [key, after[key] - before[key]]));
+  const panel = Object.fromEntries(Object.entries(getPanelWasmStats()).map(([key, value]) => [key, value - beforePanel[key]]));
   assert.equal(response?.ok, true, response?.error ?? 'No worker result');
   const c = response.coeffs;
   const result = { N: response.nb, NW: 0, converged: response.converged,
@@ -79,7 +90,11 @@ function run(input) {
       bl.IPAN[row + 1][side], ...blFields.map(field => bl[field][row + 1][side]),
     ]));
   }
-  return { id: input.id, backend, result, logs };
+  if (backend === 'auto' && input.viscous) assert.ok(boundaryLayer.accelerated > 0,
+    'Viscous comparison did not exercise the boundary-layer kernel');
+  if (backend === 'auto' && input.viscous) assert.ok(panel.solves > 0,
+    'Viscous comparison did not exercise the panel kernel');
+  return { id: input.id, backend, result, logs, boundaryLayer, panel };
 }
 
 for await (const line of createInterface({ input: process.stdin, crlfDelay: Infinity })) {

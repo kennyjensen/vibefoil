@@ -5,6 +5,7 @@ Vibefoil is a browser-based port of XFOIL. Learn more about XFOIL at https://web
 ## Features
 
 - Numerically faithful port to JavaScript
+- Optional WebAssembly acceleration with a complete JavaScript fallback
 - Runs locally in the browser
 - Interactive UI
 - Supports normal and inverse design
@@ -290,6 +291,157 @@ if they are outside PATH. The script disables fast math and fused multiply-add;
 SIMD operates on independent coefficients. Static hosting needs no compilation,
 additional binary request, or Emscripten runtime. Tests check the source fingerprint
 and numerical results so edits cannot silently leave an outdated generated asset.
+
+The boundary-layer Newton step now also has an optional WebAssembly path,
+covering SETBL, both marching routines, laminar/turbulent closures, transition
+calculations, and matrix elimination. Assembly and the existing BLSOLV kernel
+share one transaction, so the Newton matrix stays in WebAssembly through both
+operations instead of being copied out and back in. The JavaScript solver remains complete: unavailable WebAssembly,
+unsupported storage, traps, and nonfinite results fall back to the original
+JavaScript calculation. Panel calculations and the remaining solver orchestration
+continue in JavaScript. Both kernels load from embedded modules, so GitHub Pages
+and the local server need no extra setup.
+
+The boundary-layer equations are generated from 46 maintained JavaScript
+routines rather than maintaining another copy of their equations; the existing
+`wasm/blsolv_kernel.cpp` is linked directly for matrix elimination. It uses Float64 throughout, preserves
+expression order, disables fast math and fused multiply-add, and calls the host's
+`Math` functions for powers and transcendental functions. Scratch memory is bounded
+to 64 MiB per worker; the bridge validates results before publishing them and
+preserves overlapping Float64 views. Floating-point state requires Float64 or
+ordinary number arrays; integer storage is accepted only for index arrays.
+Boundary-layer station, panel-influence,
+and saved-velocity matrices use one backing buffer per matrix, with the same row
+interface for both backends, to reduce copying overhead. Read-only geometry and
+influence buffers need no output copy; aliases with writable data are still
+published in full. Cached storage layouts are checked again on every call.
+
+To rebuild, install the pinned development dependency with `npm ci`, then run
+`npm run build:boundary-layer:wasm` with Node, Python, Clang, and LLD available.
+Custom compiler paths can be supplied after `--`, for example
+`--compiler /path/to/clang++ --linker /path/to/wasm-ld` (tested with LLVM 19).
+The narrow generator in `wasm/generate_boundary_layer.mjs` emits
+`wasm/boundary_layer_generated.cpp` and the JavaScript ABI; the build embeds the
+compiled module in `js/boundary_layer_wasm_data.js`. Unsupported syntax fails the
+build. Source fingerprints in `npm test` require regeneration after equation,
+generator, runtime, or build-script changes. Serving the committed generated files
+does not require the compiler or npm dependencies.
+
+`tests/boundary_layer_wasm.test.js` compares complete state and diagnostic output
+against pure JavaScript SETBL and BLSOLV at every iteration, including forced transition,
+flaps, NACA four/five-digit foils, E387, and reused solutions. It also checks memory
+growth, interleaved contexts, replaced/detached buffers, read-only outputs,
+nonfinite input/output, traps, and unavailable WebAssembly/SIMD. The combined
+step validates flat-matrix layouts and metadata independence before elimination;
+any rejection retries the complete assembly and solve from intact inputs. The canonical runner
+requires actual boundary-layer acceleration in every automatic viscous case and
+records accelerated/fallback iteration counts alongside the numerical results.
+Its `--backend javascript` option disables all WebAssembly kernels.
+
+The full 615-point canonical run at `RMSBL < 1e-8` matched the JavaScript backend
+and the pre-conversion results exactly, including all recorded diagnostics. Both
+backends retained 592 strict original-XFOIL matches, 17 proven unstable reference
+cases, and 6 invalid references, with zero new discrepancies; all 46 additional
+first-iteration comparisons also passed. The automatic backend accelerated 9,247
+of 9,254 Newton-step calls and safely retried seven calls in JavaScript. The full
+JavaScript suite, 25 canonical-harness tests, 248 assembly-state/failure checks,
+and 223 combined-step comparisons passed. Chromium 145 comparisons matched over
+four million numeric values across
+restored/reused state, changed Ncrit, and inverse design; rendered plots and Cp/BL
+exports also matched through mode changes and resizing.
+
+Compared with the pre-conversion revision (`a076fe0`, which already included
+WebAssembly matrix elimination), paired Node 24 measurements used 12.1% less
+solver-thread CPU time for fresh viscous solves, 16.0% less for flapped solves,
+and 18.9% less for a reused polar sweep (nine pairs after four warm-up pairs).
+Chromium 145 measured 22.9% less elapsed time for interactive viscous solves
+with panel and solution reuse enabled (11 pairs after 15 warm-up pairs).
+Fresh browser solves showed only a modest gain; first-solve and isolated
+inviscid timings were essentially unchanged. Mixed inviscid/viscous timings
+varied substantially, including slower inviscid samples. These are incremental,
+hardware-dependent solver measurements, excluding network, worker startup, and
+rendering; first-solve measurements include kernel initialization. Benchmark
+outputs were compared exactly.
+
+The next boundary-layer WebAssembly pass reduces array-access and bridge
+overhead without changing any JavaScript equations, worker code, or solver
+orchestration. The generator recognizes 63 loops whose counters start at a
+nonnegative integer and advance by one without other writes or shadowing.
+Those counters use checked integer storage for direct array indexing;
+arithmetic expressions still explicitly convert them to doubles. Fractional,
+nonfinite, out-of-range, and overflowing indices retain transactional fallback.
+Array ranges are checked before converting floating-point indices. The bridge
+packs adjacent layout descriptors into typed blocks and reuses resident metadata
+only after verifying that the previous kernel call preserved it. Context changes,
+replaced storage, and failed calls invalidate that reuse; numerical inputs and
+outputs still receive their original checks. The embedded binary shrank from
+156,337 to 137,882 bytes (11.8%).
+
+The repeated full `1e-8` canonical gate and saved-result audit matched all 615
+points and their diagnostics exactly against both pure JavaScript and the
+preceding WebAssembly version. Reference classifications and all 46 additional
+first-iteration checks were unchanged. Tests also cover fractional/oversized
+indices, recovery after a trapped kernel, and restoring metadata after another
+context grows memory and then rejects its input.
+
+Compared with the preceding WebAssembly version, Chromium 145 measurements
+showed median paired elapsed-time reductions of 12.2% for fresh viscous solves
+and 13.1% with panel/solution reuse (11 pairs after 15 warm-up pairs). First
+solves in nine fresh-worker pairs took 10.0% less time, including kernel
+initialization but excluding network, module/worker startup, and rendering.
+These tests used the website's default residual threshold. Complete outputs
+matched exactly. Node 24 measurements showed no consistent whole-worker gain;
+the reused sweep's paired CPU-time result was 4.9% slower in that run. Timings
+vary with workload, runtime, hardware, and load; these gains are incremental.
+
+Panel factorization and the surface/wake influence solves now also have optional
+WebAssembly kernels. LUDCMP retains its scaling, pivot tie rules, row-object
+swaps, and arithmetic order. BAKSUB processes four independent columns at a time
+with strict Float64 SIMD; each column retains the original sequential
+subtractions and first-nonzero rule. No horizontal reductions, relaxed SIMD,
+fast math, or fused multiply-add are used. Surface and wake columns are submitted
+in batches so each call copies the LU matrix only once. The factorization cache
+continues to compare the complete input matrix before reuse.
+
+The original JavaScript LUDCMP and BAKSUB routines remain unchanged. The optional
+bridge computes in private memory and publishes only successful finite results.
+Unsupported storage, aliases, nonfinite values, traps, memory-growth failures,
+and unavailable WebAssembly/SIMD take the JavaScript path with the original
+inputs. The 3,764-byte binary is embedded for static hosting. Rebuild with
+`npm run build:panel:wasm -- --compiler /path/to/clang++ --linker /path/to/wasm-ld`.
+`tests/panel_wasm.test.js` checks exact factors, pivot/row identities, solved
+columns, signed zeros, padding, rejection without writes, and failure recovery.
+
+A paired comparison on Node 24.16.0/arm64 pinned to CPU 3 used seven warm-up
+rounds and 17 measured rounds. With fresh panel and boundary-layer state (the
+panel LU cache explicitly cleared), the panel kernels reduced numerical CPU
+time by a median 20.9% for inviscid NACA 2412 and 4.8–12.6% for the tested
+viscous cases. This excludes worker startup, streamline generation and rendering.
+At a `1e-8` residual threshold, paired time ratios to the original double-
+precision Fortran were 1.77 for NACA 2412, 1.94 for NACA 0012, and 1.74 for
+NACA 4412, compared with 2.08, 2.05, and 1.90 before this pass. All used 240 panels,
+alpha 4 degrees, Mach 0.1, Re 3 million, and Ncrit 9. Iteration counts matched;
+the largest CL/CM/CD difference from Fortran was `8.18e-14`, and complete worker
+results matched the preceding version exactly. Runtime and workload affect the
+gain; reused panel factorizations already avoid the LU work.
+
+Chromium 145 showed a 12.3% median paired elapsed-time reduction for fresh
+viscous solves in warmed workers (11 pairs after 15 warm-up pairs, CPU 3).
+These timings include streamline generation and result preparation, use the
+website's default residual threshold, and exclude worker/module startup and
+rendering. Reused solves showed no reliable improvement; their paired median
+was 3.3% slower in this run. Nine fresh-worker pairs were too variable to claim
+a reliable first-calculation gain. Complete outputs matched in every pair.
+
+The complete `1e-8` canonical gate passed again after the panel change: all 615
+points and their diagnostics matched both the preceding version and pure
+JavaScript exactly. Classifications stayed at 592 strict matches, 17 proven
+unstable references, and six invalid references per backend, with zero new
+failures. All 46 first-iteration comparisons also passed. The audit recorded
+five panel factorizations (one per foil, with subsequent cache hits) and 1,080
+accelerated column batches, with no panel-kernel fallbacks. The unit suite and
+browser checks also passed, including WebAssembly disabled, live reuse, cold
+snapshot restore, inverse design, plotted pixels, and Cp/BL downloads.
 
 The WebAssembly row kernels now give the compiler separate, nonoverlapping row
 spans instead of manually unrolling indexed updates through one matrix pointer.

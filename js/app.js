@@ -2691,6 +2691,9 @@ function buildRunCasesCsv() {
     'xtr_top',
     'xtr_bot',
     'converged',
+    'ch',
+    'cdp',
+    'cdf',
   ];
   const lines = [headers.join(',')];
   runCases.forEach((caseItem, idx) => {
@@ -2726,6 +2729,9 @@ function buildRunCasesCsv() {
         formatCsvNumber(point?.xtrTop),
         formatCsvNumber(point?.xtrBottom),
         point?.converged ?? '',
+        formatCsvNumber(point?.ch),
+        formatCsvNumber(point?.cdp),
+        formatCsvNumber(point?.cdf),
       ].map(toCsvValue).join(','));
     });
   });

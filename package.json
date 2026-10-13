@@ -8,6 +8,11 @@
     "test:canonical": "python3 tests/canonical/run.py",
     "test:canonical:quick": "python3 tests/canonical/run.py --quick",
     "test:canonical:unit": "python3 -m unittest discover -s tests/canonical -p 'test_*.py'",
-    "test": "node tests/alpha_axes.test.js && node tests/airfoil_route.test.js && node tests/streamfunction.test.js && node tests/contours.test.js && node tests/blsolv.test.js && node tests/blsolv_wasm.test.js && node tests/bl_state.test.js && node tests/bl_com.test.js && node tests/bl_prepare.test.js && node tests/gauss1.test.js && node tests/panel_lu.test.js && node tests/baksub_many.test.js && node tests/mass_assembly.test.js && node tests/worker_data.test.js && node tests/worker_lifecycle.test.js && node tests/worker_reuse.test.js && node tests/inviscid_mach.test.js"
+    "test": "node tests/alpha_axes.test.js && node tests/airfoil_route.test.js && node tests/streamfunction.test.js && node tests/contours.test.js && node tests/blsolv.test.js && node tests/blsolv_wasm.test.js && node tests/boundary_layer_wasm.test.js && node tests/bl_state.test.js && node tests/bl_com.test.js && node tests/bl_prepare.test.js && node tests/gauss1.test.js && node tests/panel_lu.test.js && node tests/panel_wasm.test.js && node tests/baksub_many.test.js && node tests/mass_assembly.test.js && node tests/worker_data.test.js && node tests/worker_lifecycle.test.js && node tests/worker_reuse.test.js && node tests/inviscid_mach.test.js",
+    "build:boundary-layer:wasm": "python3 wasm/build_boundary_layer.py",
+    "build:panel:wasm": "python3 wasm/build_panel.py"
+  },
+  "devDependencies": {
+    "acorn": "8.15.0"
   }
 }

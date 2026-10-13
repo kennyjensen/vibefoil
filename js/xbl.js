@@ -6,6 +6,7 @@
 // Port of xbl.f (partial). Marching and utility routines for the integral BL.
 // Integral boundary-layer method: marching, closures, and coupling terms.
 
+import { createMatrix1Flat } from './arrays.js';
 import { splind, sinvrt, seval } from './spline.js';
 import { gauss1 } from './xsolve.js';
 import { blprv as defaultBlprv, blkin as defaultBlkin, blprvKin } from './xblsys.js';
@@ -947,10 +948,7 @@ function setbl(ctx) {
   const maxNbl = Math.max(NBL[1], NBL[2]);
   let usav = ctx._USAV;
   if (!usav || usav.length < maxNbl + 1) {
-    usav = new Array(maxNbl + 1);
-    for (let i = 0; i <= maxNbl; i += 1) {
-      usav[i] = new Float64Array(3);
-    }
+    usav = createMatrix1Flat(maxNbl, 2);
     ctx._USAV = usav;
   } else {
     for (let i = 0; i <= maxNbl; i += 1) {

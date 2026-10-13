@@ -5,3 +5,4 @@ wasm_tmp_*
 wasm_state.json
 1000.bl
 artifacts/canonical/
+node_modules/

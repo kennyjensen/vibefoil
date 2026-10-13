@@ -1,4 +1,5 @@
 import { ludcmp } from './xsolve.js';
+import { tryWasmPanelLu } from './panel_wasm.js';
 
 // Retain one panel matrix's factorization. Compare the assembled matrix itself:
 // geometry names and angles alone cannot establish that it is safe to reuse.
@@ -80,7 +81,7 @@ export function createCachedLudcmp() {
         if (!Number.isFinite(value)) finite = false;
       }
     }
-    ludcmp(n, a, indx);
+    if (!tryWasmPanelLu(n, a, indx)) ludcmp(n, a, indx);
     if (!finite) return false;
     for (let i = 0; i < n; i += 1) {
       for (let j = 0; j < n; j += 1) {

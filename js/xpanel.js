@@ -4,10 +4,12 @@
 // See https://web.mit.edu/drela/Public/web/xfoil/ for the original code and license text.
 
 // Port of src/xpanel.f from XFOIL (Mark Drela). Numerical formulas preserved.
+import { createMatrix1Flat } from './arrays.js';
 import { segspl, seval } from './spline.js';
 import { lefind } from './xgeom.js';
 import { atanc, setexp } from './xutils.js?v=1';
 import { ludcmp, baksub, baksubMany } from './xsolve.js';
+import { tryWasmPanelColumns } from './panel_wasm.js';
 import { iblsys } from './xbl.js';
 
 // Panel-method core: geometry processing, wake setup, and influence calculations.
@@ -1168,13 +1170,16 @@ function qdcalc(ctx) {
   const nw = ctx.NW ?? 0;
   const total = n + nw;
   const n1 = n + 1;
-  const dij = new Array(total + 1);
-  for (let i = 0; i <= total; i += 1) {
-    dij[i] = new Float64Array(total + 1);
-  }
+  const dij = createMatrix1Flat(total, total);
 
   const rhs = Array.from({ length: Math.min(4, Math.max(n, nw)) }, () => new Float64Array(n1));
-  for (let j = 0; j < n; j += 4) {
+  const surface = tryWasmPanelColumns(n1, ctx.AIJ, ctx.AIJPIV, ctx.BIJ, 0, n);
+  if (surface) {
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) dij[i + 1][j + 1] = surface[j*n1+i];
+    }
+  }
+  for (let j = 0; !surface && j < n; j += 4) {
     const count = Math.min(4, n - j);
     for (let k = 0; k < count; k += 1) {
       for (let i = 0; i < n1; i += 1) rhs[k][i] = ctx.BIJ[i][j + k];
@@ -1216,7 +1221,16 @@ function qdcalc(ctx) {
       }
     }
 
-    for (let j = n; j < total; j += 4) {
+    const wake = tryWasmPanelColumns(n1, ctx.AIJ, ctx.AIJPIV, ctx.BIJ, n, nw);
+    if (wake) {
+      for (let j = n; j < total; j++) {
+        for (let i = 0; i < n; i++) {
+          ctx.BIJ[i][j] = wake[(j-n)*n1+i];
+          dij[i + 1][j + 1] = ctx.BIJ[i][j];
+        }
+      }
+    }
+    for (let j = n; !wake && j < total; j += 4) {
       const count = Math.min(4, total - j);
       for (let k = 0; k < count; k += 1) {
         for (let i = 0; i < n1; i += 1) rhs[k][i] = ctx.BIJ[i][j + k];

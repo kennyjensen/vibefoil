@@ -1,0 +1,79 @@
+{
+  "source": "third_party/Xfoil/src/xoper.f:MHINGE, original double-precision Fortran",
+  "cases": [
+    {
+      "foil": 12,
+      "sharp": false,
+      "x": 0.75,
+      "yrel": 0.5,
+      "deflection": 0,
+      "viscous": false,
+      "symmetric": true,
+      "ch": -1.8973538018496328e-19
+    },
+    {
+      "foil": 12,
+      "sharp": true,
+      "x": 0.75,
+      "yrel": 0.5,
+      "deflection": 0,
+      "viscous": true,
+      "ch": -0.0038346231743010264
+    },
+    {
+      "foil": 2412,
+      "sharp": false,
+      "x": 0.75,
+      "yrel": 0.5,
+      "deflection": 0,
+      "viscous": false,
+      "ch": -0.0049686036719491025
+    },
+    {
+      "foil": 2412,
+      "sharp": false,
+      "x": 0.75,
+      "yrel": 0.5,
+      "deflection": 12,
+      "viscous": true,
+      "ch": -0.003989564378887003
+    },
+    {
+      "foil": 2412,
+      "sharp": true,
+      "x": 0.65,
+      "yrel": 0.25,
+      "deflection": -10,
+      "viscous": false,
+      "ch": -0.013561982826211369
+    },
+    {
+      "foil": 4412,
+      "sharp": false,
+      "x": 0.85,
+      "yrel": 0.8,
+      "deflection": 8,
+      "viscous": true,
+      "ch": -0.0010092694856749422
+    },
+    {
+      "foil": 23012,
+      "sharp": false,
+      "x": 0.7,
+      "yrel": 0.4,
+      "deflection": -8,
+      "viscous": true,
+      "ch": -0.006906146209327376
+    },
+    {
+      "foil": 23012,
+      "sharp": true,
+      "x": 0.8,
+      "yrel": 0.5,
+      "deflection": 0,
+      "viscous": false,
+      "ch": -0.0027679360872121606
+    }
+  ],
+  "sourceSha256": "339c6bfc0eb3aa18cd48cae931850125b85d8e960457e83ec957046c164871bb"
+}

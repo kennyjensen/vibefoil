@@ -15,6 +15,7 @@ import { MIXED } from './xqdes.js';
 import { createStreamfunctionEvaluator } from './streamfunction.js';
 import { cloneFloat64Rows, resultTransfers } from './worker_data.js';
 import { createCachedLudcmp } from './panel_lu.js';
+import { computeHingeMoment } from './hinge_moment.js';
 
 const DEBUG_QDES = false;
 
@@ -1165,6 +1166,7 @@ function computeCase(settings) {
   let cpData = null;
   let blLines = null;
   let coeffsDisplay = null;
+  let hingeMoment = NaN;
   let converged = true;
 
   if (ctxPanel && qinv) {
@@ -1179,6 +1181,7 @@ function computeCase(settings) {
       : computeQvisFromUedg(blCtx, nb, qinv);
     const cpInv = cpcalc(qinv, qinf, minf);
     const cpVis = cpcalc(qvis, qinf, minf);
+    hingeMoment = computeHingeMoment(ctxPanel, viscous && blCtx ? cpVis : cpInv, geom.hinge);
 
     let cpUpper = [];
     let cpLower = [];
@@ -1240,6 +1243,7 @@ function computeCase(settings) {
     coeffsDisplay = {
       CL: coeffs.cl,
       CM: coeffs.cm,
+      CH: hingeMoment,
       CD: coeffs.cd,
       CDF: coeffs.cdf,
       CDP: coeffs.cdp,

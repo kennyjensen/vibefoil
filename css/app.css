@@ -221,7 +221,7 @@
 
   .side-plots {
     height: calc(100vh - 140px);
-    min-height: var(--plot-min-height);
+    min-height: min-content;
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
@@ -656,7 +656,7 @@
     font-size: 14px;
     color: var(--color-ink);
     box-shadow: var(--shadow-float);
-    pointer-events: none;
+    flex-shrink: 0;
   }
 
   .c-data-row {
@@ -845,7 +845,6 @@
 
     .side-plots {
       height: calc(100vh - 190px);
-      min-height: 0;
       gap: var(--space-3);
     }
 

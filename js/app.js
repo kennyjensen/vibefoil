@@ -58,6 +58,17 @@ const hoverRe = document.getElementById('hoverRe');
 const hoverNcr = document.getElementById('hoverNcr');
 const hoverAlpha = document.getElementById('hoverAlpha');
 const hoverFlap = document.getElementById('hoverFlap');
+const hoverCoefficients = [
+  ['hoverCl', 'cl', 4],
+  ['hoverCd', 'cd', 5],
+  ['hoverCm', 'cm', 4],
+  ['hoverLd', 'ld', 2],
+  ['hoverXtrTop', 'xtrTop', 4],
+  ['hoverXtrBottom', 'xtrBottom', 4],
+  ['hoverCh', 'ch', 5],
+  ['hoverCdp', 'cdp', 5],
+  ['hoverCdf', 'cdf', 5],
+].map(([id, field, digits]) => ({ element: document.getElementById(id), field, digits }));
 const DEFAULT_BL_ITER = 20;
 const UIUC_BASE_URL = 'https://raw.githubusercontent.com/kennyjensen/uiuc_airfoil_database/master/';
 const UIUC_TREE_URL = 'https://api.github.com/repos/kennyjensen/uiuc_airfoil_database/git/trees/master?recursive=1';
@@ -657,6 +668,9 @@ function smoothAirfoilGeometry() {
 
 function updateHoverBox(point) {
   if (!hoverBox) return;
+  for (const { element, field, digits } of hoverCoefficients) {
+    if (element) element.textContent = formatNum(point?.[field], digits);
+  }
   if (!point) {
     if (hoverName) hoverName.textContent = '—';
     if (hoverMach) hoverMach.textContent = '—';
@@ -951,6 +965,11 @@ function upsertSweepPoint(alphaDeg, coeffs, converged = true, viscous = false) {
     cl: coeffs.CL,
     cd: coeffs.CD,
     cm: coeffs.CM,
+    ld: coeffs.CD !== 0.0 ? coeffs.CL / coeffs.CD : NaN,
+    ch: coeffs.CH,
+    // Match XFOIL's reported drag breakdown; CDP is the separate surface integral.
+    cdp: viscous ? coeffs.CD - coeffs.CDF : coeffs.CDP,
+    cdf: coeffs.CDF,
     converged,
     airfoil: currentAirfoilName || '—',
     viscous: !!viscous,
